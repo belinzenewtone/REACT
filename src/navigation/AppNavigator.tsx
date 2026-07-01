@@ -33,6 +33,15 @@ import { TaskFormScreen } from '../screens/tasks/TaskFormScreen';
 import { TaskDetailScreen } from '../screens/tasks/TaskDetailScreen';
 import { EventFormScreen } from '../screens/calendar/EventFormScreen';
 import { EventDetailScreen } from '../screens/calendar/EventDetailScreen';
+import { FeeAnalyticsScreen } from '../screens/finance/FeeAnalyticsScreen';
+import { MerchantDetailScreen } from '../screens/finance/MerchantDetailScreen';
+import { ReviewQueueScreen } from '../screens/settings/ReviewQueueScreen';
+import { SmsImportHealthScreen } from '../screens/settings/SmsImportHealthScreen';
+import { ChangelogScreen } from '../screens/settings/ChangelogScreen';
+import { LearningScreen } from '../screens/learning/LearningScreen';
+import { WeekReviewScreen } from '../screens/review/WeekReviewScreen';
+import { ScreenLockScreen } from '../screens/settings/ScreenLockScreen';
+import { NotificationsScreen } from '../screens/settings/NotificationsScreen';
 import type { RootStackParamList } from './types';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -99,6 +108,15 @@ export function AppNavigator() {
             <Stack.Screen name="TaskForm" component={TaskFormScreen} />
             <Stack.Screen name="EventDetail" component={EventDetailScreen} />
             <Stack.Screen name="EventForm" component={EventFormScreen} />
+            <Stack.Screen name="FeeAnalytics" component={FeeAnalyticsScreen} />
+            <Stack.Screen name="MerchantDetail" component={MerchantDetailScreen} />
+            <Stack.Screen name="ReviewQueue" component={ReviewQueueScreen} />
+            <Stack.Screen name="SmsImportHealth" component={SmsImportHealthScreen} />
+            <Stack.Screen name="Changelog" component={ChangelogScreen} />
+            <Stack.Screen name="Learning" component={LearningScreen} />
+            <Stack.Screen name="WeekReview" component={WeekReviewScreen} />
+            <Stack.Screen name="ScreenLock" component={ScreenLockScreen} />
+            <Stack.Screen name="Notifications" component={NotificationsScreen} />
           </>
         )}
       </Stack.Navigator>

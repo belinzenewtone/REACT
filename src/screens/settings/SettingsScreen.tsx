@@ -160,7 +160,7 @@ export function SettingsScreen() {
             icon="gift-outline"
             label="What's new"
             showChevron
-            onPress={() => Alert.alert("What's New", `v${APP_VERSION} — May 2026 release.`)}
+            onPress={() => navigation.navigate('Changelog')}
           />
           <SettingsRow
             icon="information-circle-outline"

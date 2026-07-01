@@ -40,6 +40,16 @@ export type RootStackParamList = {
   EventForm: { eventId?: string };
   BudgetDetail: { budgetId: string };
   BudgetForm: { budgetId?: string };
+  // New screens
+  FeeAnalytics: undefined;
+  MerchantDetail: { merchant: string };
+  ReviewQueue: undefined;
+  SmsImportHealth: undefined;
+  Changelog: undefined;
+  Learning: undefined;
+  WeekReview: undefined;
+  ScreenLock: undefined;
+  Notifications: undefined;
 };
 
 declare global {
