@@ -1,4 +1,4 @@
-import React, { useEffect, useCallback, useMemo, useRef } from 'react';
+import React, { useEffect, useCallback, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -26,7 +26,7 @@ import {
   getDaysInMonth,
 } from 'date-fns';
 import { useThemeColors } from '../../hooks/useThemeColors';
-import { useTransactionStore, useDashboardStore, useBudgetStore } from '../../store';
+import { useTransactionStore, useDashboardStore, useBudgetStore, usePlannerStore, useAppStore } from '../../store';
 import { TransactionRepository } from '../../database/repositories/TransactionRepository';
 import { SearchFilterBar } from '../../components/finance/SearchFilterBar';
 import { CategoryChips } from '../../components/finance/CategoryChips';
@@ -77,6 +77,11 @@ export function FinanceScreen() {
 
   const { todaySpend, weekSpend, loadDashboard } = useDashboardStore();
   const { budgets, loadBudgets } = useBudgetStore();
+  const { loans, loadAll: loadPlanner } = usePlannerStore();
+  const fulizaLimit = useAppStore((state) => state.settings.fulizaLimit);
+
+  const [feesTotal, setFeesTotal] = useState(0);
+  const [uncategorizedCount, setUncategorizedCount] = useState(0);
 
   useEffect(() => {
     loadTransactions(repo, true);
@@ -92,7 +97,10 @@ export function FinanceScreen() {
   useEffect(() => {
     loadDashboard(db);
     loadBudgets(db);
-  }, [db, loadDashboard, loadBudgets]);
+    loadPlanner(db);
+    repo.getFeesTotalForMonth().then(setFeesTotal);
+    repo.getUncategorized().then((rows) => setUncategorizedCount(rows.length));
+  }, [db, loadDashboard, loadBudgets, loadPlanner, repo]);
 
   const handleLoadMore = useCallback(() => {
     if (!isLoading && hasMore) {
@@ -160,17 +168,46 @@ export function FinanceScreen() {
     return Math.round((monthTotals.expense / day) * daysInMonth);
   }, [monthTotals.expense]);
 
-  const serviceChargeEstimate = useMemo(() => {
-    // Rough M-Pesa transaction cost estimate: ~1% capped low
-    return Math.round(monthTotals.expense * 0.005);
-  }, [monthTotals.expense]);
+  const totalMonthBudget = useMemo(
+    () => budgets.reduce((sum, b) => sum + (b.budget.limit_amount ?? 0), 0),
+    [budgets]
+  );
+
+  const spendingVelocity = useMemo(() => {
+    if (totalMonthBudget <= 0) return null;
+    const now = new Date();
+    const dayOfMonth = now.getDate();
+    if (dayOfMonth < 3) return null;
+    const dailyRate = monthTotals.expense / dayOfMonth;
+    const projected = dailyRate * getDaysInMonth(now);
+    const overshoot = projected - totalMonthBudget;
+    return overshoot > 0 ? { projected, overshoot } : null;
+  }, [monthTotals.expense, totalMonthBudget]);
+
+  const fulizaOpenLoans = useMemo(() => loans.filter((l) => l.status === 'active'), [loans]);
+  const fulizaOutstanding = useMemo(
+    () => fulizaOpenLoans.reduce((sum, l) => sum + (l.draw_amount_kes - l.total_repaid_kes), 0),
+    [fulizaOpenLoans]
+  );
+
+  const exportNudge = useMemo(
+    () => ({
+      title: 'Exports and reports',
+      summary:
+        transactions.length === 0
+          ? 'Prepare a clean export setup before the ledger grows.'
+          : `Create a CSV, JSON, or shareable report from ${transactions.length} visible transactions.`,
+      actionLabel: 'Open export center',
+    }),
+    [transactions.length]
+  );
 
   const actionChips: ActionChip[] = [
     { icon: 'add', label: 'Add', onPress: () => navigation.navigate('TransactionForm') },
     { icon: 'grid-outline', label: 'Hub', onPress: () => navigation.navigate('Planner') },
     { icon: 'chatbubble-outline', label: 'Import SMS', onPress: () => navigation.navigate('CsvImport') },
     { icon: 'document-outline', label: 'Import CSV', onPress: () => navigation.navigate('CsvImport') },
-    { icon: 'download-outline', label: 'Export', onPress: () => navigation.navigate('Export') },
+    { icon: 'download-outline', label: 'Export Data', onPress: () => navigation.navigate('Export') },
   ];
 
   const handleDeleteTransaction = useCallback(
@@ -317,11 +354,15 @@ export function FinanceScreen() {
               ))}
             </ScrollView>
 
-            <View style={styles.metricsRow}>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.metricsRow}
+            >
               <MetricCard label="Today" amount={todaySpend} />
-              <View style={styles.metricSpacer} />
               <MetricCard label="Week" amount={weekSpend} />
-            </View>
+              <MetricCard label="Month" amount={monthTotals.expense} />
+            </ScrollView>
 
             {topAlertBudget && (
               <TouchableOpacity
@@ -361,8 +402,25 @@ export function FinanceScreen() {
               </TouchableOpacity>
             )}
 
-            <View style={styles.cardsRow}>
-              <GlassCard style={[styles.infoCard, styles.infoCardLeft]}>
+            {uncategorizedCount > 0 && (
+              <TouchableOpacity
+                style={[styles.uncategorizedBanner, { borderColor: colors.border, backgroundColor: colors.glassWhite }]}
+                onPress={() => navigation.navigate('Categorize')}
+                activeOpacity={0.8}
+              >
+                <Text style={[styles.uncategorizedText, { color: colors.warning }]}>
+                  {uncategorizedCount} transaction{uncategorizedCount === 1 ? '' : 's'} need a category
+                </Text>
+                <Text style={[styles.uncategorizedAction, { color: colors.accentPrimary }]}>Organize</Text>
+              </TouchableOpacity>
+            )}
+
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.insightsRow}
+            >
+              <GlassCard style={styles.insightCard}>
                 <View style={styles.infoCardHeader}>
                   <Text style={[styles.infoCardLabel, { color: colors.textSecondary }]}>Budget</Text>
                   <TouchableOpacity onPress={() => navigation.navigate('Budgets')}>
@@ -370,17 +428,14 @@ export function FinanceScreen() {
                   </TouchableOpacity>
                 </View>
                 <Text style={[styles.infoCardAmount, { color: colors.textPrimary }]}>
-                  {formatCurrency(
-                    budgets.reduce((sum, b) => sum + (b.budget.limit_amount ?? 0), 0),
-                    { decimals: 0 }
-                  )}
+                  {formatCurrency(totalMonthBudget, { decimals: 0 })}
                 </Text>
                 <Text style={[styles.infoCardSub, { color: colors.textTertiary }]}>
                   {budgets.length} guardrail{budgets.length === 1 ? '' : 's'}
                 </Text>
               </GlassCard>
 
-              <GlassCard style={[styles.infoCard, styles.infoCardRight]}>
+              <GlassCard style={styles.insightCard}>
                 <View style={styles.infoCardHeader}>
                   <Text style={[styles.infoCardLabel, { color: colors.textSecondary }]}>Month-End Forecast</Text>
                 </View>
@@ -391,7 +446,64 @@ export function FinanceScreen() {
                   based on current pace
                 </Text>
               </GlassCard>
-            </View>
+
+              {fulizaOpenLoans.length > 0 && (
+                <GlassCard style={styles.insightCard}>
+                  <View style={styles.infoCardHeader}>
+                    <Text style={[styles.infoCardLabel, { color: colors.textSecondary }]}>Fuliza Outstanding</Text>
+                  </View>
+                  <Text style={[styles.infoCardAmount, { color: colors.warning }]}>
+                    {formatCurrency(fulizaOutstanding, { decimals: 0 })}
+                  </Text>
+                  <Text style={[styles.infoCardSub, { color: colors.textTertiary }]}>
+                    {fulizaOpenLoans.length} open loan{fulizaOpenLoans.length === 1 ? '' : 's'}
+                    {fulizaLimit ? ` · Limit ${formatCurrency(fulizaLimit, { decimals: 0 })}` : ''}
+                  </Text>
+                </GlassCard>
+              )}
+
+              {feesTotal > 0 && (
+                <TouchableOpacity onPress={() => navigation.navigate('FeeAnalytics')} activeOpacity={0.8}>
+                  <GlassCard style={styles.insightCard}>
+                    <View style={styles.infoCardHeader}>
+                      <Text style={[styles.infoCardLabel, { color: colors.textSecondary }]}>Service Charges</Text>
+                    </View>
+                    <Text style={[styles.infoCardAmount, { color: colors.warning }]}>
+                      {formatCurrency(feesTotal, { decimals: 0 })}
+                    </Text>
+                    <Text style={[styles.infoCardSub, { color: colors.textTertiary }]}>
+                      Airtime, Fuliza &amp; subscriptions
+                    </Text>
+                  </GlassCard>
+                </TouchableOpacity>
+              )}
+
+              {spendingVelocity && (
+                <GlassCard style={styles.insightCard}>
+                  <Text style={[styles.infoCardLabel, { color: colors.warning }]}>Spending pace</Text>
+                  <Text style={[styles.infoCardAmount, { color: colors.textPrimary }]} numberOfLines={1}>
+                    {formatCurrency(spendingVelocity.projected, { decimals: 0 })} projected
+                  </Text>
+                  <Text style={[styles.infoCardSub, { color: colors.warning }]} numberOfLines={1}>
+                    {formatCurrency(spendingVelocity.overshoot, { decimals: 0 })} over budget
+                  </Text>
+                </GlassCard>
+              )}
+            </ScrollView>
+
+            <GlassCard style={styles.nudgeCard}>
+              <View style={styles.nudgeHeader}>
+                <Text style={[styles.nudgeTitle, { color: colors.textPrimary }]} numberOfLines={1}>
+                  {exportNudge.title}
+                </Text>
+                <TouchableOpacity onPress={() => navigation.navigate('Export')}>
+                  <Text style={[styles.nudgeAction, { color: colors.accentPrimary }]}>{exportNudge.actionLabel}</Text>
+                </TouchableOpacity>
+              </View>
+              <Text style={[styles.nudgeSummary, { color: colors.textSecondary }]} numberOfLines={2}>
+                {exportNudge.summary}
+              </Text>
+            </GlassCard>
 
             <View style={styles.periodFilter}>
               {PERIODS.map((p) => {
@@ -543,15 +655,12 @@ const styles = StyleSheet.create({
     fontWeight: typography.weights.medium,
   },
   metricsRow: {
-    flexDirection: 'row',
     paddingHorizontal: spacing.lg,
+    gap: spacing.base,
     marginBottom: spacing.base,
   },
-  metricSpacer: {
-    width: spacing.base,
-  },
   metricCard: {
-    flex: 1,
+    width: 140,
     padding: spacing.lg,
   },
   metricLabel: {
@@ -584,20 +693,57 @@ const styles = StyleSheet.create({
     fontSize: typography.sizes.xs,
     marginTop: 2,
   },
-  cardsRow: {
+  uncategorizedBanner: {
     flexDirection: 'row',
-    paddingHorizontal: spacing.lg,
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginHorizontal: spacing.lg,
+    padding: spacing.base,
+    borderRadius: borderRadius.xl,
+    borderWidth: 1,
     marginBottom: spacing.base,
   },
-  infoCard: {
+  uncategorizedText: {
     flex: 1,
-    padding: spacing.base,
-  },
-  infoCardLeft: {
+    fontSize: typography.sizes.sm,
+    fontWeight: typography.weights.medium,
     marginRight: spacing.sm,
   },
-  infoCardRight: {
-    marginLeft: spacing.sm,
+  uncategorizedAction: {
+    fontSize: typography.sizes.sm,
+    fontWeight: typography.weights.semibold,
+  },
+  insightsRow: {
+    paddingHorizontal: spacing.lg,
+    gap: spacing.sm,
+    marginBottom: spacing.base,
+  },
+  insightCard: {
+    width: 200,
+    padding: spacing.base,
+  },
+  nudgeCard: {
+    marginHorizontal: spacing.lg,
+    marginBottom: spacing.base,
+    gap: 6,
+  },
+  nudgeHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  nudgeTitle: {
+    flex: 1,
+    fontSize: typography.sizes.base,
+    fontWeight: typography.weights.semibold,
+    marginRight: spacing.sm,
+  },
+  nudgeAction: {
+    fontSize: typography.sizes.sm,
+    fontWeight: typography.weights.semibold,
+  },
+  nudgeSummary: {
+    fontSize: typography.sizes.sm,
   },
   infoCardHeader: {
     flexDirection: 'row',
