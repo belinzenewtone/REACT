@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -7,8 +7,8 @@ import {
   TouchableOpacity,
   TextInput,
   Alert,
-  KeyboardAvoidingView,
-  Platform,
+  Keyboard,
+  Dimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -24,6 +24,7 @@ import { spacing, typography, borderRadius } from '../../theme';
 import { promptBiometrics } from '../../utils/biometrics';
 
 const PIN_LENGTH = 6;
+const SCROLL_INTO_VIEW_PADDING = 24;
 
 type LockTab = 'fingerprint' | 'pin';
 
@@ -67,11 +68,34 @@ export function ScreenLockScreen() {
   const [message, setMessage] = useState<string | null>(null);
   const [verifyingFingerprint, setVerifyingFingerprint] = useState(false);
 
+  const scrollRef = useRef<ScrollView>(null);
+  const scrollOffset = useRef(0);
+  const focusedInput = useRef<TextInput | null>(null);
+
   useEffect(() => {
     if (!message) return;
     const timer = setTimeout(() => setMessage(null), 2500);
     return () => clearTimeout(timer);
   }, [message]);
+
+  // TextInputs inside a plain ScrollView don't auto-scroll into view on Android when the
+  // keyboard opens (only iOS does this natively), so we measure the focused field once the
+  // keyboard has finished animating and nudge the scroll position to keep it visible.
+  useEffect(() => {
+    const subscription = Keyboard.addListener('keyboardDidShow', (event) => {
+      const input = focusedInput.current;
+      const scroller = scrollRef.current;
+      if (!input || !scroller) return;
+      input.measureInWindow((_x, y, _width, height) => {
+        const keyboardTop = Dimensions.get('window').height - event.endCoordinates.height;
+        const overlap = y + height + SCROLL_INTO_VIEW_PADDING - keyboardTop;
+        if (overlap > 0) {
+          scroller.scrollTo({ y: scrollOffset.current + overlap, animated: true });
+        }
+      });
+    });
+    return () => subscription.remove();
+  }, []);
 
   const handleToggleFingerprint = async (value: boolean) => {
     if (!value) {
@@ -118,6 +142,7 @@ export function ScreenLockScreen() {
     setCurrentPin('');
     setNewPin('');
     setConfirmPin('');
+    Keyboard.dismiss();
     setMessage(isFirstSetup ? 'PIN set up successfully' : 'PIN changed successfully');
   };
 
@@ -126,15 +151,22 @@ export function ScreenLockScreen() {
     confirmPin.length === PIN_LENGTH &&
     (!settings.pinCode || currentPin.length === PIN_LENGTH);
 
+  const handlePinInputFocus = (ref: TextInput | null) => {
+    focusedInput.current = ref;
+  };
+
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.bgPrimary }]} edges={['top']}>
       <TopBanner tone="success" message={message ?? ''} visible={!!message} onDismiss={() => setMessage(null)} />
-      <KeyboardAvoidingView
-        style={styles.container}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 60 : 0}
+      <ScrollView
+        ref={scrollRef}
+        contentContainerStyle={styles.content}
+        keyboardShouldPersistTaps="handled"
+        onScroll={(event) => {
+          scrollOffset.current = event.nativeEvent.contentOffset.y;
+        }}
+        scrollEventThrottle={16}
       >
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <View style={styles.header}>
           <TouchableOpacity onPress={() => navigation.goBack()}>
             <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
@@ -217,13 +249,20 @@ export function ScreenLockScreen() {
                     label="Current PIN"
                     value={currentPin}
                     onChangeText={setCurrentPin}
+                    onFocusInput={handlePinInputFocus}
                   />
                 ) : null}
-                <PinInput label="New PIN" value={newPin} onChangeText={setNewPin} />
+                <PinInput
+                  label="New PIN"
+                  value={newPin}
+                  onChangeText={setNewPin}
+                  onFocusInput={handlePinInputFocus}
+                />
                 <PinInput
                   label="Confirm new PIN"
                   value={confirmPin}
                   onChangeText={setConfirmPin}
+                  onFocusInput={handlePinInputFocus}
                 />
                 <TouchableOpacity
                   style={[
@@ -242,7 +281,6 @@ export function ScreenLockScreen() {
           </GlassCard>
         )}
       </ScrollView>
-      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
@@ -251,12 +289,19 @@ function PinInput({
   label,
   value,
   onChangeText,
+  onFocusInput,
 }: {
   label: string;
   value: string;
   onChangeText: (text: string) => void;
+  onFocusInput: (ref: TextInput | null) => void;
 }) {
   const colors = useThemeColors();
+  const inputRef = useRef<TextInput>(null);
+
+  const handleFocus = () => {
+    onFocusInput(inputRef.current);
+  };
 
   return (
     <View style={styles.inputGroup}>
@@ -267,6 +312,7 @@ function PinInput({
         </Text>
       </View>
       <TextInput
+        ref={inputRef}
         style={[
           styles.input,
           {
@@ -277,6 +323,7 @@ function PinInput({
         ]}
         value={value}
         onChangeText={(text) => onChangeText(text.replace(/[^0-9]/g, '').slice(0, PIN_LENGTH))}
+        onFocus={handleFocus}
         keyboardType="number-pad"
         secureTextEntry
         maxLength={PIN_LENGTH}
@@ -304,6 +351,7 @@ const styles = StyleSheet.create({
   content: {
     paddingHorizontal: spacing.screenHorizontal, paddingVertical: spacing.lg,
     paddingTop: spacing.sm,
+    paddingBottom: spacing['4xl'] * 2,
   },
   card: {
     marginTop: spacing.lg,
