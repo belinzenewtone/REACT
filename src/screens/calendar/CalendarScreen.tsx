@@ -101,6 +101,14 @@ export function CalendarScreen() {
     ? dayItems.filter((item) => item.title.toLowerCase().includes(calendarQuery.toLowerCase()))
     : dayItems;
 
+  const dayItemGroups: { key: string; label: string; color: string; items: typeof filteredDayItems }[] = [
+    { key: 'task', label: 'Tasks', color: colors.accentSecondary, items: filteredDayItems.filter((i) => i.type === 'task') },
+    { key: 'event', label: 'Events', color: colors.accentPrimary, items: filteredDayItems.filter((i) => i.type === 'event') },
+    { key: 'birthday', label: 'Birthdays', color: colors.category.entertainment, items: filteredDayItems.filter((i) => i.type === 'birthday') },
+    { key: 'anniversary', label: 'Anniversaries', color: colors.category.savings, items: filteredDayItems.filter((i) => i.type === 'anniversary') },
+    { key: 'countdown', label: 'Countdowns', color: colors.warning, items: filteredDayItems.filter((i) => i.type === 'countdown') },
+  ].filter((group) => group.items.length > 0);
+
   // Tasks tab
   const tasks = (allTasks ?? []).filter((t: any) =>
     tasksQuery ? t.title.toLowerCase().includes(tasksQuery.toLowerCase()) : true
@@ -189,7 +197,7 @@ export function CalendarScreen() {
               colors={colors}
             />
 
-            {filteredDayItems.length === 0 ? (
+            {dayItemGroups.length === 0 ? (
               <View style={styles.emptyState}>
                 <Ionicons name="calendar-outline" size={40} color={colors.textTertiary} />
                 <Text style={[styles.emptyTitle, { color: colors.textPrimary }]}>Nothing for the day</Text>
@@ -198,29 +206,33 @@ export function CalendarScreen() {
                 </Text>
               </View>
             ) : (
-              filteredDayItems.map((item: any) => (
-                <TouchableOpacity
-                  key={item.id}
-                  style={[styles.dayItem, { backgroundColor: colors.bgSecondary, borderColor: colors.border }]}
-                  onPress={() =>
-                    item.type === 'task'
-                      ? navigation.navigate('TaskDetail', { taskId: item.id })
-                      : navigation.navigate('EventDetail', { eventId: item.id })
-                  }
-                >
-                  <View style={[styles.dayItemDot, {
-                    backgroundColor: item.type === 'task' ? colors.accentSecondary : colors.accentPrimary
-                  }]} />
-                  <View style={styles.dayItemInfo}>
-                    <Text style={[styles.dayItemTitle, { color: colors.textPrimary }]}>{item.title}</Text>
-                    {item.time && (
-                      <Text style={[styles.dayItemMeta, { color: colors.textSecondary }]}>{item.time}</Text>
-                    )}
+              dayItemGroups.map((group) => (
+                <View key={group.key} style={styles.dayItemGroup}>
+                  <View style={styles.dayItemGroupHeader}>
+                    <View style={[styles.dayItemGroupBar, { backgroundColor: group.color }]} />
+                    <Text style={[styles.dayItemGroupTitle, { color: group.color }]}>{group.label}</Text>
+                    <Text style={[styles.dayItemGroupCount, { color: colors.textSecondary }]}>{group.items.length}</Text>
                   </View>
-                  <Text style={[styles.dayItemType, { color: colors.textTertiary }]}>
-                    {item.type === 'task' ? 'Task' : 'Event'}
-                  </Text>
-                </TouchableOpacity>
+                  {group.items.map((item: any) => (
+                    <TouchableOpacity
+                      key={item.id}
+                      style={[styles.dayItem, { backgroundColor: colors.bgSecondary, borderColor: colors.border }]}
+                      onPress={() =>
+                        item.type === 'task'
+                          ? navigation.navigate('TaskDetail', { taskId: item.id })
+                          : navigation.navigate('EventDetail', { eventId: item.id })
+                      }
+                    >
+                      <View style={[styles.dayItemDot, { backgroundColor: group.color }]} />
+                      <View style={styles.dayItemInfo}>
+                        <Text style={[styles.dayItemTitle, { color: colors.textPrimary }]}>{item.title}</Text>
+                        {item.time && (
+                          <Text style={[styles.dayItemMeta, { color: colors.textSecondary }]}>{item.time}</Text>
+                        )}
+                      </View>
+                    </TouchableOpacity>
+                  ))}
+                </View>
               ))
             )}
           </>
@@ -396,6 +408,15 @@ const styles = StyleSheet.create({
   emptyState: { alignItems: 'center', paddingVertical: spacing['2xl'], gap: spacing.sm },
   emptyTitle: { fontSize: typography.sizes.lg, fontWeight: typography.weights.semibold },
   emptyDesc: { fontSize: typography.sizes.sm, textAlign: 'center' },
+  dayItemGroup: { gap: spacing.sm },
+  dayItemGroupHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  dayItemGroupBar: { width: 4, height: 16, borderRadius: 2 },
+  dayItemGroupTitle: { fontSize: typography.sizes.sm, fontWeight: typography.weights.semibold, flex: 1 },
+  dayItemGroupCount: { fontSize: typography.sizes.sm },
   dayItem: {
     flexDirection: 'row',
     alignItems: 'center',

@@ -9,7 +9,7 @@ export interface DayEvent {
   id: string;
   title: string;
   date: string;
-  type: 'event' | 'task';
+  type: 'event' | 'task' | 'birthday' | 'anniversary' | 'countdown';
   priority?: 'low' | 'medium' | 'high';
   completed?: boolean;
   location?: string | null;

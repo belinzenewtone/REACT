@@ -107,7 +107,7 @@ export const useCalendarStore = create<CalendarState>((set, get) => {
             id: e.id,
             title: e.title,
             date: e.date,
-            type: 'event' as const,
+            type: e.type,
             priority: e.importance,
             location: e.location,
           })),
