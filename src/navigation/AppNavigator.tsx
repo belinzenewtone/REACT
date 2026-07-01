@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+import { AppState, type AppStateStatus } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { useAppStore } from '../store';
@@ -8,6 +9,7 @@ import { MainTabNavigator } from './MainTabNavigator';
 import { OnboardingScreen } from '../screens/onboarding/OnboardingScreen';
 import { AuthScreen } from '../screens/auth/AuthScreen';
 import { LoadingScreen } from '../screens/auth/LoadingScreen';
+import { AppLockScreen } from '../screens/auth/AppLockScreen';
 import { TransactionFormScreen } from '../screens/finance/TransactionFormScreen';
 import { SettingsScreen } from '../screens/settings/SettingsScreen';
 import { PersonalInformationScreen } from '../screens/profile/PersonalInformationScreen';
@@ -51,8 +53,19 @@ const Stack = createNativeStackNavigator<RootStackParamList>();
 
 export function AppNavigator() {
   const db = useSQLiteContext();
-  const { hasCompletedOnboarding, isAuthenticated, isLoading, setIsLoading, hasHydrated } = useAppStore();
+  const {
+    hasCompletedOnboarding,
+    isAuthenticated,
+    isLoading,
+    setIsLoading,
+    hasHydrated,
+    settings,
+    isAppLocked,
+    setIsAppLocked,
+  } = useAppStore();
   const [dbReady, setDbReady] = useState(false);
+  const appState = useRef(AppState.currentState);
+  const armedForLock = useRef(false);
 
   useEffect(() => {
     let mounted = true;
@@ -72,8 +85,32 @@ export function AppNavigator() {
     };
   }, [db, setIsLoading]);
 
+  // Cold start is handled synchronously during store rehydration (see useAppStore).
+  // Here we only need to re-arm the lock when the app returns to the foreground after
+  // being backgrounded — not on transient 'inactive' states (e.g. an iOS control-center
+  // pull-down), only after a real background trip.
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (nextState: AppStateStatus) => {
+      const isLockable =
+        hasCompletedOnboarding && isAuthenticated && settings.screenLockEnabled && !!settings.pinCode;
+
+      if (nextState === 'background') {
+        armedForLock.current = true;
+      } else if (nextState === 'active' && armedForLock.current) {
+        armedForLock.current = false;
+        if (isLockable) setIsAppLocked(true);
+      }
+      appState.current = nextState;
+    });
+    return () => subscription.remove();
+  }, [hasCompletedOnboarding, isAuthenticated, settings.screenLockEnabled, settings.pinCode, setIsAppLocked]);
+
   if (isLoading || !dbReady || !hasHydrated) {
     return <LoadingScreen />;
+  }
+
+  if (hasCompletedOnboarding && isAuthenticated && isAppLocked) {
+    return <AppLockScreen />;
   }
 
   return (

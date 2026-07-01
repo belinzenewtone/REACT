@@ -30,6 +30,9 @@ yarn-error.*
 .DS_Store
 *.pem
 
+# Claude Code local tooling state
+.claude/scheduled_tasks.lock
+
 # local env files
 .env*.local
 

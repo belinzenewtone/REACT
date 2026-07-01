@@ -32,6 +32,10 @@ interface AppState {
   isLoading: boolean;
   setIsLoading: (value: boolean) => void;
   hasHydrated: boolean;
+
+  // App lock (session-only, never persisted — always re-locks on cold start)
+  isAppLocked: boolean;
+  setIsAppLocked: (value: boolean) => void;
 }
 
 const defaultSettings: AppSettings = {
@@ -92,6 +96,9 @@ export const useAppStore = create<AppState>()(
       isLoading: true,
       setIsLoading: (value) => set({ isLoading: value }),
       hasHydrated: false,
+
+      isAppLocked: false,
+      setIsAppLocked: (value) => set({ isAppLocked: value }),
     }),
     {
       name: 'app-store',
@@ -104,8 +111,16 @@ export const useAppStore = create<AppState>()(
         onboardingStep: state.onboardingStep,
         onboardingGoal: state.onboardingGoal,
       }),
-      onRehydrateStorage: () => () => {
-        useAppStore.setState({ hasHydrated: true });
+      onRehydrateStorage: () => (state) => {
+        // Require the PIN immediately on cold start (before first render of app content)
+        // if screen lock is on, so there's no flash of unlocked content.
+        const shouldLock = !!(
+          state?.hasCompletedOnboarding &&
+          state?.isAuthenticated &&
+          state?.settings.screenLockEnabled &&
+          state?.settings.pinCode
+        );
+        useAppStore.setState({ hasHydrated: true, isAppLocked: shouldLock });
       },
     }
   )
