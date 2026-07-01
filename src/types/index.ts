@@ -137,7 +137,9 @@ export interface IncomeRecord {
   userId?: string;
 }
 
-export type RecurringCadence = 'hourly' | 'daily' | 'weekly' | 'monthly' | 'yearly';
+export type RecurringCadence = 'hourly' | 'daily' | 'weekly' | 'biweekly' | 'mon_fri' | 'monthly' | 'yearly';
+
+export type BillCycle = 'daily' | 'weekly' | 'monthly' | 'yearly' | 'one_time';
 
 export interface RecurringRule {
   id: string;
@@ -162,7 +164,7 @@ export interface Bill {
   userId?: string;
   title: string;
   amount: number;
-  cycle: RecurringCadence;
+  cycle: BillCycle;
   nextDueDate: string;
   lastPaidAt?: string;
   notes?: string;
