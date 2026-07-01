@@ -437,25 +437,25 @@ export function TaskEventForm({ editTaskId, editEventId, defaultType = 'task' }:
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.bgPrimary }]} edges={['top']}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
-        </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>
-          {isEditing ? 'Edit' : 'New'} {typeLabel}
-        </Text>
-        {isEditing ? (
-          <TouchableOpacity onPress={handleDelete}>
-            <Ionicons name="trash-outline" size={22} color={colors.danger} />
-          </TouchableOpacity>
-        ) : (
-          <TouchableOpacity onPress={handleSave}>
-            <Text style={[styles.saveTopText, { color: colors.accentPrimary }]}>Save</Text>
-          </TouchableOpacity>
-        )}
-      </View>
-
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => navigation.goBack()}>
+            <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
+          </TouchableOpacity>
+          <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>
+            {isEditing ? 'Edit' : 'New'} {typeLabel}
+          </Text>
+          {isEditing ? (
+            <TouchableOpacity onPress={handleDelete}>
+              <Ionicons name="trash-outline" size={22} color={colors.danger} />
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity onPress={handleSave}>
+              <Text style={[styles.saveTopText, { color: colors.accentPrimary }]}>Save</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+
         {/* Type chips */}
         <ScrollView
           horizontal
@@ -930,8 +930,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.base,
+    paddingBottom: spacing.sm,
   },
   headerTitle: {
     fontSize: typography.sizes.lg,
