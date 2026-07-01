@@ -16,6 +16,8 @@ import { useThemeColors } from '../../hooks/useThemeColors';
 import { useDashboardStore } from '../../store/useDashboardStore';
 import { useAppStore } from '../../store';
 import { MetricCard, HomeMenuCard, WeeklyResetCard } from '../../components/dashboard';
+import { TopBanner } from '../../components/common/TopBanner';
+import { ShimmerLoadingState } from '../../components/common/ShimmerLoadingState';
 import { spacing, typography } from '../../theme';
 
 export function HomeScreen() {
@@ -25,6 +27,9 @@ export function HomeScreen() {
   const profile = useAppStore((state) => state.profile);
   const {
     isLoading,
+    hasLoadedOnce,
+    error,
+    expense,
     todaySpend,
     weekSpend,
     pendingTaskCount,
@@ -84,29 +89,39 @@ export function HomeScreen() {
           </Text>
         </View>
 
-        <View style={styles.metricsRow}>
-          <MetricCard label="Today" amount={todaySpend} />
-          <View style={styles.metricSpacer} />
-          <MetricCard label="Week" amount={weekSpend} />
-        </View>
+        <TopBanner tone="error" message={error ?? ''} visible={!!error} />
 
-        <View style={styles.section}>
-          <HomeMenuCard
-            pendingTaskCount={pendingTaskCount}
-            nextEvent={nextEvent}
-            onTasksPress={() => navigateToTab('Calendar')}
-            onNextEventPress={() => navigateToTab('Calendar')}
-            onInsightsPress={() => navigateToStack('Insights')}
-            onSearchPress={() => navigateToStack('Search')}
-          />
-        </View>
+        {!hasLoadedOnce && isLoading ? (
+          <ShimmerLoadingState rows={3} rowHeight={88} />
+        ) : (
+          <>
+            <View style={styles.metricsRow}>
+              <MetricCard label="Today" amount={todaySpend} />
+              <View style={styles.metricSpacer} />
+              <MetricCard label="Week" amount={weekSpend} />
+              <View style={styles.metricSpacer} />
+              <MetricCard label="Month" amount={expense} />
+            </View>
 
-        <View style={styles.section}>
-          <WeeklyResetCard
-            pendingTaskCount={pendingTaskCount}
-            onPress={() => navigateToTab('Calendar')}
-          />
-        </View>
+            <View style={styles.section}>
+              <HomeMenuCard
+                pendingTaskCount={pendingTaskCount}
+                nextEvent={nextEvent}
+                onTasksPress={() => navigateToTab('Calendar')}
+                onNextEventPress={() => navigateToTab('Calendar')}
+                onInsightsPress={() => navigateToStack('Insights')}
+                onSearchPress={() => navigateToStack('Search')}
+              />
+            </View>
+
+            <View style={styles.section}>
+              <WeeklyResetCard
+                pendingTaskCount={pendingTaskCount}
+                onPress={() => navigateToTab('Calendar')}
+              />
+            </View>
+          </>
+        )}
       </ScrollView>
     </SafeAreaView>
   );

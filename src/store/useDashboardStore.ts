@@ -10,6 +10,8 @@ import type { BudgetProgressItem, AgendaItem, RecentTransactionItem } from '../c
 
 interface DashboardState {
   isLoading: boolean;
+  hasLoadedOnce: boolean;
+  error: string | null;
   income: number;
   expense: number;
   lastMonthIncome: number;
@@ -27,6 +29,8 @@ interface DashboardState {
 
 export const useDashboardStore = create<DashboardState>((set) => ({
   isLoading: true,
+  hasLoadedOnce: false,
+  error: null,
   income: 0,
   expense: 0,
   lastMonthIncome: 0,
@@ -40,7 +44,7 @@ export const useDashboardStore = create<DashboardState>((set) => ({
   recentTransactions: [],
 
   loadDashboard: async (db) => {
-    set({ isLoading: true });
+    set({ isLoading: true, error: null });
 
     try {
       await seedDatabaseIfEmpty(db);
@@ -125,10 +129,15 @@ export const useDashboardStore = create<DashboardState>((set) => ({
         agenda,
         recentTransactions,
         isLoading: false,
+        hasLoadedOnce: true,
       });
     } catch (error) {
       console.error('Failed to load dashboard:', error);
-      set({ isLoading: false });
+      set({
+        isLoading: false,
+        hasLoadedOnce: true,
+        error: error instanceof Error ? error.message : 'Failed to load dashboard',
+      });
     }
   },
 }));
