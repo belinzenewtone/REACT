@@ -7,6 +7,8 @@ import {
   TouchableOpacity,
   TextInput,
   Alert,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -77,7 +79,7 @@ export function ScreenLockScreen() {
       return;
     }
 
-    if (!settings.pinCode) {
+    if (!settings.screenLockEnabled || !settings.pinCode) {
       Alert.alert(
         'Set up a PIN first',
         'Fingerprint unlock needs a PIN as a fallback, in case fingerprint matching fails. Set up your PIN, then turn Fingerprint back on.',
@@ -127,7 +129,12 @@ export function ScreenLockScreen() {
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.bgPrimary }]} edges={['top']}>
       <TopBanner tone="success" message={message ?? ''} visible={!!message} onDismiss={() => setMessage(null)} />
-      <ScrollView contentContainerStyle={styles.content}>
+      <KeyboardAvoidingView
+        style={styles.container}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 60 : 0}
+      >
+      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <View style={styles.header}>
           <TouchableOpacity onPress={() => navigation.goBack()}>
             <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
@@ -152,7 +159,7 @@ export function ScreenLockScreen() {
               subtitle={
                 verifyingFingerprint
                   ? 'Confirm your fingerprint…'
-                  : settings.pinCode
+                  : settings.screenLockEnabled && settings.pinCode
                   ? undefined
                   : 'Requires a PIN as fallback'
               }
@@ -235,6 +242,7 @@ export function ScreenLockScreen() {
           </GlassCard>
         )}
       </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
