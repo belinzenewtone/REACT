@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -12,6 +12,7 @@ import { useNavigation } from '@react-navigation/native';
 import { useThemeColors } from '../../hooks/useThemeColors';
 import { useAppStore } from '../../store';
 import { GlassCard } from '../../components/common/GlassCard';
+import { TopBanner } from '../../components/common/TopBanner';
 import { SettingsRow } from '../../components/settings/SettingsRow';
 import { SliderRow } from '../../components/settings/SliderRow';
 import { TimePickerModal } from '../../components/settings/TimePickerModal';
@@ -24,11 +25,19 @@ export function NotificationsScreen() {
   const updateSettings = useAppStore((state) => state.updateSettings);
 
   const [timePickerVisible, setTimePickerVisible] = useState(false);
+  const [infoMessage, setInfoMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!infoMessage) return;
+    const timer = setTimeout(() => setInfoMessage(null), 3000);
+    return () => clearTimeout(timer);
+  }, [infoMessage]);
 
   const setAlertThreshold = (key: 'high' | 'medium' | 'low', value: number) => {
     updateSettings({
       alertThresholds: { ...settings.alertThresholds, [key]: value },
     });
+    setInfoMessage(`${key.charAt(0).toUpperCase() + key.slice(1)} alert threshold set to ${value}%`);
   };
 
   const formatTime = (time: string) => {
@@ -48,6 +57,8 @@ export function NotificationsScreen() {
         <View style={{ width: 24 }} />
       </View>
 
+      <TopBanner tone="success" message={infoMessage ?? ''} visible={!!infoMessage} onDismiss={() => setInfoMessage(null)} />
+
       <ScrollView contentContainerStyle={styles.content}>
         <GlassCard>
           <SettingsRow
@@ -65,9 +76,13 @@ export function NotificationsScreen() {
           <SettingsRow
             icon="wallet-outline"
             label="Budget threshold alerts"
+            subtitle="Notify when spending exceeds a budget category"
             toggle
             toggleValue={settings.budgetThresholdAlerts}
-            onToggleChange={(value) => updateSettings({ budgetThresholdAlerts: value })}
+            onToggleChange={(value) => {
+              updateSettings({ budgetThresholdAlerts: value });
+              setInfoMessage(value ? 'Budget alerts enabled' : 'Budget alerts disabled');
+            }}
             isLast
           />
         </GlassCard>
@@ -108,9 +123,13 @@ export function NotificationsScreen() {
           <SettingsRow
             icon="sunny-outline"
             label="Morning summary"
+            subtitle="Morning summary of tasks, spending and upcoming events"
             toggle
             toggleValue={settings.dailyDigestMorningSummary}
-            onToggleChange={(value) => updateSettings({ dailyDigestMorningSummary: value })}
+            onToggleChange={(value) => {
+              updateSettings({ dailyDigestMorningSummary: value });
+              setInfoMessage(value ? 'Daily digest enabled' : 'Daily digest disabled');
+            }}
           />
           <SettingsRow
             icon="time-outline"
@@ -131,6 +150,7 @@ export function NotificationsScreen() {
         onConfirm={(time) => {
           updateSettings({ dailyDigestDeliveryTime: time });
           setTimePickerVisible(false);
+          setInfoMessage(`Daily digest rescheduled for ${formatTime(time)}`);
         }}
       />
     </SafeAreaView>

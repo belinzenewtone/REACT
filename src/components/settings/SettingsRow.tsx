@@ -1,19 +1,15 @@
 import React from 'react';
-import {
-  View,
-  Text,
-  TouchableOpacity,
-  Switch,
-  StyleSheet,
-} from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useThemeColors } from '../../hooks/useThemeColors';
+import { LifeOSSwitch } from '../common/LifeOSSwitch';
 import { spacing, typography, borderRadius } from '../../theme';
 
 interface SettingsRowProps {
   icon?: keyof typeof Ionicons.glyphMap;
   iconColor?: string;
   label: string;
+  subtitle?: string;
   value?: string;
   onPress?: () => void;
   toggle?: boolean;
@@ -29,6 +25,7 @@ export function SettingsRow({
   icon,
   iconColor,
   label,
+  subtitle,
   value,
   onPress,
   toggle,
@@ -64,14 +61,21 @@ export function SettingsRow({
             />
           </View>
         )}
-        <Text
-          style={[
-            styles.label,
-            { color: destructive ? colors.danger : colors.textPrimary },
-          ]}
-        >
-          {label}
-        </Text>
+        <View style={styles.textCol}>
+          <Text
+            style={[
+              styles.label,
+              { color: destructive ? colors.danger : colors.textPrimary },
+            ]}
+          >
+            {label}
+          </Text>
+          {subtitle ? (
+            <Text style={[styles.subtitle, { color: colors.textSecondary }]} numberOfLines={2}>
+              {subtitle}
+            </Text>
+          ) : null}
+        </View>
       </View>
 
       <View style={styles.right}>
@@ -79,13 +83,7 @@ export function SettingsRow({
           <Text style={[styles.value, { color: colors.textSecondary }]}>{value}</Text>
         ) : null}
         {toggle ? (
-          <Switch
-            value={toggleValue}
-            onValueChange={onToggleChange}
-            trackColor={{ false: colors.border, true: colors.accentPrimary }}
-            thumbColor={toggleValue ? colors.textInverse : colors.textTertiary}
-            disabled={disabled}
-          />
+          <LifeOSSwitch value={!!toggleValue} onValueChange={onToggleChange ?? (() => {})} disabled={disabled} />
         ) : showChevron ? (
           <Ionicons name="chevron-forward" size={18} color={colors.textTertiary} />
         ) : null}
@@ -125,9 +123,16 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+  textCol: {
+    flex: 1,
+  },
   label: {
     fontSize: typography.sizes.base,
     fontWeight: typography.weights.medium,
+  },
+  subtitle: {
+    fontSize: typography.sizes.xs,
+    marginTop: 2,
   },
   right: {
     flexDirection: 'row',

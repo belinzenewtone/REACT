@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -13,6 +13,7 @@ import { useNavigation } from '@react-navigation/native';
 import { useThemeColors } from '../../hooks/useThemeColors';
 import { useAppStore } from '../../store';
 import { GlassCard } from '../../components/common/GlassCard';
+import { TopBanner } from '../../components/common/TopBanner';
 import { SettingsRow } from '../../components/settings/SettingsRow';
 import { SegmentedControl } from '../../components/settings/SegmentedControl';
 import { FulizaLimitModal } from '../../components/settings/FulizaLimitModal';
@@ -36,6 +37,27 @@ export function SettingsScreen() {
   const setIsAuthenticated = useAppStore((state) => state.setIsAuthenticated);
 
   const [fulizaVisible, setFulizaVisible] = useState(false);
+  const [infoMessage, setInfoMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!infoMessage) return;
+    const timer = setTimeout(() => setInfoMessage(null), 3000);
+    return () => clearTimeout(timer);
+  }, [infoMessage]);
+
+  const screenLockSubtitle = (() => {
+    const parts: string[] = [];
+    if (settings.fingerprintEnabled || settings.faceUnlockEnabled) parts.push('Biometric');
+    if (settings.pinCode) parts.push('PIN');
+    return parts.length ? parts.join(' · ') : 'No lock configured';
+  })();
+
+  const notificationsSubtitle = (() => {
+    const parts: string[] = [];
+    if (settings.budgetThresholdAlerts) parts.push('Budget alerts');
+    if (settings.dailyDigestMorningSummary) parts.push('Daily digest');
+    return parts.length ? parts.join(' · ') : 'All off';
+  })();
 
   const handleClearData = () => {
     Alert.alert(
@@ -73,31 +95,40 @@ export function SettingsScreen() {
         <View style={{ width: 24 }} />
       </View>
 
+      <TopBanner tone="success" message={infoMessage ?? ''} visible={!!infoMessage} onDismiss={() => setInfoMessage(null)} />
+
       <ScrollView contentContainerStyle={styles.content}>
         <SectionLabel label="Appearance" />
         <GlassCard>
           <SegmentedControl
             options={THEME_OPTIONS}
             value={settings.theme}
-            onChange={(theme) => updateSettings({ theme })}
+            onChange={(theme) => {
+              updateSettings({ theme });
+              setInfoMessage(`Theme set to ${THEME_OPTIONS.find((o) => o.value === theme)?.label}`);
+            }}
           />
         </GlassCard>
 
         <SectionLabel label="Security" />
         <GlassCard>
           <SettingsRow
-            icon="lock-closed-outline"
-            label="Screen lock PIN"
-            value={settings.screenLockEnabled ? 'On' : 'Off'}
+            icon="shield-outline"
+            label="Screen lock"
+            subtitle={screenLockSubtitle}
             showChevron
             onPress={() => navigation.navigate('ScreenLock')}
           />
           <SettingsRow
             icon="hand-left-outline"
             label="Haptic feedback"
+            subtitle="Vibration on actions like completing tasks or deleting items."
             toggle
             toggleValue={settings.hapticFeedback}
-            onToggleChange={(value) => updateSettings({ hapticFeedback: value })}
+            onToggleChange={(value) => {
+              updateSettings({ hapticFeedback: value });
+              setInfoMessage(value ? 'Haptics enabled' : 'Haptics disabled');
+            }}
             isLast
           />
         </GlassCard>
@@ -106,7 +137,8 @@ export function SettingsScreen() {
         <GlassCard>
           <SettingsRow
             icon="notifications-outline"
-            label="Notifications"
+            label="Notification settings"
+            subtitle={notificationsSubtitle}
             showChevron
             onPress={() => navigation.navigate('Notifications')}
             isLast
@@ -118,9 +150,13 @@ export function SettingsScreen() {
           <SettingsRow
             icon="sparkles-outline"
             label="Quick suggestions"
+            subtitle="Allow the assistant to propose actions based on your messages"
             toggle
             toggleValue={settings.assistantQuickSuggestions}
-            onToggleChange={(value) => updateSettings({ assistantQuickSuggestions: value })}
+            onToggleChange={(value) => {
+              updateSettings({ assistantQuickSuggestions: value });
+              setInfoMessage(value ? 'AI suggestions enabled' : 'AI suggestions disabled');
+            }}
             isLast
           />
         </GlassCard>
@@ -130,7 +166,7 @@ export function SettingsScreen() {
           <SettingsRow
             icon="card-outline"
             label="Fuliza credit limit"
-            value={formatCurrency(settings.fulizaLimit, settings.currency)}
+            value={settings.fulizaLimit ? formatCurrency(settings.fulizaLimit, { currency: settings.currency }) : 'Not set'}
             showChevron
             onPress={() => setFulizaVisible(true)}
             isLast
@@ -214,6 +250,9 @@ export function SettingsScreen() {
         onSave={(limit) => {
           updateSettings({ fulizaLimit: limit });
           setFulizaVisible(false);
+          setInfoMessage(
+            limit > 0 ? `Fuliza limit set to ${formatCurrency(limit, { currency: settings.currency })}` : 'Fuliza credit limit cleared'
+          );
         }}
       />
     </SafeAreaView>
