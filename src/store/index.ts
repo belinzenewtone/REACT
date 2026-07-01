@@ -1,4 +1,5 @@
 export { useAppStore } from './useAppStore';
+export type { OnboardingGoal } from './useAppStore';
 export { useTransactionStore } from './useTransactionStore';
 export { useDashboardStore } from './useDashboardStore';
 export { useCalendarStore } from './useCalendarStore';
