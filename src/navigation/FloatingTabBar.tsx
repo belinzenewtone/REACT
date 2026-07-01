@@ -1,10 +1,10 @@
-import React from 'react';
-import { View, Text, Pressable, StyleSheet, type ViewStyle } from 'react-native';
+import React, { useEffect, useRef } from 'react';
+import { View, Text, Pressable, Animated, StyleSheet, type ViewStyle } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { useThemeColors } from '../hooks/useThemeColors';
-import { spacing, borderRadius, typography } from '../theme';
+import { spacing, borderRadius, typography, motion } from '../theme';
 
 const LABELS: Record<string, string> = {
   Home: 'Home',
@@ -64,39 +64,86 @@ export function FloatingTabBar({ state, descriptors, navigation }: BottomTabBarP
         };
 
         return (
-          <Pressable
+          <TabButton
             key={route.key}
-            accessibilityRole="button"
-            accessibilityState={isFocused ? { selected: true } : {}}
+            isFocused={isFocused}
+            label={label}
+            icons={icons}
             accessibilityLabel={options.tabBarAccessibilityLabel}
+            colors={colors}
             onPress={onPress}
             onLongPress={onLongPress}
-            style={styles.tab}
-          >
-            <Ionicons
-              name={isFocused ? icons.active : icons.inactive}
-              size={24}
-              color={isFocused ? colors.accentPrimary : colors.textTertiary}
-            />
-            <View
-              style={[
-                styles.labelPill,
-                isFocused && { backgroundColor: colors.glassWhiteStrong },
-              ]}
-            >
-              <Text
-                style={[
-                  styles.label,
-                  { color: isFocused ? colors.accentPrimary : colors.textTertiary },
-                ]}
-              >
-                {label}
-              </Text>
-            </View>
-          </Pressable>
+          />
         );
       })}
     </View>
+  );
+}
+
+function TabButton({
+  isFocused,
+  label,
+  icons,
+  accessibilityLabel,
+  colors,
+  onPress,
+  onLongPress,
+}: {
+  isFocused: boolean;
+  label: string;
+  icons: { active: keyof typeof Ionicons.glyphMap; inactive: keyof typeof Ionicons.glyphMap };
+  accessibilityLabel?: string;
+  colors: ReturnType<typeof useThemeColors>;
+  onPress: () => void;
+  onLongPress: () => void;
+}) {
+  const scale = useRef(new Animated.Value(isFocused ? 1 : 0.9)).current;
+  const pillOpacity = useRef(new Animated.Value(isFocused ? 1 : 0)).current;
+
+  useEffect(() => {
+    Animated.spring(scale, {
+      toValue: isFocused ? 1 : 0.9,
+      useNativeDriver: true,
+      friction: 7,
+      tension: 90,
+    }).start();
+    Animated.timing(pillOpacity, {
+      toValue: isFocused ? 1 : 0,
+      duration: motion.fast,
+      useNativeDriver: true,
+    }).start();
+  }, [isFocused, scale, pillOpacity]);
+
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityState={isFocused ? { selected: true } : {}}
+      accessibilityLabel={accessibilityLabel}
+      onPress={onPress}
+      onLongPress={onLongPress}
+      style={styles.tab}
+    >
+      <Animated.View style={{ transform: [{ scale }] }}>
+        <Ionicons
+          name={isFocused ? icons.active : icons.inactive}
+          size={24}
+          color={isFocused ? colors.accentPrimary : colors.textTertiary}
+        />
+      </Animated.View>
+      <View style={styles.labelPill}>
+        <Animated.View
+          style={[styles.labelPillFill, { backgroundColor: colors.glassWhiteStrong, opacity: pillOpacity }]}
+        />
+        <Text
+          style={[
+            styles.label,
+            { color: isFocused ? colors.accentPrimary : colors.textTertiary },
+          ]}
+        >
+          {label}
+        </Text>
+      </View>
+    </Pressable>
   );
 }
 
@@ -127,6 +174,14 @@ const styles = StyleSheet.create({
   labelPill: {
     paddingHorizontal: spacing.sm,
     paddingVertical: spacing.xs,
+    borderRadius: borderRadius.full,
+  },
+  labelPillFill: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    left: 0,
+    right: 0,
     borderRadius: borderRadius.full,
   },
   label: {

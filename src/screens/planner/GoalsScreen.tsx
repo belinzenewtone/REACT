@@ -10,6 +10,7 @@ import { GlassCard } from '../../components/common/GlassCard';
 import { EmptyState } from '../../components/common/EmptyState';
 import { formatCurrency, formatDate } from '../../utils/formatters';
 import { spacing, typography, borderRadius } from '../../theme';
+import { animateLayout } from '../../utils/animation';
 
 export function GoalsScreen() {
   const colors = useThemeColors();
@@ -24,13 +25,21 @@ export function GoalsScreen() {
   const activeGoals = goals.filter((g) => g.status === 'active');
 
   const handleComplete = (id: string) => {
+    animateLayout();
     updateGoal(db, id, { status: 'completed' });
   };
 
   const handleDelete = (id: string, title: string) => {
     Alert.alert('Delete goal', `Remove ${title}?`, [
       { text: 'Cancel', style: 'cancel' },
-      { text: 'Delete', style: 'destructive', onPress: () => deleteGoal(db, id) },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: () => {
+          animateLayout();
+          deleteGoal(db, id);
+        },
+      },
     ]);
   };
 

@@ -9,6 +9,7 @@ import { usePlannerStore } from '../../store';
 import { GlassCard } from '../../components/common/GlassCard';
 import { formatCurrency, formatDate } from '../../utils/formatters';
 import { spacing, typography, borderRadius } from '../../theme';
+import { animateLayout } from '../../utils/animation';
 
 export function IncomeScreen() {
   const colors = useThemeColors();
@@ -25,7 +26,14 @@ export function IncomeScreen() {
   const handleDelete = (id: string, source: string) => {
     Alert.alert('Delete income', `Remove ${source}?`, [
       { text: 'Cancel', style: 'cancel' },
-      { text: 'Delete', style: 'destructive', onPress: () => deleteIncome(db, id) },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: () => {
+          animateLayout();
+          deleteIncome(db, id);
+        },
+      },
     ]);
   };
 

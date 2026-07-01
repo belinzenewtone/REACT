@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   ScrollView,
   ActivityIndicator,
+  Animated,
   StyleSheet,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -17,7 +18,7 @@ import { generateId, nowIso } from '../../database';
 import { HeroSurface } from '../../components/common/HeroSurface';
 import { InlineBanner } from '../../components/common/InlineBanner';
 import { GlassCard } from '../../components/common/GlassCard';
-import { spacing, typography, borderRadius } from '../../theme';
+import { spacing, typography, borderRadius, motion } from '../../theme';
 
 const TOTAL_STEPS = 5;
 
@@ -51,6 +52,17 @@ export function OnboardingScreen() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [notificationsAllowed, setNotificationsAllowed] = useState(false);
+
+  const stepFade = useRef(new Animated.Value(1)).current;
+  const stepSlide = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    stepFade.setValue(0);
+    stepSlide.setValue(8);
+    Animated.parallel([
+      Animated.timing(stepFade, { toValue: 1, duration: motion.standard, useNativeDriver: true }),
+      Animated.timing(stepSlide, { toValue: 0, duration: motion.standard, useNativeDriver: true }),
+    ]).start();
+  }, [onboardingStep, stepFade, stepSlide]);
 
   const goBack = () => {
     if (onboardingStep <= 1) return;
@@ -120,7 +132,12 @@ export function OnboardingScreen() {
             </View>
           ) : null}
 
-          <View style={styles.cardWrap}>
+          <Animated.View
+            style={[
+              styles.cardWrap,
+              { opacity: stepFade, transform: [{ translateY: stepSlide }] },
+            ]}
+          >
             <GlassCard variant="elevated">
             {onboardingStep === 1 ? <WelcomeStep /> : null}
             {onboardingStep === 2 ? <PillarsStep /> : null}
@@ -147,7 +164,7 @@ export function OnboardingScreen() {
             ) : null}
             {onboardingStep === TOTAL_STEPS ? <FinalStep /> : null}
           </GlassCard>
-        </View>
+        </Animated.View>
         </ScrollView>
 
         <TouchableOpacity

@@ -156,6 +156,13 @@ export const typography = {
 /** Bottom safe area to prevent content from being hidden behind the floating tab bar (58dp + offset) */
 export const BOTTOM_NAV_SAFE_AREA = 100;
 
+/** Motion durations matching the Kotlin app's AppMotionSpec (fastMs/standardMs/slowMs). */
+export const motion = {
+  fast: 100,
+  standard: 180,
+  slow: 260,
+} as const;
+
 export const shadows = {
   none: {
     shadowColor: 'transparent',

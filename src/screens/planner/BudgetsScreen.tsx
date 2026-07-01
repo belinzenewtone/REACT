@@ -11,6 +11,7 @@ import { GlassCard } from '../../components/common/GlassCard';
 import { CATEGORY_COLORS, CATEGORY_ICONS } from '../../constants';
 import { formatCurrency, clamp } from '../../utils/formatters';
 import { spacing, typography, borderRadius } from '../../theme';
+import { animateLayout } from '../../utils/animation';
 
 export function BudgetsScreen() {
   const colors = useThemeColors();
@@ -43,6 +44,7 @@ export function BudgetsScreen() {
         style: 'destructive',
         onPress: async () => {
           await new BudgetRepository(db).softDelete(id);
+          animateLayout();
           await loadBudgets(db);
         },
       },

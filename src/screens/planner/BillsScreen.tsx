@@ -10,6 +10,7 @@ import { GlassCard } from '../../components/common/GlassCard';
 import { EmptyState } from '../../components/common/EmptyState';
 import { formatCurrency, formatDate } from '../../utils/formatters';
 import { spacing, typography, borderRadius } from '../../theme';
+import { animateLayout } from '../../utils/animation';
 
 const CYCLE_LABELS: Record<string, string> = {
   daily: 'Daily',
@@ -32,13 +33,21 @@ export function BillsScreen() {
   const activeBills = bills.filter((b) => b.is_active);
 
   const handleMarkPaid = (id: string) => {
+    animateLayout();
     updateBill(db, id, { paidStatus: true, lastPaidAt: new Date().toISOString() });
   };
 
   const handleDelete = (id: string, title: string) => {
     Alert.alert('Delete bill', `Remove ${title}?`, [
       { text: 'Cancel', style: 'cancel' },
-      { text: 'Delete', style: 'destructive', onPress: () => deleteBill(db, id) },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: () => {
+          animateLayout();
+          deleteBill(db, id);
+        },
+      },
     ]);
   };
 

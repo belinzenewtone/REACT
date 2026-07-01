@@ -18,6 +18,7 @@ import { useThemeColors } from '../../hooks/useThemeColors';
 import { useCalendarStore } from '../../store';
 import { TaskRepository, type TaskRecord } from '../../database/repositories/TaskRepository';
 import { spacing, typography, borderRadius } from '../../theme';
+import { animateLayout } from '../../utils/animation';
 
 const COMPLETED_LIMIT = 20;
 
@@ -84,6 +85,7 @@ export function TasksScreen() {
   const handleToggleComplete = async (task: TaskRecord) => {
     const repo = new TaskRepository(db);
     await repo.toggleComplete(task.id);
+    animateLayout();
     await loadCalendar(db);
     await loadTasks();
   };
@@ -97,6 +99,7 @@ export function TasksScreen() {
         onPress: async () => {
           const repo = new TaskRepository(db);
           await repo.softDelete(task.id);
+          animateLayout();
           await loadCalendar(db);
           await loadTasks();
         },

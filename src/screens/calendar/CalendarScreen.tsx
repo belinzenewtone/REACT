@@ -20,6 +20,7 @@ import { useCalendarStore } from '../../store';
 import { CalendarMonthView } from '../../components/calendar/CalendarMonthView';
 import { spacing, typography, borderRadius, BOTTOM_NAV_SAFE_AREA } from '../../theme';
 import { GlassCard } from '../../components/common/GlassCard';
+import { animateLayout } from '../../utils/animation';
 
 type Tab = 'Calendar' | 'Tasks' | 'Events';
 
@@ -82,6 +83,10 @@ export function CalendarScreen() {
   const db = useSQLiteContext();
   const navigation = useNavigation<any>();
   const [selectedTab, setSelectedTab] = useState<Tab>('Calendar');
+  const handleSelectTab = (tab: Tab) => {
+    animateLayout();
+    setSelectedTab(tab);
+  };
   const [calendarQuery, setCalendarQuery] = useState('');
   const [tasksQuery, setTasksQuery] = useState('');
   const [eventsQuery, setEventsQuery] = useState('');
@@ -211,7 +216,7 @@ export function CalendarScreen() {
 
         {/* Pill tab bar */}
         <View style={styles.tabBarWrapper}>
-          <PillTabBar selected={selectedTab} onSelect={setSelectedTab} colors={colors} />
+          <PillTabBar selected={selectedTab} onSelect={handleSelectTab} colors={colors} />
         </View>
 
         {/* ─── Calendar Tab ─── */}

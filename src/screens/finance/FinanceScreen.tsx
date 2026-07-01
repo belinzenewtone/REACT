@@ -36,6 +36,7 @@ import { ImportSmsSheet } from '../../components/finance/ImportSmsSheet';
 import { CATEGORY_COLORS } from '../../constants';
 import { formatCurrency, formatDate, formatRelativeDay } from '../../utils/formatters';
 import { spacing, typography, borderRadius, BOTTOM_NAV_SAFE_AREA } from '../../theme';
+import { animateLayout } from '../../utils/animation';
 import type { TransactionListItemData } from '../../components/finance/TransactionListItem';
 import type { TransactionPeriod } from '../../store/useTransactionStore';
 
@@ -210,6 +211,7 @@ export function FinanceScreen() {
           style: 'destructive',
           onPress: async () => {
             await repo.softDelete(id);
+            animateLayout();
             await loadTransactions(repo, true);
             await loadDashboard(db);
             await loadBudgets(db);

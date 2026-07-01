@@ -11,6 +11,7 @@ import { EmptyState } from '../../components/common/EmptyState';
 import { LifeOSSwitch } from '../../components/common/LifeOSSwitch';
 import { formatCurrency, formatDate } from '../../utils/formatters';
 import { spacing, typography, borderRadius } from '../../theme';
+import { animateLayout } from '../../utils/animation';
 
 export function RecurringScreen() {
   const colors = useThemeColors();
@@ -29,7 +30,14 @@ export function RecurringScreen() {
   const handleDelete = (id: string, title: string) => {
     Alert.alert('Delete rule', `Remove ${title}?`, [
       { text: 'Cancel', style: 'cancel' },
-      { text: 'Delete', style: 'destructive', onPress: () => deleteRecurringRule(db, id) },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: () => {
+          animateLayout();
+          deleteRecurringRule(db, id);
+        },
+      },
     ]);
   };
 

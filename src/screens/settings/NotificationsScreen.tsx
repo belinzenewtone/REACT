@@ -5,9 +5,6 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  LayoutAnimation,
-  Platform,
-  UIManager,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -19,11 +16,8 @@ import { TopBanner } from '../../components/common/TopBanner';
 import { SettingsRow } from '../../components/settings/SettingsRow';
 import { SliderRow } from '../../components/settings/SliderRow';
 import { TimePickerModal } from '../../components/settings/TimePickerModal';
+import { animateLayout } from '../../utils/animation';
 import { spacing, typography } from '../../theme';
-
-if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
-  UIManager.setLayoutAnimationEnabledExperimental(true);
-}
 
 export function NotificationsScreen() {
   const colors = useThemeColors();
@@ -87,7 +81,7 @@ export function NotificationsScreen() {
             toggle
             toggleValue={settings.budgetThresholdAlerts}
             onToggleChange={(value) => {
-              LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+              animateLayout();
               updateSettings({ budgetThresholdAlerts: value });
               setInfoMessage(value ? 'Budget alerts enabled' : 'Budget alerts disabled');
             }}

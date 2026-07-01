@@ -11,6 +11,7 @@ import { CategoryBreakdownChart } from '../../components/analytics/CategoryBreak
 import { WeeklySpendByCategoryChart } from '../../components/analytics/WeeklySpendByCategoryChart';
 import { TopMerchants } from '../../components/analytics/TopMerchants';
 import { GlassCard } from '../../components/common/GlassCard';
+import { animateLayout } from '../../utils/animation';
 import { spacing, typography, borderRadius } from '../../theme';
 
 type Tab = 'analytics' | 'insights';
@@ -70,7 +71,10 @@ export function AnalyticsScreen() {
               <TouchableOpacity
                 key={t.key}
                 style={[styles.tabBtn, active && { backgroundColor: colors.accentPrimary }]}
-                onPress={() => setTab(t.key)}
+                onPress={() => {
+                  animateLayout();
+                  setTab(t.key);
+                }}
               >
                 <Ionicons
                   name={t.icon}

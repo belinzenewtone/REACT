@@ -13,6 +13,7 @@ import { TopBanner } from '../../components/common/TopBanner';
 import { CATEGORIZE_CATEGORIES } from '../../constants';
 import { formatCurrency, formatDateTime } from '../../utils/formatters';
 import { spacing, typography, borderRadius } from '../../theme';
+import { animateLayout } from '../../utils/animation';
 
 interface MerchantGroup {
   merchant: string;
@@ -69,6 +70,7 @@ export function CategorizeScreen() {
   const totalTransactionCount = groups.reduce((sum, g) => sum + g.transactionCount, 0);
 
   const handleAssign = async (merchant: string, category: string) => {
+    animateLayout();
     setGroups((prev) => prev.filter((g) => g.merchant !== merchant));
     try {
       await repo.updateCategoryForMerchant(merchant, category);
