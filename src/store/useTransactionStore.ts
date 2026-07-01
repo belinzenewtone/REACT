@@ -1,0 +1,128 @@
+import { create } from 'zustand';
+import {
+  startOfDay,
+  endOfDay,
+  startOfWeek,
+  endOfWeek,
+  startOfMonth,
+  endOfMonth,
+} from 'date-fns';
+import type { Transaction, TransactionType, TransactionStatus } from '../types';
+import type { TransactionRecord } from '../database/repositories/TransactionRepository';
+import type { TransactionRepository } from '../database/repositories/TransactionRepository';
+
+export type TransactionPeriod = 'all' | 'today' | 'week' | 'month';
+
+interface FilterState {
+  search: string;
+  category: string;
+  type: TransactionType | undefined;
+  status: TransactionStatus | undefined;
+  orderBy: 'date_desc' | 'date_asc' | 'amount_desc' | 'amount_asc';
+  period: TransactionPeriod;
+}
+
+interface TransactionState {
+  transactions: TransactionRecord[];
+  isLoading: boolean;
+  hasMore: boolean;
+  offset: number;
+  filters: FilterState;
+
+  setFilters: (filters: Partial<FilterState>) => void;
+  resetFilters: () => void;
+
+  loadTransactions: (repo: TransactionRepository, reset?: boolean) => Promise<void>;
+  addTransaction: (repo: TransactionRepository, data: Omit<Transaction, 'id' | 'createdAt' | 'updatedAt' | 'syncState' | 'revision'>) => Promise<void>;
+  updateTransaction: (repo: TransactionRepository, id: string, data: Partial<Transaction>) => Promise<void>;
+  deleteTransaction: (repo: TransactionRepository, id: string) => Promise<void>;
+}
+
+const defaultFilters: FilterState = {
+  search: '',
+  category: 'all',
+  type: undefined,
+  status: undefined,
+  orderBy: 'date_desc',
+  period: 'all',
+};
+
+export const useTransactionStore = create<TransactionState>((set, get) => ({
+  transactions: [],
+  isLoading: false,
+  hasMore: true,
+  offset: 0,
+  filters: defaultFilters,
+
+  setFilters: (filters) => {
+    set((state) => ({ filters: { ...state.filters, ...filters } }));
+  },
+
+  resetFilters: () => {
+    set({ filters: defaultFilters });
+  },
+
+  loadTransactions: async (repo, reset = false) => {
+    set({ isLoading: true });
+    try {
+      const { filters, offset } = get();
+      const nextOffset = reset ? 0 : offset;
+
+      const category = filters.category === 'all' ? undefined : filters.category;
+      const search = filters.search.trim() || undefined;
+
+      let startDate: string | undefined;
+      let endDate: string | undefined;
+      const now = new Date();
+      switch (filters.period) {
+        case 'today':
+          startDate = startOfDay(now).toISOString();
+          endDate = endOfDay(now).toISOString();
+          break;
+        case 'week':
+          startDate = startOfWeek(now, { weekStartsOn: 1 }).toISOString();
+          endDate = endOfWeek(now, { weekStartsOn: 1 }).toISOString();
+          break;
+        case 'month':
+          startDate = startOfMonth(now).toISOString();
+          endDate = endOfMonth(now).toISOString();
+          break;
+      }
+
+      const rows = await repo.findAll({
+        limit: 50,
+        offset: nextOffset,
+        category,
+        type: filters.type,
+        status: filters.status,
+        search,
+        orderBy: filters.orderBy,
+        startDate,
+        endDate,
+      });
+
+      set((state) => ({
+        transactions: reset ? rows : [...state.transactions, ...rows],
+        hasMore: rows.length === 50,
+        offset: nextOffset + rows.length,
+      }));
+    } finally {
+      set({ isLoading: false });
+    }
+  },
+
+  addTransaction: async (repo, data) => {
+    await repo.create(data);
+    await get().loadTransactions(repo, true);
+  },
+
+  updateTransaction: async (repo, id, data) => {
+    await repo.update(id, data);
+    await get().loadTransactions(repo, true);
+  },
+
+  deleteTransaction: async (repo, id) => {
+    await repo.softDelete(id);
+    await get().loadTransactions(repo, true);
+  },
+}));
