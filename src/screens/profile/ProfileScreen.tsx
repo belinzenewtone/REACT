@@ -2,22 +2,23 @@ import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
+  Image,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  RefreshControl,
   Modal,
   TextInput,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useSQLiteContext } from 'expo-sqlite';
+import * as ImagePicker from 'expo-image-picker';
 import { useNavigation } from '@react-navigation/native';
 import { format } from 'date-fns';
 import { useThemeColors } from '../../hooks/useThemeColors';
-import { useAppStore, useProfileStore } from '../../store';
+import { useAppStore } from '../../store';
 import { GlassCard } from '../../components/common/GlassCard';
-import { formatCurrency } from '../../utils/formatters';
+import { TopBanner } from '../../components/common/TopBanner';
 import { spacing, typography, borderRadius } from '../../theme';
 
 type ToolItem = {
@@ -53,12 +54,9 @@ function ToolHubCard({ item, onPress, colors }: { item: ToolItem; onPress: () =>
 
 export function ProfileScreen() {
   const colors = useThemeColors();
-  const db = useSQLiteContext();
   const navigation = useNavigation<any>();
   const profile = useAppStore((state) => state.profile);
   const setProfile = useAppStore((state) => state.setProfile);
-  const setHasCompletedOnboarding = useAppStore((state) => state.setHasCompletedOnboarding);
-  const { stats, isLoading, loadStats } = useProfileStore();
 
   const [editVisible, setEditVisible] = useState(false);
   const [editName, setEditName] = useState(profile?.name ?? '');
@@ -69,10 +67,15 @@ export function ProfileScreen() {
   const [newPw, setNewPw] = useState('');
   const [confirmPw, setConfirmPw] = useState('');
   const [pwError, setPwError] = useState('');
+  const [photoSheetVisible, setPhotoSheetVisible] = useState(false);
+  const [photoViewerVisible, setPhotoViewerVisible] = useState(false);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   useEffect(() => {
-    loadStats(db);
-  }, [db, loadStats]);
+    if (!successMessage) return;
+    const timer = setTimeout(() => setSuccessMessage(null), 3000);
+    return () => clearTimeout(timer);
+  }, [successMessage]);
 
   const handleSaveProfile = () => {
     setProfile({
@@ -80,10 +83,39 @@ export function ProfileScreen() {
       name: editName.trim() || 'User',
       email: editEmail.trim() || undefined,
       phone: editPhone.trim() || undefined,
+      avatarUri: profile?.avatarUri,
       createdAt: profile?.createdAt ?? new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     });
     setEditVisible(false);
+    setSuccessMessage('Profile updated');
+  };
+
+  const handleChooseFromGallery = async () => {
+    setPhotoSheetVisible(false);
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      Alert.alert('Permission needed', 'Allow photo library access to choose a picture.');
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.8,
+    });
+    if (!result.canceled && result.assets[0]) {
+      setProfile(profile ? { ...profile, avatarUri: result.assets[0].uri, updatedAt: new Date().toISOString() } : null);
+      setSuccessMessage('Profile photo updated');
+    }
+  };
+
+  const handleRemovePhoto = () => {
+    setPhotoSheetVisible(false);
+    if (profile) {
+      setProfile({ ...profile, avatarUri: undefined, updatedAt: new Date().toISOString() });
+      setSuccessMessage('Profile photo removed');
+    }
   };
 
   const initials = (profile?.name ?? 'User')
@@ -99,28 +131,35 @@ export function ProfileScreen() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.bgPrimary }]} edges={['top']}>
-      <ScrollView
-        contentContainerStyle={styles.content}
-        refreshControl={
-          <RefreshControl
-            refreshing={isLoading}
-            onRefresh={() => loadStats(db)}
-            tintColor={colors.accentPrimary}
-            colors={[colors.accentPrimary]}
-          />
-        }
-      >
+      <TopBanner
+        tone="success"
+        message={successMessage ?? ''}
+        visible={!!successMessage}
+        onDismiss={() => setSuccessMessage(null)}
+      />
+      <ScrollView contentContainerStyle={styles.content}>
         <Text style={[styles.pageTitle, { color: colors.textPrimary }]}>Profile</Text>
 
         {/* ── Hero Card ── */}
         <GlassCard style={styles.heroCard}>
           <View style={styles.heroTop}>
             {/* Avatar */}
-            <View style={[styles.avatarRing, { borderColor: colors.accentPrimary }]}>
-              <View style={[styles.avatar, { backgroundColor: colors.accentPrimary }]}>
-                <Text style={[styles.initials, { color: colors.textInverse }]}>{initials}</Text>
+            <TouchableOpacity
+              style={[styles.avatarRing, { borderColor: colors.accentPrimary }]}
+              onPress={() => setPhotoSheetVisible(true)}
+              activeOpacity={0.8}
+            >
+              {profile?.avatarUri ? (
+                <Image source={{ uri: profile.avatarUri }} style={styles.avatarImage} />
+              ) : (
+                <View style={[styles.avatar, { backgroundColor: colors.accentPrimary }]}>
+                  <Text style={[styles.initials, { color: colors.textInverse }]}>{initials}</Text>
+                </View>
+              )}
+              <View style={[styles.avatarEditBadge, { backgroundColor: colors.bgSecondary, borderColor: colors.bgPrimary }]}>
+                <Ionicons name="camera" size={12} color={colors.textPrimary} />
               </View>
-            </View>
+            </TouchableOpacity>
 
             {/* Info */}
             <View style={styles.heroInfo}>
@@ -242,6 +281,7 @@ export function ProfileScreen() {
                     setPwError('');
                     setCurrentPw(''); setNewPw(''); setConfirmPw('');
                     setSecurityExpanded(false);
+                    setSuccessMessage('Password updated');
                   }}
                 >
                   <Text style={[styles.pwBtnText, { color: colors.textInverse }]}>Update</Text>
@@ -251,31 +291,6 @@ export function ProfileScreen() {
           )}
         </GlassCard>
 
-        {/* ── Account Stats ── */}
-        <Text style={[styles.statsSectionTitle, { color: colors.textSecondary }]}>Account Statistics</Text>
-        <View style={styles.statsGrid}>
-          {[
-            { label: 'Transactions', value: stats?.totalTransactions ?? 0 },
-            { label: 'Total Spend', value: formatCurrency(stats?.totalSpend ?? 0) },
-            { label: 'Total Income', value: formatCurrency(stats?.totalIncome ?? 0) },
-            { label: 'Average Tx', value: formatCurrency(stats?.averageTransaction ?? 0) },
-            { label: 'Most Common', value: stats?.mostCommonMerchant ?? '-' },
-            { label: 'Largest Tx', value: stats?.largestTransaction ? formatCurrency(stats.largestTransaction.amount) : '-' },
-          ].map((s) => (
-            <GlassCard key={s.label} style={styles.statCard}>
-              <Text style={[styles.statValue, { color: colors.textPrimary }]} numberOfLines={1}>{s.value}</Text>
-              <Text style={[styles.statLabel, { color: colors.textTertiary }]}>{s.label}</Text>
-            </GlassCard>
-          ))}
-        </View>
-
-        <TouchableOpacity
-          style={[styles.logoutButton, { backgroundColor: `${colors.danger}20` }]}
-          onPress={() => setHasCompletedOnboarding(false)}
-        >
-          <Ionicons name="log-out-outline" size={18} color={colors.danger} />
-          <Text style={[styles.logoutText, { color: colors.danger }]}>Reset onboarding</Text>
-        </TouchableOpacity>
       </ScrollView>
 
       {/* Edit Profile Modal */}
@@ -308,6 +323,57 @@ export function ProfileScreen() {
           </View>
         </View>
       </Modal>
+
+      {/* Photo Management Bottom Sheet */}
+      <Modal visible={photoSheetVisible} transparent animationType="slide" onRequestClose={() => setPhotoSheetVisible(false)}>
+        <TouchableOpacity
+          style={[styles.modalOverlay, { backgroundColor: colors.glassBlack }]}
+          activeOpacity={1}
+          onPress={() => setPhotoSheetVisible(false)}
+        >
+          <View style={[styles.modalContent, { backgroundColor: colors.bgSecondary }]}>
+            <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>Profile Photo</Text>
+            {profile?.avatarUri && (
+              <TouchableOpacity
+                style={styles.photoSheetOption}
+                onPress={() => {
+                  setPhotoSheetVisible(false);
+                  setPhotoViewerVisible(true);
+                }}
+              >
+                <Ionicons name="eye-outline" size={20} color={colors.textPrimary} />
+                <Text style={[styles.photoSheetOptionText, { color: colors.textPrimary }]}>View</Text>
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity style={styles.photoSheetOption} onPress={handleChooseFromGallery}>
+              <Ionicons name="image-outline" size={20} color={colors.textPrimary} />
+              <Text style={[styles.photoSheetOptionText, { color: colors.textPrimary }]}>Choose from gallery</Text>
+            </TouchableOpacity>
+            {profile?.avatarUri && (
+              <TouchableOpacity style={styles.photoSheetOption} onPress={handleRemovePhoto}>
+                <Ionicons name="trash-outline" size={20} color={colors.danger} />
+                <Text style={[styles.photoSheetOptionText, { color: colors.danger }]}>Remove</Text>
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity onPress={() => setPhotoSheetVisible(false)} style={styles.photoSheetCancel}>
+              <Text style={[styles.cancelText, { color: colors.textSecondary }]}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* Photo Viewer */}
+      <Modal visible={photoViewerVisible} transparent animationType="fade" onRequestClose={() => setPhotoViewerVisible(false)}>
+        <TouchableOpacity
+          style={styles.photoViewerOverlay}
+          activeOpacity={1}
+          onPress={() => setPhotoViewerVisible(false)}
+        >
+          {profile?.avatarUri && (
+            <Image source={{ uri: profile.avatarUri }} style={styles.photoViewerImage} resizeMode="contain" />
+          )}
+        </TouchableOpacity>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -321,6 +387,11 @@ const styles = StyleSheet.create({
   heroTop: { flexDirection: 'row', alignItems: 'center', gap: spacing.base, marginBottom: spacing.base },
   avatarRing: { width: 84, height: 84, borderRadius: 42, borderWidth: 2, padding: 3, justifyContent: 'center', alignItems: 'center' },
   avatar: { width: 74, height: 74, borderRadius: 37, justifyContent: 'center', alignItems: 'center' },
+  avatarImage: { width: 74, height: 74, borderRadius: 37 },
+  avatarEditBadge: {
+    position: 'absolute', bottom: -2, right: -2, width: 24, height: 24, borderRadius: 12,
+    borderWidth: 2, justifyContent: 'center', alignItems: 'center',
+  },
   initials: { fontSize: typography.sizes['2xl'], fontWeight: typography.weights.bold },
   heroInfo: { flex: 1, gap: 4 },
   heroName: { fontSize: typography.sizes.xl, fontWeight: typography.weights.bold },
@@ -351,15 +422,6 @@ const styles = StyleSheet.create({
   pwButtons: { flexDirection: 'row', gap: spacing.sm },
   pwBtn: { flex: 1, borderWidth: 1, borderRadius: borderRadius.full, paddingVertical: spacing.sm, alignItems: 'center' },
   pwBtnText: { fontSize: typography.sizes.base, fontWeight: typography.weights.semibold },
-  // Stats
-  statsSectionTitle: { fontSize: typography.sizes.base, fontWeight: typography.weights.medium, marginTop: spacing.sm },
-  statsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
-  statCard: { flex: 1, minWidth: '30%' },
-  statValue: { fontSize: typography.sizes.base, fontWeight: typography.weights.bold },
-  statLabel: { fontSize: typography.sizes.xs, marginTop: 4 },
-  // Logout
-  logoutButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: spacing.base, borderRadius: borderRadius.lg, gap: spacing.sm },
-  logoutText: { fontSize: typography.sizes.base, fontWeight: typography.weights.semibold },
   // Modal
   modalOverlay: { flex: 1, justifyContent: 'flex-end' },
   modalContent: { padding: spacing.lg, borderTopLeftRadius: borderRadius['2xl'], borderTopRightRadius: borderRadius['2xl'], gap: spacing.base },
@@ -367,5 +429,11 @@ const styles = StyleSheet.create({
   modalInput: { borderWidth: 1, borderRadius: borderRadius.lg, paddingHorizontal: spacing.base, paddingVertical: spacing.base, fontSize: typography.sizes.base },
   saveButton: { paddingVertical: spacing.base, borderRadius: borderRadius.lg, alignItems: 'center' },
   saveText: { fontSize: typography.sizes.base, fontWeight: typography.weights.semibold },
+  // Photo sheet
+  photoSheetOption: { flexDirection: 'row', alignItems: 'center', gap: spacing.base, paddingVertical: spacing.base },
+  photoSheetOptionText: { fontSize: typography.sizes.base, fontWeight: typography.weights.medium },
+  photoSheetCancel: { alignItems: 'center', paddingTop: spacing.sm },
+  photoViewerOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.9)', justifyContent: 'center', alignItems: 'center' },
+  photoViewerImage: { width: '90%', height: '70%' },
   cancelText: { textAlign: 'center', fontSize: typography.sizes.base },
 });

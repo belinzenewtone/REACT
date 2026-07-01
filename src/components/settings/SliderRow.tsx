@@ -70,8 +70,6 @@ export function SliderRow({
           activeOpacity={1}
           style={StyleSheet.absoluteFill}
           onPressIn={handleMove}
-          onResponderMove={handleMove}
-          onResponderRelease={handleMove}
         />
         <View
           style={[
@@ -111,7 +109,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   fill: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     borderRadius: borderRadius.full,
   },
   thumb: {

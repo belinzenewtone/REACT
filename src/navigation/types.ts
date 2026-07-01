@@ -34,6 +34,7 @@ export type RootStackParamList = {
   Insights: undefined;
   TransactionDetail: { transactionId: string };
   TransactionForm: { transactionId?: string };
+  Categorize: undefined;
   TaskDetail: { taskId: string };
   TaskForm: { taskId?: string };
   EventDetail: { eventId: string };

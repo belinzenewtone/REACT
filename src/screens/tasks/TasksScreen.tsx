@@ -1,21 +1,16 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import {
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  ScrollView,
-  StyleSheet,
-  Animated,
-} from 'react-native';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import Swipeable, { type SwipeableMethods } from 'react-native-gesture-handler/ReanimatedSwipeable';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useThemeColors } from '../../hooks/useThemeColors';
 import { useCalendarStore } from '../../store';
 import { TaskRepository, type TaskRecord } from '../../database/repositories/TaskRepository';
 import { spacing, typography, borderRadius } from '../../theme';
+
+const COMPLETED_LIMIT = 20;
 
 interface TimerState {
   taskId: string;
@@ -33,6 +28,7 @@ export function TasksScreen() {
   const [query, setQuery] = useState('');
   const [activeTimer, setActiveTimer] = useState<TimerState | null>(null);
   const [tick, setTick] = useState(0);
+  const [completedExpanded, setCompletedExpanded] = useState(false);
 
   const loadTasks = useCallback(async () => {
     const repo = new TaskRepository(db);
@@ -63,12 +59,14 @@ export function TasksScreen() {
   }, [tasks, query]);
 
   const grouped = useMemo(() => {
-    const urgent = filteredTasks.filter((t) => t.priority === 'high' && t.status === 'active');
-    const important = filteredTasks.filter((t) => t.priority === 'medium' && t.status === 'active');
-    const rest = filteredTasks.filter(
-      (t) => (t.priority === 'low' && t.status === 'active') || t.status === 'completed'
-    );
-    return { urgent, important, rest };
+    const active = filteredTasks.filter((t) => t.status === 'active');
+    const urgent = active.filter((t) => t.priority === 'high');
+    const important = active.filter((t) => t.priority === 'medium');
+    const rest = active.filter((t) => t.priority === 'low');
+    const completed = filteredTasks
+      .filter((t) => t.status === 'completed')
+      .slice(0, COMPLETED_LIMIT);
+    return { urgent, important, rest, completed };
   }, [filteredTasks]);
 
   const openCount = tasks.filter((t) => t.status === 'active').length;
@@ -79,6 +77,22 @@ export function TasksScreen() {
     await repo.toggleComplete(task.id);
     await loadCalendar(db);
     await loadTasks();
+  };
+
+  const handleDelete = (task: TaskRecord) => {
+    Alert.alert('Delete task', `Remove "${task.title}"?`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          const repo = new TaskRepository(db);
+          await repo.softDelete(task.id);
+          await loadCalendar(db);
+          await loadTasks();
+        },
+      },
+    ]);
   };
 
   const handleToggleTimer = async (task: TaskRecord) => {
@@ -143,6 +157,7 @@ export function TasksScreen() {
             tasks={grouped.urgent}
             onToggleComplete={handleToggleComplete}
             onToggleTimer={handleToggleTimer}
+            onDelete={handleDelete}
             activeTimerId={activeTimer?.taskId ?? null}
             getElapsed={getElapsed}
             formatTimer={formatTimer}
@@ -157,6 +172,7 @@ export function TasksScreen() {
             tasks={grouped.important}
             onToggleComplete={handleToggleComplete}
             onToggleTimer={handleToggleTimer}
+            onDelete={handleDelete}
             activeTimerId={activeTimer?.taskId ?? null}
             getElapsed={getElapsed}
             formatTimer={formatTimer}
@@ -171,11 +187,46 @@ export function TasksScreen() {
             tasks={grouped.rest}
             onToggleComplete={handleToggleComplete}
             onToggleTimer={handleToggleTimer}
+            onDelete={handleDelete}
             activeTimerId={activeTimer?.taskId ?? null}
             getElapsed={getElapsed}
             formatTimer={formatTimer}
             onPressTask={(task) => navigation.navigate('TaskDetail', { taskId: task.id })}
           />
+        )}
+
+        {grouped.completed.length > 0 && (
+          <View style={styles.section}>
+            <TouchableOpacity
+              style={styles.sectionHeader}
+              onPress={() => setCompletedExpanded((v) => !v)}
+              activeOpacity={0.7}
+            >
+              <View style={[styles.sectionIndicator, { backgroundColor: colors.textTertiary }]} />
+              <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>Completed</Text>
+              <Text style={[styles.sectionCount, { color: colors.textSecondary }]}>{grouped.completed.length}</Text>
+              <Ionicons
+                name={completedExpanded ? 'chevron-up' : 'chevron-down'}
+                size={18}
+                color={colors.textSecondary}
+              />
+            </TouchableOpacity>
+            {completedExpanded &&
+              grouped.completed.map((task) => (
+                <SwipeableTaskCard
+                  key={task.id}
+                  task={task}
+                  color={colors.textTertiary}
+                  onToggleComplete={() => handleToggleComplete(task)}
+                  onToggleTimer={() => handleToggleTimer(task)}
+                  onDelete={() => handleDelete(task)}
+                  isTimerActive={activeTimer?.taskId === task.id}
+                  elapsed={getElapsed(task.id)}
+                  formatTimer={formatTimer}
+                  onPress={() => navigation.navigate('TaskDetail', { taskId: task.id })}
+                />
+              ))}
+          </View>
         )}
 
         {filteredTasks.length === 0 && (
@@ -203,6 +254,7 @@ interface PrioritySectionProps {
   tasks: TaskRecord[];
   onToggleComplete: (task: TaskRecord) => void;
   onToggleTimer: (task: TaskRecord) => void;
+  onDelete: (task: TaskRecord) => void;
   activeTimerId: string | null;
   getElapsed: (taskId: string) => number;
   formatTimer: (seconds: number) => string;
@@ -215,6 +267,7 @@ function PrioritySection({
   tasks,
   onToggleComplete,
   onToggleTimer,
+  onDelete,
   activeTimerId,
   getElapsed,
   formatTimer,
@@ -230,12 +283,13 @@ function PrioritySection({
         <Text style={[styles.sectionCount, { color: colors.textSecondary }]}>{tasks.length}</Text>
       </View>
       {tasks.map((task) => (
-        <TaskCard
+        <SwipeableTaskCard
           key={task.id}
           task={task}
           color={task.status === 'completed' ? colors.textTertiary : color}
           onToggleComplete={() => onToggleComplete(task)}
           onToggleTimer={() => onToggleTimer(task)}
+          onDelete={() => onDelete(task)}
           isTimerActive={activeTimerId === task.id}
           elapsed={getElapsed(task.id)}
           formatTimer={formatTimer}
@@ -243,6 +297,65 @@ function PrioritySection({
         />
       ))}
     </View>
+  );
+}
+
+interface SwipeableTaskCardProps {
+  task: TaskRecord;
+  color: string;
+  onToggleComplete: () => void;
+  onToggleTimer: () => void;
+  onDelete: () => void;
+  isTimerActive: boolean;
+  elapsed: number;
+  formatTimer: (seconds: number) => string;
+  onPress: () => void;
+}
+
+function SwipeableTaskCard({ task, onToggleComplete, onDelete, ...rest }: SwipeableTaskCardProps) {
+  const colors = useThemeColors();
+
+  const renderLeftActions = (
+    _progress: unknown,
+    _translation: unknown,
+    swipeableMethods: SwipeableMethods
+  ) => (
+    <TouchableOpacity
+      style={[styles.swipeAction, { backgroundColor: colors.success }]}
+      onPress={() => {
+        swipeableMethods.close();
+        onToggleComplete();
+      }}
+    >
+      <Ionicons name="checkmark" size={22} color={colors.textInverse} />
+    </TouchableOpacity>
+  );
+
+  const renderRightActions = (
+    _progress: unknown,
+    _translation: unknown,
+    swipeableMethods: SwipeableMethods
+  ) => (
+    <TouchableOpacity
+      style={[styles.swipeAction, { backgroundColor: colors.danger }]}
+      onPress={() => {
+        swipeableMethods.close();
+        onDelete();
+      }}
+    >
+      <Ionicons name="trash" size={22} color={colors.textInverse} />
+    </TouchableOpacity>
+  );
+
+  return (
+    <Swipeable
+      renderLeftActions={renderLeftActions}
+      renderRightActions={renderRightActions}
+      overshootLeft={false}
+      overshootRight={false}
+    >
+      <TaskCard task={task} onToggleComplete={onToggleComplete} {...rest} />
+    </Swipeable>
   );
 }
 
@@ -369,6 +482,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: spacing.base,
+    gap: spacing.sm,
   },
   sectionIndicator: {
     width: 4,
@@ -391,6 +505,12 @@ const styles = StyleSheet.create({
     borderRadius: borderRadius['2xl'],
     borderWidth: 1,
     padding: spacing.base,
+  },
+  swipeAction: {
+    width: 64,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: borderRadius['2xl'],
     marginBottom: spacing.base,
   },
   priorityBar: {

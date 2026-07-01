@@ -1,8 +1,9 @@
 import React from 'react';
-import { View, TextInput, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, TouchableOpacity, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useThemeColors } from '../../hooks/useThemeColors';
-import { spacing, typography, borderRadius } from '../../theme';
+import { SearchField } from '../common/SearchField';
+import { spacing, borderRadius } from '../../theme';
 
 interface SearchFilterBarProps {
   search: string;
@@ -23,26 +24,7 @@ export function SearchFilterBar({
 
   return (
     <View style={styles.container}>
-      <View
-        style={[
-          styles.searchInput,
-          { backgroundColor: colors.glassWhite, borderColor: colors.border },
-        ]}
-      >
-        <Ionicons name="search" size={18} color={colors.textSecondary} />
-        <TextInput
-          style={[styles.input, { color: colors.textPrimary }]}
-          placeholder={placeholder}
-          placeholderTextColor={colors.textTertiary}
-          value={search}
-          onChangeText={onSearchChange}
-        />
-        {search.length > 0 && (
-          <TouchableOpacity onPress={() => onSearchChange('')}>
-            <Ionicons name="close-circle" size={18} color={colors.textSecondary} />
-          </TouchableOpacity>
-        )}
-      </View>
+      <SearchField value={search} onChangeText={onSearchChange} placeholder={placeholder} />
 
       <TouchableOpacity
         style={[
@@ -69,20 +51,6 @@ const styles = StyleSheet.create({
     gap: spacing.base,
     paddingHorizontal: spacing.lg,
     marginBottom: spacing.base,
-  },
-  searchInput: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: spacing.base,
-    borderRadius: borderRadius.lg,
-    borderWidth: 1,
-    height: 48,
-  },
-  input: {
-    flex: 1,
-    marginLeft: spacing.sm,
-    fontSize: typography.sizes.base,
   },
   filterButton: {
     width: 48,

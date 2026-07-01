@@ -232,6 +232,33 @@ export class TransactionRepository extends BaseRepository<TransactionRecord> {
     );
   }
 
+  async getFeesTotalForMonth(): Promise<number> {
+    const now = new Date();
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+    const feeCategories = ['AIRTIME', 'FULIZA', 'WITHDRAWAL', 'SUBSCRIPTION', 'Fee'];
+    const placeholders = feeCategories.map(() => '?').join(',');
+    const row = await this.db.getFirstAsync<{ total: number | null }>(
+      `SELECT SUM(amount) as total FROM transactions
+       WHERE date >= ? AND UPPER(category) IN (${placeholders}) AND ${this.notDeletedClause()}`,
+      [startOfMonth, ...feeCategories]
+    );
+    return row?.total ?? 0;
+  }
+
+  async getUncategorized(): Promise<TransactionRecord[]> {
+    return await this.db.getAllAsync<TransactionRecord>(
+      `SELECT * FROM transactions WHERE ${this.notDeletedClause()} AND category = 'uncategorized' ORDER BY date DESC`
+    );
+  }
+
+  async updateCategoryForMerchant(merchant: string, category: string): Promise<void> {
+    await this.db.runAsync(
+      `UPDATE transactions SET category = ?, updated_at = ?, sync_state = 'pending', revision = revision + 1
+       WHERE merchant = ? AND category = 'uncategorized' AND ${this.notDeletedClause()}`,
+      [category, nowIso(), merchant]
+    );
+  }
+
   async getTotalsInRange(start: string, end: string): Promise<{ income: number; expense: number }> {
     const rows = await this.db.getAllAsync<{ transaction_type: TransactionType; total: number }>(
       `SELECT transaction_type, SUM(amount) as total FROM transactions

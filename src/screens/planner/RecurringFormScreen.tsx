@@ -14,7 +14,16 @@ import type { RecurringCadence } from '../../types';
 
 type RecurringFormRouteProp = RouteProp<RootStackParamList, 'RecurringForm'>;
 const TYPES = ['expense', 'income', 'task'] as const;
-const CADENCES: RecurringCadence[] = ['hourly', 'daily', 'weekly', 'monthly', 'yearly'];
+const CADENCES: RecurringCadence[] = ['hourly', 'daily', 'weekly', 'biweekly', 'mon_fri', 'monthly', 'yearly'];
+const CADENCE_LABELS: Record<RecurringCadence, string> = {
+  hourly: 'Hourly',
+  daily: 'Daily',
+  weekly: 'Weekly',
+  biweekly: 'Biweekly',
+  mon_fri: 'Mon–Fri',
+  monthly: 'Monthly',
+  yearly: 'Yearly',
+};
 const CATEGORIES = Object.keys(CATEGORY_COLORS).filter((c) => c !== 'income' && c !== 'uncategorized');
 
 export function RecurringFormScreen() {
@@ -143,17 +152,17 @@ export function RecurringFormScreen() {
         </View>
 
         <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>Cadence</Text>
-        <View style={styles.segmentContainer}>
+        <View style={styles.wrapSegmentContainer}>
           {CADENCES.map((c) => {
             const selected = cadence === c;
             return (
               <TouchableOpacity
                 key={c}
-                style={[styles.segment, selected && { backgroundColor: colors.accentPrimary }]}
+                style={[styles.wrapSegment, selected && { backgroundColor: colors.accentPrimary }]}
                 onPress={() => setCadence(c)}
               >
                 <Text style={[styles.segmentText, { color: selected ? colors.textInverse : colors.textSecondary }]}>
-                  {c.charAt(0).toUpperCase() + c.slice(1)}
+                  {CADENCE_LABELS[c]}
                 </Text>
               </TouchableOpacity>
             );
@@ -261,6 +270,14 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
   },
   segmentContainer: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.base },
+  wrapSegmentContainer: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginBottom: spacing.base },
+  wrapSegment: {
+    paddingHorizontal: spacing.base,
+    paddingVertical: spacing.sm,
+    borderRadius: borderRadius.md,
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.06)',
+  },
   segment: {
     flex: 1,
     paddingVertical: spacing.sm,

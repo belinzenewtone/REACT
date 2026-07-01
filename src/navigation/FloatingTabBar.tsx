@@ -69,7 +69,6 @@ export function FloatingTabBar({ state, descriptors, navigation }: BottomTabBarP
             accessibilityRole="button"
             accessibilityState={isFocused ? { selected: true } : {}}
             accessibilityLabel={options.tabBarAccessibilityLabel}
-            testID={options.tabBarTestID}
             onPress={onPress}
             onLongPress={onLongPress}
             style={styles.tab}

@@ -121,6 +121,16 @@ export function SmsImportHealthScreen() {
   const lastEntry = auditEntries[0];
   const lastImported = auditEntries.find((e) => e.outcome.includes('imported') || e.outcome.includes('realtime'));
 
+  const receiverStatus: 'active' | 'idle' | 'unknown' = (() => {
+    if (!lastEntry) return 'unknown';
+    const hoursSinceLastActivity = (Date.now() - new Date(lastEntry.imported_at).getTime()) / (1000 * 60 * 60);
+    return hoursSinceLastActivity <= 24 ? 'active' : 'idle';
+  })();
+  const receiverStatusColor =
+    receiverStatus === 'active' ? colors.accentPrimary : receiverStatus === 'idle' ? colors.textTertiary : colors.warning;
+  const receiverStatusLabel =
+    receiverStatus === 'active' ? 'Active' : receiverStatus === 'idle' ? 'Idle' : 'Unknown';
+
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.bgPrimary }]} edges={['top']}>
       <View style={styles.header}>
@@ -135,16 +145,20 @@ export function SmsImportHealthScreen() {
         {/* Receiver Status */}
         <SectionCard title="Receiver Status" colors={colors}>
           <View style={styles.statusRow}>
-            <View style={[styles.statusDot, { backgroundColor: colors.accentPrimary }]} />
+            <View style={[styles.statusDot, { backgroundColor: receiverStatusColor }]} />
             <View style={styles.statusInfo}>
               <View style={styles.statusTitleRow}>
                 <Text style={[styles.statusName, { color: colors.textPrimary }]}>Realtime receiver</Text>
-                <View style={[styles.statusBadge, { backgroundColor: `${colors.accentPrimary}20` }]}>
-                  <Text style={[styles.statusBadgeText, { color: colors.accentPrimary }]}>Active</Text>
+                <View style={[styles.statusBadge, { backgroundColor: `${receiverStatusColor}20` }]}>
+                  <Text style={[styles.statusBadgeText, { color: receiverStatusColor }]}>{receiverStatusLabel}</Text>
                 </View>
               </View>
               <Text style={[styles.statusSub, { color: colors.textSecondary }]}>
-                SMS broadcast receiver is running
+                {receiverStatus === 'active'
+                  ? 'SMS broadcast receiver is running'
+                  : receiverStatus === 'idle'
+                  ? 'No recent import activity in the last 24 hours'
+                  : 'No import activity recorded yet'}
               </Text>
             </View>
           </View>

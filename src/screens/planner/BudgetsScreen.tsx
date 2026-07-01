@@ -162,7 +162,7 @@ function BudgetCard({
   onEdit,
   onDelete,
 }: {
-  item: { budget: { category: string; limit_amount: number; id: string }; spent: number; percent: number };
+  item: { budget: { category: string; limit_amount: number; id: string; period: string }; spent: number; percent: number };
   onEdit: () => void;
   onDelete: () => void;
 }) {
@@ -182,9 +182,13 @@ function BudgetCard({
           <Ionicons name={iconName as keyof typeof Ionicons.glyphMap} size={18} color={categoryColor} />
         </View>
         <View style={styles.budgetTitleCol}>
-          <Text style={[styles.category, { color: colors.textPrimary }]}>{item.budget.category}</Text>
+          <View style={styles.categoryRow}>
+            <View style={[styles.statusDot, { backgroundColor: statusColor }]} />
+            <Text style={[styles.category, { color: colors.textPrimary }]}>{item.budget.category}</Text>
+          </View>
           <Text style={[styles.budgetLimit, { color: colors.textTertiary }]}>
-            Limit {formatCurrency(item.budget.limit_amount)}
+            {item.budget.period.charAt(0).toUpperCase() + item.budget.period.slice(1).toLowerCase()} · Limit{' '}
+            {formatCurrency(item.budget.limit_amount)}
           </Text>
         </View>
         <View style={[styles.statusBadge, { backgroundColor: `${statusColor}20` }]}>
@@ -315,6 +319,16 @@ const styles = StyleSheet.create({
   budgetTitleCol: {
     flex: 1,
     marginLeft: spacing.sm,
+  },
+  categoryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  statusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: borderRadius.full,
   },
   category: {
     fontSize: typography.sizes.base,

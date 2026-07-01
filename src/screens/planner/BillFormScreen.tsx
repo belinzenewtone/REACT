@@ -9,10 +9,17 @@ import { usePlannerStore } from '../../store';
 import { BillRepository } from '../../database/repositories/BillRepository';
 import { spacing, typography, borderRadius } from '../../theme';
 import type { RootStackParamList } from '../../navigation/types';
-import type { RecurringCadence } from '../../types';
+import type { BillCycle } from '../../types';
 
 type BillFormRouteProp = RouteProp<RootStackParamList, 'BillForm'>;
-const CYCLES: RecurringCadence[] = ['daily', 'weekly', 'monthly', 'yearly'];
+const CYCLES: BillCycle[] = ['daily', 'weekly', 'monthly', 'yearly', 'one_time'];
+const CYCLE_LABELS: Record<BillCycle, string> = {
+  daily: 'Daily',
+  weekly: 'Weekly',
+  monthly: 'Monthly',
+  yearly: 'Yearly',
+  one_time: 'One-time',
+};
 
 export function BillFormScreen() {
   const colors = useThemeColors();
@@ -26,7 +33,7 @@ export function BillFormScreen() {
 
   const [title, setTitle] = useState('');
   const [amount, setAmount] = useState('');
-  const [cycle, setCycle] = useState<RecurringCadence>('monthly');
+  const [cycle, setCycle] = useState<BillCycle>('monthly');
   const [nextDueDate, setNextDueDate] = useState('');
   const [notes, setNotes] = useState('');
   const [paidStatus, setPaidStatus] = useState(false);
@@ -123,17 +130,17 @@ export function BillFormScreen() {
         <Input label="Notes (optional)" value={notes} onChangeText={setNotes} placeholder="Notes..." />
 
         <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>Cycle</Text>
-        <View style={styles.segmentContainer}>
+        <View style={styles.wrapSegmentContainer}>
           {CYCLES.map((c) => {
             const selected = cycle === c;
             return (
               <TouchableOpacity
                 key={c}
-                style={[styles.segment, selected && { backgroundColor: colors.accentPrimary }]}
+                style={[styles.wrapSegment, selected && { backgroundColor: colors.accentPrimary }]}
                 onPress={() => setCycle(c)}
               >
                 <Text style={[styles.segmentText, { color: selected ? colors.textInverse : colors.textSecondary }]}>
-                  {c.charAt(0).toUpperCase() + c.slice(1)}
+                  {CYCLE_LABELS[c]}
                 </Text>
               </TouchableOpacity>
             );
@@ -224,6 +231,14 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
   },
   segmentContainer: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.base },
+  wrapSegmentContainer: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginBottom: spacing.base },
+  wrapSegment: {
+    paddingHorizontal: spacing.base,
+    paddingVertical: spacing.sm,
+    borderRadius: borderRadius.md,
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.06)',
+  },
   segment: {
     flex: 1,
     paddingVertical: spacing.sm,

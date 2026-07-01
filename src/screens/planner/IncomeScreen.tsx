@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, StyleSheet, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
@@ -14,7 +14,7 @@ export function IncomeScreen() {
   const colors = useThemeColors();
   const db = useSQLiteContext();
   const navigation = useNavigation<any>();
-  const { incomes, loadAll } = usePlannerStore();
+  const { incomes, loadAll, deleteIncome } = usePlannerStore();
 
   useEffect(() => {
     loadAll(db);
@@ -22,13 +22,25 @@ export function IncomeScreen() {
 
   const totalIncome = incomes.reduce((sum, item) => sum + item.amount, 0);
 
+  const handleDelete = (id: string, source: string) => {
+    Alert.alert('Delete income', `Remove ${source}?`, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Delete', style: 'destructive', onPress: () => deleteIncome(db, id) },
+    ]);
+  };
+
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.bgPrimary }]} edges={['top']}>
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()}>
           <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
         </TouchableOpacity>
-        <Text style={[styles.title, { color: colors.textPrimary }]}>Income</Text>
+        <View style={styles.headerTextCol}>
+          <Text style={[styles.title, { color: colors.textPrimary }]}>Income</Text>
+          <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
+            {incomes.length} entr{incomes.length === 1 ? 'y' : 'ies'} tracked
+          </Text>
+        </View>
         <View style={{ width: 24 }} />
       </View>
 
@@ -67,10 +79,20 @@ export function IncomeScreen() {
                       {formatDate(income.date)}
                       {income.is_recurring ? ` · ${income.frequency}` : ''}
                     </Text>
+                    {income.note ? (
+                      <Text style={[styles.note, { color: colors.textTertiary }]} numberOfLines={1}>
+                        {income.note}
+                      </Text>
+                    ) : null}
                   </View>
-                  <Text style={[styles.amount, { color: colors.success }]}>
-                    {formatCurrency(income.amount)}
-                  </Text>
+                  <View style={styles.trailingCol}>
+                    <Text style={[styles.amount, { color: colors.success }]}>
+                      {formatCurrency(income.amount)}
+                    </Text>
+                    <TouchableOpacity onPress={() => handleDelete(income.id, income.source)} style={styles.deleteButton}>
+                      <Ionicons name="trash-outline" size={16} color={colors.danger} />
+                    </TouchableOpacity>
+                  </View>
                 </View>
               </GlassCard>
             </TouchableOpacity>
@@ -99,7 +121,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.base,
   },
+  headerTextCol: { alignItems: 'center' },
   title: { fontSize: typography.sizes.lg, fontWeight: typography.weights.semibold },
+  subtitle: { fontSize: typography.sizes.xs, marginTop: 2 },
   summaryCard: {
     marginHorizontal: spacing.lg,
     marginBottom: spacing.base,
@@ -144,7 +168,10 @@ const styles = StyleSheet.create({
   contentCol: { flex: 1, marginRight: spacing.sm },
   source: { fontSize: typography.sizes.base, fontWeight: typography.weights.medium },
   meta: { fontSize: typography.sizes.sm, marginTop: 2, textTransform: 'capitalize' },
+  note: { fontSize: typography.sizes.xs, marginTop: 2 },
+  trailingCol: { alignItems: 'flex-end', gap: spacing.xs },
   amount: { fontSize: typography.sizes.base, fontWeight: typography.weights.bold },
+  deleteButton: { padding: 2 },
   fab: {
     position: 'absolute',
     left: '50%',

@@ -85,14 +85,12 @@ export function TimePickerModal({ visible, value, onConfirm, onCancel }: TimePic
 
           <View style={styles.picker}>
             <Wheel
-              value={hour}
               onIncrement={() => adjust(setHour, hour, 1, 12)}
               onDecrement={() => adjust(setHour, hour, -1, 12)}
               label={String(hour).padStart(2, '0')}
             />
             <Text style={[styles.colon, { color: colors.textPrimary }]}>:</Text>
             <Wheel
-              value={minute}
               onIncrement={() => adjustMinute(5)}
               onDecrement={() => adjustMinute(-5)}
               label={String(minute).padStart(2, '0')}

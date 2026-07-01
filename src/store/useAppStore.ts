@@ -5,12 +5,18 @@ import type { ThemeMode } from '../theme';
 import { DEFAULT_CURRENCY, DEFAULT_DATE_FORMAT } from '../constants';
 import { fileStorage } from '../storage/fileStorage';
 
+export type OnboardingGoal = 'productivity' | 'finance' | 'balanced';
+
 interface AppState {
   // Onboarding / auth
   hasCompletedOnboarding: boolean;
   isAuthenticated: boolean;
   setHasCompletedOnboarding: (value: boolean) => void;
   setIsAuthenticated: (value: boolean) => void;
+  onboardingStep: number;
+  setOnboardingStep: (step: number) => void;
+  onboardingGoal: OnboardingGoal;
+  setOnboardingGoal: (goal: OnboardingGoal) => void;
 
   // Settings
   settings: AppSettings;
@@ -65,6 +71,10 @@ export const useAppStore = create<AppState>()(
       isAuthenticated: false,
       setHasCompletedOnboarding: (value) => set({ hasCompletedOnboarding: value }),
       setIsAuthenticated: (value) => set({ isAuthenticated: value }),
+      onboardingStep: 1,
+      setOnboardingStep: (step) => set({ onboardingStep: step }),
+      onboardingGoal: 'productivity',
+      setOnboardingGoal: (goal) => set({ onboardingGoal: goal }),
 
       settings: defaultSettings,
       updateSettings: (updates) =>
@@ -91,6 +101,8 @@ export const useAppStore = create<AppState>()(
         isAuthenticated: state.isAuthenticated,
         settings: state.settings,
         profile: state.profile,
+        onboardingStep: state.onboardingStep,
+        onboardingGoal: state.onboardingGoal,
       }),
       onRehydrateStorage: () => () => {
         useAppStore.setState({ hasHydrated: true });

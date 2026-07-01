@@ -33,6 +33,13 @@ export const CATEGORY_ICONS: Record<string, string> = {
   investment: 'trending-up',
   income: 'arrow-down',
   uncategorized: 'help-circle',
+  housing: 'home-outline',
+  personal_care: 'sparkles-outline',
+  subscriptions: 'repeat-outline',
+  fuliza: 'cash-outline',
+  transfer: 'swap-horizontal-outline',
+  withdrawal: 'arrow-up-circle-outline',
+  miscellaneous: 'ellipsis-horizontal-circle-outline',
 };
 
 export const CATEGORY_COLORS: Record<string, string> = {
@@ -50,7 +57,37 @@ export const CATEGORY_COLORS: Record<string, string> = {
   investment: '#14B8A6',
   income: '#34D399',
   uncategorized: '#6B7280',
+  housing: '#F43F5E',
+  personal_care: '#F472B6',
+  subscriptions: '#A78BFA',
+  fuliza: '#FB923C',
+  transfer: '#60A5FA',
+  withdrawal: '#F87171',
+  miscellaneous: '#94A3B8',
 };
+
+/**
+ * Categories offered in the dedicated Categorize wizard (uncategorized-transaction
+ * cleanup flow). Mirrors the Kotlin app's categorize category list.
+ */
+export const CATEGORIZE_CATEGORIES = [
+  'food',
+  'transport',
+  'utilities',
+  'entertainment',
+  'shopping',
+  'health',
+  'education',
+  'housing',
+  'airtime',
+  'savings',
+  'personal_care',
+  'subscriptions',
+  'fuliza',
+  'transfer',
+  'withdrawal',
+  'miscellaneous',
+] as const;
 
 export const SYNC_STATES = {
   PENDING: 'pending',

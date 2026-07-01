@@ -52,7 +52,7 @@ export function FulizaLimitModal({
         >
           <View style={styles.header}>
             <TouchableOpacity onPress={onCancel}>
-              <Text style={[styles.headerAction, { color: colors.textSecondary }]}>Cancel</Text>
+              <Text style={[styles.headerAction, { color: colors.textSecondary }]}>Later</Text>
             </TouchableOpacity>
             <Text style={[styles.title, { color: colors.textPrimary }]}>Fuliza Credit Limit</Text>
             <TouchableOpacity onPress={handleSave}>
@@ -62,7 +62,7 @@ export function FulizaLimitModal({
 
           <View style={styles.content}>
             <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
-              Enter Safaricom Fuliza M-PESA credit limit
+              We detected Fuliza activity. Enter your personal Fuliza limit in KES to improve debt tracking accuracy.
             </Text>
 
             <View

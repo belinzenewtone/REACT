@@ -1,5 +1,5 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
-import type { Bill, RecurringCadence, RecordSource } from '../../types';
+import type { Bill, BillCycle, RecordSource } from '../../types';
 import { BaseRepository, type SyncableRecord } from './BaseRepository';
 import { nowIso } from '../index';
 
@@ -10,7 +10,7 @@ export type BillCreateInput = Omit<Bill, 'id' | 'createdAt' | 'updatedAt' | 'syn
 export interface BillDbRecord extends SyncableRecord {
   title: string;
   amount: number;
-  cycle: RecurringCadence;
+  cycle: BillCycle;
   next_due_date: string;
   last_paid_at: string | null;
   notes: string | null;

@@ -18,6 +18,7 @@ import { useThemeColors } from '../../hooks/useThemeColors';
 import { useCalendarStore } from '../../store';
 import { TaskRepository, type TaskRecord } from '../../database/repositories/TaskRepository';
 import { EventRepository, type EventRecord } from '../../database/repositories/EventRepository';
+import { SearchField } from '../common/SearchField';
 import { spacing, typography, borderRadius } from '../../theme';
 import type { EventType, EventKind, RepeatRule, TaskPriority, TaskStatus } from '../../types';
 
@@ -28,6 +29,8 @@ interface TaskEventFormProps {
   editEventId?: string;
   defaultType?: FormType;
 }
+
+const THREE_DAYS_MINUTES = 3 * 24 * 60;
 
 const TYPE_OPTIONS: { key: FormType; label: string }[] = [
   { key: 'task', label: 'Task' },
@@ -43,7 +46,13 @@ const PRIORITY_OPTIONS: { key: TaskPriority; label: string }[] = [
   { key: 'high', label: 'Urgent' },
 ];
 
-const EVENT_KIND_OPTIONS: EventKind[] = ['work', 'personal', 'health', 'finance', 'other'];
+const EVENT_KIND_OPTIONS: { key: EventKind; label: string }[] = [
+  { key: 'meeting', label: 'Meeting' },
+  { key: 'task', label: 'Task' },
+  { key: 'reminder', label: 'Reminder' },
+  { key: 'goal', label: 'Goal' },
+  { key: 'other', label: 'Other' },
+];
 
 const REPEAT_OPTIONS: { key: RepeatRule; label: string }[] = [
   { key: 'none', label: 'Never' },
@@ -60,6 +69,25 @@ const REMINDER_PRESETS = [
   { label: '1 hour before', minutes: 60 },
   { label: '1 day before', minutes: 1440 },
 ];
+
+const FALLBACK_TIMEZONES = [
+  'UTC', 'Africa/Nairobi', 'Africa/Lagos', 'Africa/Cairo', 'Africa/Johannesburg',
+  'Europe/London', 'Europe/Paris', 'Europe/Berlin', 'Europe/Moscow',
+  'America/New_York', 'America/Chicago', 'America/Denver', 'America/Los_Angeles',
+  'America/Sao_Paulo', 'Asia/Dubai', 'Asia/Kolkata', 'Asia/Shanghai',
+  'Asia/Tokyo', 'Asia/Singapore', 'Australia/Sydney', 'Pacific/Auckland',
+];
+
+function getAvailableTimezones(): string[] {
+  try {
+    if (typeof Intl.supportedValuesOf === 'function') {
+      return Intl.supportedValuesOf('timeZone');
+    }
+  } catch {
+    // fall through
+  }
+  return FALLBACK_TIMEZONES;
+}
 
 export function TaskEventForm({ editTaskId, editEventId, defaultType = 'task' }: TaskEventFormProps) {
   const colors = useThemeColors();
@@ -85,8 +113,17 @@ export function TaskEventForm({ editTaskId, editEventId, defaultType = 'task' }:
   const [endTime, setEndTime] = useState('');
   const [repeatRule, setRepeatRule] = useState<RepeatRule>('none');
   const [location, setLocation] = useState('');
-  const [guestsText, setGuestsText] = useState('');
+  const [guests, setGuests] = useState<string[]>([]);
+  const [guestInput, setGuestInput] = useState('');
   const [kind, setKind] = useState<EventKind>('other');
+  const [timeZoneId, setTimeZoneId] = useState(Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC');
+
+  // Birthday/Anniversary
+  const [addYear, setAddYear] = useState(true);
+
+  // Countdown
+  const [countdownReminderTime, setCountdownReminderTime] = useState('09:00');
+  const [remind3DaysBefore, setRemind3DaysBefore] = useState(false);
 
   // Shared
   const [reminderOffsets, setReminderOffsets] = useState<number[]>([]);
@@ -98,8 +135,11 @@ export function TaskEventForm({ editTaskId, editEventId, defaultType = 'task' }:
   const [customReminderOpen, setCustomReminderOpen] = useState(false);
   const [customValue, setCustomValue] = useState('15');
   const [customUnit, setCustomUnit] = useState<'minute' | 'hour' | 'day'>('minute');
+  const [timezoneModalOpen, setTimezoneModalOpen] = useState(false);
+  const [timezoneQuery, setTimezoneQuery] = useState('');
 
   const isEditing = !!editTaskId || !!editEventId;
+  const isSingleDateType = type === 'birthday' || type === 'anniversary' || type === 'countdown';
 
   useEffect(() => {
     if (!editTaskId && !editEventId) return;
@@ -135,7 +175,8 @@ export function TaskEventForm({ editTaskId, editEventId, defaultType = 'task' }:
           setKind(event.kind);
           setRepeatRule(event.repeat_rule);
           setLocation(event.location ?? '');
-          setGuestsText(parseGuests(event.guests));
+          setGuests(parseGuests(event.guests));
+          setTimeZoneId(event.time_zone_id);
           if (event.date) {
             const d = new Date(event.date);
             setStartDate(d.toISOString().split('T')[0]);
@@ -146,8 +187,16 @@ export function TaskEventForm({ editTaskId, editEventId, defaultType = 'task' }:
             setEndDate(d.toISOString().split('T')[0]);
             setEndTime(d.toISOString().slice(11, 16));
           }
-          setReminderOffsets(parseOffsets(event.reminder_offsets));
+          const offsets = parseOffsets(event.reminder_offsets);
+          setReminderOffsets(offsets);
           setAlarmEnabled(event.alarm_enabled === 1);
+          setAddYear(event.repeat_rule === 'yearly');
+          setRemind3DaysBefore(offsets.includes(THREE_DAYS_MINUTES));
+          if (event.reminder_time_of_day_minutes != null) {
+            const h = Math.floor(event.reminder_time_of_day_minutes / 60);
+            const m = event.reminder_time_of_day_minutes % 60;
+            setCountdownReminderTime(`${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`);
+          }
         }
       });
     }
@@ -164,15 +213,15 @@ export function TaskEventForm({ editTaskId, editEventId, defaultType = 'task' }:
     return [];
   };
 
-  const parseGuests = (raw: string | null): string => {
-    if (!raw) return '';
+  const parseGuests = (raw: string | null): string[] => {
+    if (!raw) return [];
     try {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) return parsed.join(', ');
+      if (Array.isArray(parsed)) return parsed;
     } catch {
       // ignore
     }
-    return raw;
+    return [];
   };
 
   const buildIso = (date: string, time: string, defaultTime: string): string | undefined => {
@@ -182,6 +231,12 @@ export function TaskEventForm({ editTaskId, editEventId, defaultType = 'task' }:
     const parsed = new Date(iso);
     if (isNaN(parsed.getTime())) return undefined;
     return parsed.toISOString();
+  };
+
+  const parseTimeOfDayMinutes = (time: string): number | undefined => {
+    const match = /^(\d{1,2}):(\d{2})$/.exec(time.trim());
+    if (!match) return undefined;
+    return parseInt(match[1], 10) * 60 + parseInt(match[2], 10);
   };
 
   const handleSave = async () => {
@@ -194,79 +249,81 @@ export function TaskEventForm({ editTaskId, editEventId, defaultType = 'task' }:
       if (type === 'task') {
         const deadline = buildIso(dateText, timeText, '00:00');
         const repo = new TaskRepository(db);
+        const data = {
+          title: title.trim(),
+          description: description.trim() || undefined,
+          priority,
+          status,
+          deadline,
+          reminderOffsets: reminderOffsets.length ? reminderOffsets : undefined,
+          alarmEnabled,
+        };
         if (editTaskId) {
-          await repo.update(editTaskId, {
-            title: title.trim(),
-            description: description.trim() || undefined,
-            priority,
-            status,
-            deadline,
-            reminderOffsets: reminderOffsets.length ? reminderOffsets : undefined,
-            alarmEnabled,
-          });
+          await repo.update(editTaskId, data);
         } else {
-          await repo.create({
-            title: title.trim(),
-            description: description.trim() || undefined,
-            priority,
-            status,
-            deadline,
-            reminderOffsets: reminderOffsets.length ? reminderOffsets : undefined,
-            alarmEnabled,
-            recordSource: 'manual',
-          });
+          await repo.create({ ...data, recordSource: 'manual' });
         }
       } else {
-        const date = buildIso(startDate, allDay ? '00:00' : startTime, '00:00');
+        let date: string | undefined;
+        let endDateIso: string | undefined;
+        let effectiveRepeatRule = repeatRule;
+        let effectiveOffsets = reminderOffsets;
+        let effectiveReminderTimeMinutes: number | undefined;
+        let effectiveGuests = guests;
+        let effectiveLocation = location.trim() || undefined;
+        let effectiveKind: EventKind = type === 'event' ? kind : 'other';
+        let effectiveAllDay = allDay;
+
+        if (isSingleDateType) {
+          date = buildIso(startDate, '00:00', '00:00');
+          effectiveAllDay = true;
+          effectiveGuests = [];
+          effectiveLocation = undefined;
+          if (type === 'birthday') {
+            effectiveRepeatRule = addYear ? 'yearly' : 'none';
+          } else if (type === 'anniversary') {
+            effectiveRepeatRule = 'yearly';
+          } else {
+            // countdown
+            effectiveRepeatRule = repeatRule;
+            effectiveReminderTimeMinutes = parseTimeOfDayMinutes(countdownReminderTime);
+            effectiveOffsets = remind3DaysBefore ? [THREE_DAYS_MINUTES] : [];
+          }
+        } else {
+          date = buildIso(startDate, allDay ? '00:00' : startTime, '00:00');
+          endDateIso = buildIso(endDate, allDay ? '23:59' : endTime, '23:59');
+        }
+
         if (!date) {
-          Alert.alert('Missing date', 'Please enter a start date');
+          Alert.alert('Missing date', 'Please enter a date');
           return;
         }
-        const endDateIso = buildIso(endDate, allDay ? '23:59' : endTime, allDay ? '23:59' : '23:59');
-        const guests = guestsText
-          .split(/,|;/)
-          .map((g) => g.trim())
-          .filter(Boolean);
+
         const repo = new EventRepository(db);
+        const data = {
+          title: title.trim(),
+          description: description.trim() || undefined,
+          date,
+          endDate: endDateIso,
+          type,
+          kind: effectiveKind,
+          importance: priority,
+          status,
+          hasReminder: effectiveOffsets.length > 0 || effectiveReminderTimeMinutes != null,
+          reminderOffsets: effectiveOffsets.length ? effectiveOffsets : undefined,
+          reminderTimeOfDayMinutes: effectiveReminderTimeMinutes,
+          allDay: effectiveAllDay,
+          repeatRule: effectiveRepeatRule,
+          location: effectiveLocation,
+          guests: effectiveGuests.length ? effectiveGuests : undefined,
+          timeZoneId,
+          alarmEnabled: type === 'countdown' ? false : alarmEnabled,
+        };
+
         if (editEventId) {
-          await repo.update(editEventId, {
-            title: title.trim(),
-            description: description.trim() || undefined,
-            date,
-            endDate: endDateIso,
-            type,
-            kind: type === 'event' ? kind : 'other',
-            importance: priority,
-            status,
-            hasReminder: reminderOffsets.length > 0,
-            reminderOffsets: reminderOffsets.length ? reminderOffsets : undefined,
-            allDay,
-            repeatRule,
-            location: location.trim() || undefined,
-            guests: guests.length ? guests : undefined,
-            timeZoneId: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
-            alarmEnabled,
-          });
+          await repo.update(editEventId, data);
         } else {
-          await repo.create({
-            title: title.trim(),
-            description: description.trim() || undefined,
-            date,
-            endDate: endDateIso,
-            type,
-            kind: type === 'event' ? kind : 'other',
-            importance: priority,
-            status,
-            hasReminder: reminderOffsets.length > 0,
-            reminderOffsets: reminderOffsets.length ? reminderOffsets : undefined,
-            allDay,
-            repeatRule,
-            location: location.trim() || undefined,
-            guests: guests.length ? guests : undefined,
-            timeZoneId: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
-            alarmEnabled,
-            recordSource: 'manual',
-          });
+          await repo.create({ ...data, recordSource: 'manual' });
         }
       }
       await loadCalendar(db);
@@ -316,6 +373,17 @@ export function TaskEventForm({ editTaskId, editEventId, defaultType = 'task' }:
     setCustomReminderOpen(false);
   };
 
+  const addGuest = () => {
+    const trimmed = guestInput.trim();
+    if (!trimmed) return;
+    setGuests((prev) => (prev.includes(trimmed) ? prev : [...prev, trimmed]));
+    setGuestInput('');
+  };
+
+  const removeGuest = (guest: string) => {
+    setGuests((prev) => prev.filter((g) => g !== guest));
+  };
+
   const reminderSummary = useMemo(() => {
     if (reminderOffsets.length === 0) return 'None';
     const sorted = [...reminderOffsets].sort((a, b) => a - b);
@@ -325,7 +393,15 @@ export function TaskEventForm({ editTaskId, editEventId, defaultType = 'task' }:
 
   const repeatLabel = REPEAT_OPTIONS.find((r) => r.key === repeatRule)?.label ?? 'Never';
 
+  const filteredTimezones = useMemo(() => {
+    const all = getAvailableTimezones();
+    const q = timezoneQuery.trim().toLowerCase();
+    if (!q) return all.slice(0, 100);
+    return all.filter((tz) => tz.toLowerCase().includes(q)).slice(0, 100);
+  }, [timezoneQuery]);
+
   const isTask = type === 'task';
+  const typeLabel = TYPE_OPTIONS.find((t) => t.key === type)?.label ?? 'Task';
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.bgPrimary }]} edges={['top']}>
@@ -334,7 +410,7 @@ export function TaskEventForm({ editTaskId, editEventId, defaultType = 'task' }:
           <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
         </TouchableOpacity>
         <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>
-          {isEditing ? 'Edit' : 'New'} {type === 'task' ? 'Task' : 'Event'}
+          {isEditing ? 'Edit' : 'New'} {typeLabel}
         </Text>
         {isEditing ? (
           <TouchableOpacity onPress={handleDelete}>
@@ -379,7 +455,7 @@ export function TaskEventForm({ editTaskId, editEventId, defaultType = 'task' }:
           })}
         </ScrollView>
 
-        <InputGroup label="Title">
+        <InputGroup label={type === 'birthday' ? "Person's name" : type === 'anniversary' ? 'Anniversary name' : type === 'countdown' ? 'Event name' : 'Title'}>
           <TextInput
             style={[styles.input, { color: colors.textPrimary }]}
             placeholder={isTask ? 'e.g. Pay electricity bill' : 'e.g. Team meeting'}
@@ -389,16 +465,18 @@ export function TaskEventForm({ editTaskId, editEventId, defaultType = 'task' }:
           />
         </InputGroup>
 
-        <InputGroup label="Description">
-          <TextInput
-            style={[styles.input, { color: colors.textPrimary }]}
-            placeholder="Add details..."
-            placeholderTextColor={colors.textTertiary}
-            value={description}
-            onChangeText={setDescription}
-            multiline
-          />
-        </InputGroup>
+        {!isSingleDateType && (
+          <InputGroup label="Description">
+            <TextInput
+              style={[styles.input, { color: colors.textPrimary }]}
+              placeholder="Add details..."
+              placeholderTextColor={colors.textTertiary}
+              value={description}
+              onChangeText={setDescription}
+              multiline
+            />
+          </InputGroup>
+        )}
 
         {isTask ? (
           <>
@@ -423,6 +501,42 @@ export function TaskEventForm({ editTaskId, editEventId, defaultType = 'task' }:
                 />
               </InputGroup>
             </View>
+          </>
+        ) : isSingleDateType ? (
+          <>
+            <InputGroup label="Date">
+              <TextInput
+                style={[styles.input, { color: colors.textPrimary }]}
+                placeholder="YYYY-MM-DD"
+                placeholderTextColor={colors.textTertiary}
+                value={startDate}
+                onChangeText={setStartDate}
+              />
+            </InputGroup>
+
+            {type === 'birthday' && (
+              <RowToggle label="Add year" value={addYear} onValueChange={setAddYear} />
+            )}
+
+            {type === 'countdown' && (
+              <>
+                <RowButton label="Repeat" value={repeatLabel} onPress={() => setRepeatModalOpen(true)} />
+                <InputGroup label="Remind me at (time)">
+                  <TextInput
+                    style={[styles.input, { color: colors.textPrimary }]}
+                    placeholder="HH:MM"
+                    placeholderTextColor={colors.textTertiary}
+                    value={countdownReminderTime}
+                    onChangeText={setCountdownReminderTime}
+                  />
+                </InputGroup>
+                <RowToggle
+                  label="Remind 3 days before"
+                  value={remind3DaysBefore}
+                  onValueChange={setRemind3DaysBefore}
+                />
+              </>
+            )}
           </>
         ) : (
           <>
@@ -475,93 +589,131 @@ export function TaskEventForm({ editTaskId, editEventId, defaultType = 'task' }:
                 </InputGroup>
               )}
             </View>
+            {endDate.trim().length > 0 && (
+              <TouchableOpacity
+                onPress={() => {
+                  setEndDate('');
+                  setEndTime('');
+                }}
+                style={styles.clearEndDate}
+              >
+                <Text style={[styles.clearEndDateText, { color: colors.danger }]}>Clear end date</Text>
+              </TouchableOpacity>
+            )}
 
             <RowButton label="Repeat" value={repeatLabel} onPress={() => setRepeatModalOpen(true)} />
 
-            {type === 'event' && (
-              <>
-                <InputGroup label="Guests">
-                  <TextInput
-                    style={[styles.input, { color: colors.textPrimary }]}
-                    placeholder="email@example.com, ..."
-                    placeholderTextColor={colors.textTertiary}
-                    value={guestsText}
-                    onChangeText={setGuestsText}
-                  />
-                </InputGroup>
-
-                <InputGroup label="Location">
-                  <TextInput
-                    style={[styles.input, { color: colors.textPrimary }]}
-                    placeholder="e.g. Conference room"
-                    placeholderTextColor={colors.textTertiary}
-                    value={location}
-                    onChangeText={setLocation}
-                  />
-                </InputGroup>
-
-                <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>Category</Text>
-                <View style={styles.chipWrap}>
-                  {EVENT_KIND_OPTIONS.map((k) => {
-                    const selected = kind === k;
-                    return (
-                      <TouchableOpacity
-                        key={k}
-                        style={[
-                          styles.categoryChip,
-                          selected && { backgroundColor: colors.accentPrimary, borderColor: colors.accentPrimary },
-                          { borderColor: colors.border },
-                        ]}
-                        onPress={() => setKind(k)}
-                      >
-                        <Text
-                          style={[
-                            styles.categoryChipText,
-                            { color: selected ? colors.textInverse : colors.textSecondary },
-                          ]}
-                        >
-                          {k.charAt(0).toUpperCase() + k.slice(1)}
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-              </>
+            <InputGroup label="Guests">
+              <View style={styles.guestInputRow}>
+                <TextInput
+                  style={[styles.input, styles.guestInputField, { color: colors.textPrimary }]}
+                  placeholder="email@example.com"
+                  placeholderTextColor={colors.textTertiary}
+                  value={guestInput}
+                  onChangeText={setGuestInput}
+                  onSubmitEditing={addGuest}
+                />
+                <TouchableOpacity onPress={addGuest}>
+                  <Ionicons name="add-circle" size={22} color={colors.accentPrimary} />
+                </TouchableOpacity>
+              </View>
+            </InputGroup>
+            {guests.length > 0 && (
+              <View style={styles.chipWrap}>
+                {guests.map((guest) => (
+                  <View key={guest} style={[styles.guestChip, { borderColor: colors.border, backgroundColor: colors.glassWhite }]}>
+                    <Text style={[styles.guestChipText, { color: colors.textPrimary }]} numberOfLines={1}>
+                      {guest}
+                    </Text>
+                    <TouchableOpacity onPress={() => removeGuest(guest)}>
+                      <Ionicons name="close-circle" size={16} color={colors.textSecondary} />
+                    </TouchableOpacity>
+                  </View>
+                ))}
+              </View>
             )}
+
+            <InputGroup label="Location">
+              <TextInput
+                style={[styles.input, { color: colors.textPrimary }]}
+                placeholder="e.g. Conference room"
+                placeholderTextColor={colors.textTertiary}
+                value={location}
+                onChangeText={setLocation}
+              />
+            </InputGroup>
+
+            {!allDay && (
+              <RowButton label="Time zone" value={timeZoneId} onPress={() => setTimezoneModalOpen(true)} />
+            )}
+
+            <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>Category</Text>
+            <View style={styles.chipWrap}>
+              {EVENT_KIND_OPTIONS.map((option) => {
+                const selected = kind === option.key;
+                return (
+                  <TouchableOpacity
+                    key={option.key}
+                    style={[
+                      styles.categoryChip,
+                      selected && { backgroundColor: colors.accentPrimary, borderColor: colors.accentPrimary },
+                      { borderColor: colors.border },
+                    ]}
+                    onPress={() => setKind(option.key)}
+                  >
+                    <Text
+                      style={[
+                        styles.categoryChipText,
+                        { color: selected ? colors.textInverse : colors.textSecondary },
+                      ]}
+                    >
+                      {option.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
           </>
         )}
 
-        <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>Priority</Text>
-        <View style={styles.priorityRow}>
-          {PRIORITY_OPTIONS.map((option) => {
-            const selected = priority === option.key;
-            const pColor = colors.priority[option.key];
-            return (
-              <TouchableOpacity
-                key={option.key}
-                style={[
-                  styles.priorityChip,
-                  selected && { backgroundColor: pColor, borderColor: pColor },
-                  { borderColor: colors.border },
-                ]}
-                onPress={() => setPriority(option.key)}
-              >
-                <Text
-                  style={[
-                    styles.priorityChipText,
-                    { color: selected ? colors.textInverse : colors.textSecondary },
-                  ]}
-                >
-                  {option.label}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
+        {(isTask || type === 'event') && (
+          <>
+            <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>Priority</Text>
+            <View style={styles.priorityRow}>
+              {PRIORITY_OPTIONS.map((option) => {
+                const selected = priority === option.key;
+                const pColor = colors.priority[option.key];
+                return (
+                  <TouchableOpacity
+                    key={option.key}
+                    style={[
+                      styles.priorityChip,
+                      selected && { backgroundColor: pColor, borderColor: pColor },
+                      { borderColor: colors.border },
+                    ]}
+                    onPress={() => setPriority(option.key)}
+                  >
+                    <Text
+                      style={[
+                        styles.priorityChipText,
+                        { color: selected ? colors.textInverse : colors.textSecondary },
+                      ]}
+                    >
+                      {option.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </>
+        )}
 
-        <RowButton label="Reminders" value={reminderSummary} onPress={() => setReminderModalOpen(true)} />
-
-        <RowToggle label="Alarm reminders" value={alarmEnabled} onValueChange={setAlarmEnabled} />
+        {type !== 'countdown' && (
+          <>
+            <RowButton label="Reminders" value={reminderSummary} onPress={() => setReminderModalOpen(true)} />
+            <RowToggle label="Alarm reminders" value={alarmEnabled} onValueChange={setAlarmEnabled} />
+          </>
+        )}
 
         {isEditing && (
           <TouchableOpacity
@@ -697,6 +849,40 @@ export function TaskEventForm({ editTaskId, editEventId, defaultType = 'task' }:
                 </TouchableOpacity>
               );
             })}
+          </View>
+        </View>
+      </Modal>
+
+      {/* Timezone Modal */}
+      <Modal visible={timezoneModalOpen} transparent animationType="slide" onRequestClose={() => setTimezoneModalOpen(false)}>
+        <View style={[styles.modalOverlay, { backgroundColor: 'rgba(0,0,0,0.6)' }]}>
+          <View style={[styles.modalContent, styles.timezoneModalContent, { backgroundColor: colors.bgSecondary }]}>
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>Time zone</Text>
+              <TouchableOpacity onPress={() => setTimezoneModalOpen(false)}>
+                <Ionicons name="close" size={24} color={colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+            <SearchField value={timezoneQuery} onChangeText={setTimezoneQuery} placeholder="Search time zones…" />
+            <ScrollView style={styles.timezoneList}>
+              {filteredTimezones.map((tz) => {
+                const selected = tz === timeZoneId;
+                return (
+                  <TouchableOpacity
+                    key={tz}
+                    style={styles.modalOption}
+                    onPress={() => {
+                      setTimeZoneId(tz);
+                      setTimezoneModalOpen(false);
+                      setTimezoneQuery('');
+                    }}
+                  >
+                    <Text style={[styles.modalOptionText, { color: colors.textPrimary }]}>{tz}</Text>
+                    {selected && <Ionicons name="checkmark" size={20} color={colors.accentPrimary} />}
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
           </View>
         </View>
       </Modal>
@@ -875,6 +1061,37 @@ const styles = StyleSheet.create({
     fontSize: typography.sizes.sm,
     fontWeight: typography.weights.medium,
   },
+  clearEndDate: {
+    alignSelf: 'flex-start',
+    marginBottom: spacing.base,
+    marginTop: -spacing.xs,
+  },
+  clearEndDateText: {
+    fontSize: typography.sizes.sm,
+    fontWeight: typography.weights.medium,
+  },
+  guestInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  guestInputField: {
+    flex: 1,
+  },
+  guestChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    borderWidth: 1,
+    borderRadius: borderRadius.full,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 4,
+    maxWidth: 200,
+  },
+  guestChipText: {
+    fontSize: typography.sizes.xs,
+    flexShrink: 1,
+  },
   rowButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -918,6 +1135,12 @@ const styles = StyleSheet.create({
     borderTopRightRadius: borderRadius['2xl'],
     padding: spacing.lg,
     paddingBottom: spacing['4xl'],
+  },
+  timezoneModalContent: {
+    maxHeight: '80%',
+  },
+  timezoneList: {
+    marginTop: spacing.base,
   },
   modalHeader: {
     flexDirection: 'row',
