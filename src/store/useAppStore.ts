@@ -51,7 +51,6 @@ const defaultSettings: AppSettings = {
     dailyDigest: true,
     recurringRules: true,
   },
-  biometricLock: false,
   lockTimeoutMinutes: 5,
   defaultTransactionCategory: 'uncategorized',
   fulizaLimit: 10000,

@@ -250,7 +250,6 @@ export interface AppSettings {
   decimalPrecision: number;
   notificationsEnabled: boolean;
   notificationTypes: Record<string, boolean>;
-  biometricLock: boolean;
   lockTimeoutMinutes: number;
   defaultTransactionCategory: string;
   fulizaLimit: number;
