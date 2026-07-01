@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useMemo, useRef } from 'react';
 import { View, Text, StyleSheet, PanResponder } from 'react-native';
 import { useThemeColors } from '../../hooks/useThemeColors';
 import { spacing, typography, borderRadius } from '../../theme';
@@ -23,23 +23,32 @@ export function SliderRow({
   suffix = '',
 }: SliderRowProps) {
   const colors = useThemeColors();
-  const [width, setWidth] = useState(0);
   const widthRef = useRef(0);
 
-  const stepCount = Math.round((maximumValue - minimumValue) / step) + 1;
-  const dots = useMemo(() => Array.from({ length: stepCount }, (_, i) => minimumValue + i * step), [stepCount, minimumValue, step]);
+  const dots = useMemo(() => {
+    const count = Math.round((maximumValue - minimumValue) / step) + 1;
+    return Array.from({ length: count }, (_, i) => minimumValue + i * step);
+  }, [minimumValue, maximumValue, step]);
 
-  const clamp = (v: number) => Math.max(minimumValue, Math.min(maximumValue, v));
   const ratio = (value - minimumValue) / (maximumValue - minimumValue);
+
+  // PanResponder is created once and must stay stable across renders so an in-progress
+  // drag never gets interrupted, but that means its callbacks close over whatever props
+  // existed on the first render. Routing every read through this ref (updated on every
+  // render, not just once) keeps the gesture reading live props instead of stale ones —
+  // that mismatch was the source of the janky/"glitchy" drag behavior.
+  const liveRef = useRef({ value, minimumValue, maximumValue, step, onValueChange });
+  liveRef.current = { value, minimumValue, maximumValue, step, onValueChange };
 
   const updateFromLocationX = (x: number) => {
     const trackWidth = widthRef.current;
     if (!trackWidth) return;
+    const { value: currentValue, minimumValue: min, maximumValue: max, step: s, onValueChange: emit } =
+      liveRef.current;
     const clampedX = Math.max(0, Math.min(trackWidth, x));
-    const raw = minimumValue + (clampedX / trackWidth) * (maximumValue - minimumValue);
-    const stepped = Math.round(raw / step) * step;
-    const next = clamp(stepped);
-    if (next !== value) onValueChange(next);
+    const raw = min + (clampedX / trackWidth) * (max - min);
+    const stepped = Math.max(min, Math.min(max, Math.round(raw / s) * s));
+    if (stepped !== currentValue) emit(stepped);
   };
 
   const panResponder = useRef(
@@ -66,7 +75,6 @@ export function SliderRow({
         style={[styles.track, { backgroundColor: colors.glassWhite }]}
         onLayout={(e) => {
           widthRef.current = e.nativeEvent.layout.width;
-          setWidth(e.nativeEvent.layout.width);
         }}
         hitSlop={{ top: 12, bottom: 12 }}
         {...panResponder.panHandlers}
@@ -80,33 +88,28 @@ export function SliderRow({
             },
           ]}
         />
-        {width > 0 &&
-          dots.map((dotValue) => {
-            const dotRatio = (dotValue - minimumValue) / (maximumValue - minimumValue);
-            const isFilled = dotValue <= value;
+        <View style={styles.dotsRow} pointerEvents="none">
+          {dots.map((dotValue) => {
             const isActive = dotValue === value;
+            const isFilled = dotValue <= value;
             return (
               <View
                 key={dotValue}
-                pointerEvents="none"
                 style={[
                   styles.dot,
                   {
-                    left: dotRatio * width - (isActive ? 5 : 2),
-                    width: isActive ? 10 : 4,
-                    height: isActive ? 10 : 4,
-                    marginTop: isActive ? -5 : -2,
-                    borderRadius: isActive ? 5 : 2,
                     backgroundColor: isActive
                       ? colors.textInverse
                       : isFilled
-                      ? colors.textInverse + '99'
+                      ? `${colors.textInverse}99`
                       : colors.textTertiary,
+                    transform: [{ scale: isActive ? 1.6 : 1 }],
                   },
                 ]}
               />
             );
           })}
+        </View>
       </View>
     </View>
   );
@@ -141,13 +144,25 @@ const styles = StyleSheet.create({
     left: 0,
     borderRadius: borderRadius.full,
   },
-  dot: {
+  dotsRow: {
     position: 'absolute',
-    top: '50%',
-    elevation: 2,
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 3,
+  },
+  dot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    elevation: 1,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.15,
+    shadowOpacity: 0.12,
     shadowRadius: 1,
   },
 });

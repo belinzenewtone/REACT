@@ -96,7 +96,7 @@ export function NotificationsScreen() {
               <SliderRow
                 label="High"
                 value={settings.alertThresholds.high}
-                minimumValue={50}
+                minimumValue={10}
                 maximumValue={100}
                 step={5}
                 suffix="%"
@@ -105,8 +105,8 @@ export function NotificationsScreen() {
               <SliderRow
                 label="Medium"
                 value={settings.alertThresholds.medium}
-                minimumValue={30}
-                maximumValue={90}
+                minimumValue={10}
+                maximumValue={100}
                 step={5}
                 suffix="%"
                 onValueChange={(value) => setAlertThreshold('medium', value)}
@@ -115,7 +115,7 @@ export function NotificationsScreen() {
                 label="Low"
                 value={settings.alertThresholds.low}
                 minimumValue={10}
-                maximumValue={70}
+                maximumValue={100}
                 step={5}
                 suffix="%"
                 onValueChange={(value) => setAlertThreshold('low', value)}
