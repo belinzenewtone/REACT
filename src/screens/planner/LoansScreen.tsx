@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -7,8 +7,10 @@ import { useSQLiteContext } from 'expo-sqlite';
 import { useThemeColors } from '../../hooks/useThemeColors';
 import { usePlannerStore } from '../../store';
 import { GlassCard } from '../../components/common/GlassCard';
+import { EmptyState } from '../../components/common/EmptyState';
 import { formatCurrency, formatDate } from '../../utils/formatters';
 import { spacing, typography, borderRadius } from '../../theme';
+import type { FulizaLoanDbRecord } from '../../database/repositories/FulizaLoanRepository';
 
 export function LoansScreen() {
   const colors = useThemeColors();
@@ -20,13 +22,26 @@ export function LoansScreen() {
     loadAll(db);
   }, [db, loadAll]);
 
+  const openLoans = useMemo(() => loans.filter((l) => l.status === 'active'), [loans]);
+  const closedLoans = useMemo(() => loans.filter((l) => l.status !== 'active').slice(0, 10), [loans]);
+  const netOutstanding = useMemo(
+    () => openLoans.reduce((sum, l) => sum + (l.draw_amount_kes - l.total_repaid_kes), 0),
+    [openLoans]
+  );
+
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.bgPrimary }]} edges={['top']}>
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()}>
           <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
         </TouchableOpacity>
-        <Text style={[styles.title, { color: colors.textPrimary }]}>Loans</Text>
+        <View style={styles.headerTextCol}>
+          <Text style={[styles.eyebrow, { color: colors.textSecondary }]}>Finance Tools</Text>
+          <Text style={[styles.title, { color: colors.textPrimary }]}>Loans &amp; Fuliza</Text>
+          <Text style={[styles.subtitle, { color: colors.textSecondary }]} numberOfLines={1}>
+            Track outstanding draws and repayment history
+          </Text>
+        </View>
         <TouchableOpacity onPress={() => navigation.navigate('LoanForm')}>
           <Ionicons name="add" size={24} color={colors.accentPrimary} />
         </TouchableOpacity>
@@ -34,44 +49,87 @@ export function LoansScreen() {
 
       <ScrollView contentContainerStyle={styles.content}>
         {loans.length === 0 ? (
-          <Text style={[styles.empty, { color: colors.textTertiary }]}>No loans yet.</Text>
+          <EmptyState
+            icon="cash-outline"
+            title="No Fuliza history yet"
+            subtitle="Import M-Pesa messages from Finance to track Fuliza draws and repayments automatically."
+          />
         ) : (
-          loans.map((loan) => {
-            const remaining = loan.draw_amount_kes - loan.total_repaid_kes;
-            return (
-              <TouchableOpacity
-                key={loan.id}
-                onPress={() => navigation.navigate('LoanForm', { loanId: loan.id })}
+          <>
+            <GlassCard variant="elevated" style={styles.summaryCard}>
+              <Text style={[styles.summaryLabel, { color: colors.textPrimary }]}>Net Outstanding</Text>
+              <Text
+                style={[
+                  styles.summaryAmount,
+                  { color: netOutstanding > 0 ? colors.warning : colors.success },
+                ]}
               >
-                <GlassCard style={styles.card}>
-                  <View style={styles.row}>
-                    <View style={styles.contentCol}>
-                      <Text style={[styles.loanTitle, { color: colors.textPrimary }]} numberOfLines={1}>
-                        {loan.draw_code || 'Loan'}
-                      </Text>
-                      <Text style={[styles.meta, { color: colors.textSecondary }]}>
-                        Drawn {formatDate(loan.draw_date, 'dd MMM yyyy')}
-                      </Text>
-                    </View>
-                    <View style={{ alignItems: 'flex-end' }}>
-                      <Text style={[styles.amount, { color: colors.textPrimary }]}>
-                        {formatCurrency(loan.draw_amount_kes)}
-                      </Text>
-                      <Text style={[styles.status, { color: loan.status === 'active' ? colors.warning : colors.success }]}>
-                        {loan.status}
-                      </Text>
-                    </View>
-                  </View>
-                  <Text style={[styles.remaining, { color: colors.textSecondary }]}>
-                    Remaining: {formatCurrency(remaining)}
-                  </Text>
-                </GlassCard>
-              </TouchableOpacity>
-            );
-          })
+                {formatCurrency(netOutstanding)}
+              </Text>
+              <Text style={[styles.summaryMeta, { color: colors.textSecondary }]}>
+                {netOutstanding <= 0
+                  ? 'All Fuliza draws are fully repaid.'
+                  : `${openLoans.length} open draw${openLoans.length === 1 ? '' : 's'}. Pay to avoid daily interest.`}
+              </Text>
+            </GlassCard>
+
+            {openLoans.length > 0 && (
+              <>
+                <Text style={[styles.sectionTitle, { color: colors.warning }]}>Open Draws</Text>
+                {openLoans.map((loan) => (
+                  <LoanCard key={loan.id} loan={loan} onPress={() => navigation.navigate('LoanForm', { loanId: loan.id })} />
+                ))}
+              </>
+            )}
+
+            {closedLoans.length > 0 && (
+              <>
+                <View style={[styles.divider, { backgroundColor: colors.border }]} />
+                <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>Repaid</Text>
+                {closedLoans.map((loan) => (
+                  <LoanCard key={loan.id} loan={loan} onPress={() => navigation.navigate('LoanForm', { loanId: loan.id })} />
+                ))}
+              </>
+            )}
+          </>
         )}
       </ScrollView>
     </SafeAreaView>
+  );
+}
+
+function LoanCard({ loan, onPress }: { loan: FulizaLoanDbRecord; onPress: () => void }) {
+  const colors = useThemeColors();
+  const outstanding = loan.draw_amount_kes - loan.total_repaid_kes;
+  const isClosed = loan.status !== 'active';
+  const statusLabel = loan.status.charAt(0).toUpperCase() + loan.status.slice(1);
+
+  return (
+    <TouchableOpacity onPress={onPress}>
+      <GlassCard style={styles.card}>
+        <View style={styles.row}>
+          <View style={styles.contentCol}>
+            <Text style={[styles.loanTitle, { color: colors.textPrimary }]} numberOfLines={1}>
+              Draw: {formatCurrency(loan.draw_amount_kes)}
+            </Text>
+            <Text style={[styles.meta, { color: colors.textSecondary }]}>
+              {formatDate(loan.draw_date, 'MMM dd, yyyy')}
+            </Text>
+          </View>
+          <View style={{ alignItems: 'flex-end' }}>
+            <Text style={[styles.amount, { color: isClosed ? colors.success : colors.warning }]}>
+              {isClosed ? 'Repaid' : formatCurrency(outstanding)}
+            </Text>
+            <Text style={[styles.status, { color: colors.textSecondary }]}>{statusLabel}</Text>
+          </View>
+        </View>
+        {loan.total_repaid_kes > 0 ? (
+          <Text style={[styles.repaid, { color: colors.textSecondary }]}>
+            Repaid: {formatCurrency(loan.total_repaid_kes)}
+          </Text>
+        ) : null}
+      </GlassCard>
+    </TouchableOpacity>
   );
 }
 
@@ -84,15 +142,37 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.base,
   },
-  title: { fontSize: typography.sizes.lg, fontWeight: typography.weights.semibold },
-  content: { padding: spacing.lg },
-  empty: { textAlign: 'center', marginTop: spacing.xl, fontSize: typography.sizes.base },
+  headerTextCol: { flex: 1, alignItems: 'center' },
+  eyebrow: {
+    fontSize: typography.sizes.xs,
+    fontWeight: typography.weights.medium,
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+  },
+  title: { fontSize: typography.sizes.lg, fontWeight: typography.weights.semibold, marginTop: 2 },
+  subtitle: { fontSize: typography.sizes.xs, marginTop: 2 },
+  content: { padding: spacing.lg, paddingTop: spacing.sm },
+  summaryCard: { marginBottom: spacing.lg },
+  summaryLabel: { fontSize: typography.sizes.base, fontWeight: typography.weights.semibold },
+  summaryAmount: {
+    fontSize: typography.sizes['3xl'],
+    fontWeight: typography.weights.bold,
+    marginTop: spacing.xs,
+  },
+  summaryMeta: { fontSize: typography.sizes.sm, marginTop: spacing.xs },
+  sectionTitle: {
+    fontSize: typography.sizes.sm,
+    fontWeight: typography.weights.semibold,
+    marginBottom: spacing.sm,
+    marginTop: spacing.xs,
+  },
+  divider: { height: 1, marginVertical: spacing.base },
   card: { marginBottom: spacing.base, padding: spacing.base },
   row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   contentCol: { flex: 1, marginRight: spacing.sm },
-  loanTitle: { fontSize: typography.sizes.base, fontWeight: typography.weights.medium },
-  meta: { fontSize: typography.sizes.sm, marginTop: 2 },
+  loanTitle: { fontSize: typography.sizes.base, fontWeight: typography.weights.semibold },
+  meta: { fontSize: typography.sizes.xs, marginTop: 2 },
   amount: { fontSize: typography.sizes.base, fontWeight: typography.weights.bold },
-  status: { fontSize: typography.sizes.xs, marginTop: 2, textTransform: 'capitalize' },
-  remaining: { fontSize: typography.sizes.sm, marginTop: spacing.sm },
+  status: { fontSize: typography.sizes.xs, marginTop: 2 },
+  repaid: { fontSize: typography.sizes.xs, marginTop: spacing.sm },
 });
