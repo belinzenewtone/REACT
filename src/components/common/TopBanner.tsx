@@ -43,26 +43,33 @@ export function TopBanner({ tone, message, visible, onDismiss, autoDismissMs }: 
   if (!visible) return null;
 
   return (
-    <Animated.View
-      style={[
-        styles.banner,
-        { backgroundColor: `${toneColor}20`, borderColor: toneColor, opacity },
-      ]}
-    >
-      <Ionicons name={ICONS[tone]} size={18} color={toneColor} />
-      <Text style={[styles.message, { color: toneColor }]} numberOfLines={2}>
-        {message}
-      </Text>
-      {onDismiss ? (
-        <TouchableOpacity onPress={onDismiss}>
-          <Ionicons name="close" size={16} color={toneColor} />
-        </TouchableOpacity>
-      ) : null}
+    <Animated.View pointerEvents="box-none" style={[styles.wrapper, { opacity }]}>
+      <Animated.View
+        style={[styles.banner, { backgroundColor: `${toneColor}20`, borderColor: toneColor }]}
+      >
+        <Ionicons name={ICONS[tone]} size={18} color={toneColor} />
+        <Text style={[styles.message, { color: toneColor }]} numberOfLines={2}>
+          {message}
+        </Text>
+        {onDismiss ? (
+          <TouchableOpacity onPress={onDismiss}>
+            <Ionicons name="close" size={16} color={toneColor} />
+          </TouchableOpacity>
+        ) : null}
+      </Animated.View>
     </Animated.View>
   );
 }
 
 const styles = StyleSheet.create({
+  wrapper: {
+    position: 'absolute',
+    top: spacing.xs,
+    left: 0,
+    right: 0,
+    zIndex: 50,
+    elevation: 8,
+  },
   banner: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -71,8 +78,11 @@ const styles = StyleSheet.create({
     borderRadius: borderRadius.lg,
     paddingHorizontal: spacing.base,
     paddingVertical: spacing.sm,
-    marginHorizontal: spacing.lg,
-    marginBottom: spacing.sm,
+    marginHorizontal: spacing.screenHorizontal,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
   },
   message: {
     flex: 1,

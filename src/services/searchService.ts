@@ -3,24 +3,20 @@ import { TransactionRepository, type TransactionRecord } from '../database/repos
 import { TaskRepository, type TaskRecord } from '../database/repositories/TaskRepository';
 import { EventRepository, type EventRecord } from '../database/repositories/EventRepository';
 import { BudgetRepository, type BudgetRecord } from '../database/repositories/BudgetRepository';
+import { RecurringRuleRepository, type RecurringRuleDbRecord as RecurringRuleRecord } from '../database/repositories/RecurringRuleRepository';
 import type { SearchFilters } from '../store/useSearchStore';
 
-export type SearchResultType = 'transaction' | 'task' | 'event' | 'budget' | 'merchant';
-
-export interface MerchantResult {
-  type: 'merchant';
-  id: string;
-  name: string;
-  totalSpent: number;
-  transactionCount: number;
-}
+export type SearchResultType = 'transaction' | 'task' | 'event' | 'budget' | 'birthday' | 'anniversary' | 'countdown' | 'recurring';
 
 export interface SearchResults {
   transactions: TransactionRecord[];
   tasks: TaskRecord[];
   events: EventRecord[];
+  birthdays: EventRecord[];
+  anniversaries: EventRecord[];
+  countdowns: EventRecord[];
   budgets: BudgetRecord[];
-  merchants: MerchantResult[];
+  recurring: RecurringRuleRecord[];
 }
 
 export async function searchAll(
@@ -35,6 +31,7 @@ export async function searchAll(
   const taskRepo = new TaskRepository(db);
   const eventRepo = new EventRepository(db);
   const budgetRepo = new BudgetRepository(db);
+  const recurringRepo = new RecurringRuleRepository(db);
 
   const lowerQuery = trimmed.toLowerCase();
 
@@ -69,28 +66,33 @@ export async function searchAll(
     }
   }
 
-  const merchantRows = trimmed
-    ? await db.getAllAsync<{ merchant: string; total: number; count: number }>(
-        `SELECT merchant, SUM(amount) as total, COUNT(*) as count FROM transactions
-         WHERE deleted_at IS NULL AND transaction_type = 'expense' AND merchant LIKE ?
-         GROUP BY merchant ORDER BY total DESC LIMIT ?`,
-        [`%${trimmed}%`, limit]
-      )
-    : [];
+  const matchingEvents = events.filter((e) => {
+    if (!trimmed) return false;
+    const q = lowerQuery;
+    return (
+      e.title.toLowerCase().includes(q) ||
+      (e.description && e.description.toLowerCase().includes(q))
+    );
+  });
 
-  const merchants: MerchantResult[] = merchantRows.map((row) => ({
-    type: 'merchant',
-    id: row.merchant,
-    name: row.merchant,
-    totalSpent: row.total,
-    transactionCount: row.count,
-  }));
+  const birthdays = matchingEvents.filter((e) => e.type === 'birthday');
+  const anniversaries = matchingEvents.filter((e) => e.type === 'anniversary');
+  const countdowns = matchingEvents.filter((e) => e.type === 'countdown');
+  const regularEvents = matchingEvents.filter((e) => e.type === 'event');
+
+  let recurring: RecurringRuleRecord[] = [];
+  if (trimmed) {
+    recurring = await recurringRepo.search(trimmed, limit);
+  }
 
   return {
     transactions,
     tasks,
-    events,
+    events: regularEvents,
+    birthdays,
+    anniversaries,
+    countdowns,
     budgets: matchingBudgets,
-    merchants,
+    recurring,
   };
 }

@@ -16,6 +16,7 @@ import { useThemeColors } from '../../hooks/useThemeColors';
 import { useTransactionStore } from '../../store';
 import { TransactionRepository } from '../../database/repositories/TransactionRepository';
 import { CATEGORY_COLORS, CATEGORY_ICONS } from '../../constants';
+import { Dropdown } from '../../components/common/Dropdown';
 import { spacing, typography, borderRadius } from '../../theme';
 import type { RootStackParamList } from '../../navigation/types';
 import type { TransactionType, TransactionStatus } from '../../types';
@@ -25,6 +26,12 @@ type TransactionFormRouteProp = RouteProp<RootStackParamList, 'TransactionForm'>
 const TYPES: TransactionType[] = ['expense', 'income', 'transfer'];
 const STATUSES: TransactionStatus[] = ['completed', 'pending', 'failed', 'reversed'];
 const CATEGORIES = Object.keys(CATEGORY_COLORS);
+const CATEGORY_OPTIONS = CATEGORIES.map((cat) => ({
+  value: cat,
+  label: cat.charAt(0).toUpperCase() + cat.slice(1),
+  icon: CATEGORY_ICONS[cat] as keyof typeof Ionicons.glyphMap,
+  color: CATEGORY_COLORS[cat],
+}));
 
 export function TransactionFormScreen() {
   const colors = useThemeColors();
@@ -121,23 +128,23 @@ export function TransactionFormScreen() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.bgPrimary }]} edges={['top']}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
-        </TouchableOpacity>
-        <Text style={[styles.title, { color: colors.textPrimary }]}>
-          {isEditing ? 'Edit Transaction' : 'Add Transaction'}
-        </Text>
-        {isEditing ? (
-          <TouchableOpacity onPress={handleDelete}>
-            <Ionicons name="trash-outline" size={22} color={colors.danger} />
-          </TouchableOpacity>
-        ) : (
-          <View style={{ width: 24 }} />
-        )}
-      </View>
-
       <ScrollView contentContainerStyle={styles.content}>
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => navigation.goBack()}>
+            <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
+          </TouchableOpacity>
+          <Text style={[styles.title, { color: colors.textPrimary }]}>
+            {isEditing ? 'Edit Transaction' : 'Add Transaction'}
+          </Text>
+          {isEditing ? (
+            <TouchableOpacity onPress={handleDelete}>
+              <Ionicons name="trash-outline" size={22} color={colors.danger} />
+            </TouchableOpacity>
+          ) : (
+            <View style={{ width: 24 }} />
+          )}
+        </View>
+
         <SegmentedControl
           options={TYPES}
           selected={type}
@@ -178,40 +185,7 @@ export function TransactionFormScreen() {
           />
         </View>
 
-        <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>Category</Text>
-        <View style={styles.categoryGrid}>
-          {CATEGORIES.map((cat) => {
-            const isSelected = category === cat;
-            const catColor = CATEGORY_COLORS[cat];
-            const iconName = CATEGORY_ICONS[cat] as keyof typeof Ionicons.glyphMap;
-
-            return (
-              <TouchableOpacity
-                key={cat}
-                style={[
-                  styles.categoryChip,
-                  {
-                    backgroundColor: isSelected ? `${catColor}30` : colors.glassWhite,
-                    borderColor: isSelected ? catColor : colors.border,
-                  },
-                ]}
-                onPress={() => setCategory(cat)}
-              >
-                <Ionicons name={iconName} size={18} color={catColor} />
-                <Text
-                  style={[
-                    styles.categoryLabel,
-                    { color: isSelected ? colors.textPrimary : colors.textSecondary },
-                  ]}
-                  numberOfLines={1}
-                  ellipsizeMode="tail"
-                >
-                  {cat}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
+        <Dropdown label="Category" value={category} options={CATEGORY_OPTIONS} onChange={setCategory} />
 
         <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>Status</Text>
         <SegmentedControl
@@ -284,15 +258,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.base,
+    paddingVertical: spacing.sm,
   },
   title: {
     fontSize: typography.sizes.lg,
     fontWeight: typography.weights.semibold,
   },
   content: {
-    padding: spacing.lg,
+    paddingHorizontal: spacing.screenHorizontal, paddingVertical: spacing.lg,
   },
   segmentContainer: {
     flexDirection: 'row',
@@ -337,25 +310,6 @@ const styles = StyleSheet.create({
     fontWeight: typography.weights.medium,
     marginTop: spacing.lg,
     marginBottom: spacing.sm,
-  },
-  categoryGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.sm,
-  },
-  categoryChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: spacing.base,
-    paddingVertical: spacing.sm,
-    borderRadius: borderRadius.lg,
-    borderWidth: 1,
-    gap: spacing.sm,
-  },
-  categoryLabel: {
-    fontSize: typography.sizes.sm,
-    fontWeight: typography.weights.medium,
-    textTransform: 'capitalize',
   },
   saveButton: {
     marginTop: spacing.xl,

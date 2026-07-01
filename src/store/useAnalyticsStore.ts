@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import type { SQLiteDatabase } from 'expo-sqlite';
 import { computeAnalytics, type AnalyticsData } from '../services/analyticsService';
 
-export type DateRange = 'this_month' | 'last_month' | 'last_3_months' | 'last_6_months' | 'this_year';
+export type DateRange = 'this_week' | 'this_month';
 
 interface AnalyticsState {
   data: AnalyticsData | null;
@@ -19,26 +19,15 @@ function getDateRange(range: DateRange): { start: string; end: string } {
   const start = new Date();
 
   switch (range) {
+    case 'this_week': {
+      const day = start.getDay();
+      const diff = day === 0 ? 6 : day - 1; // Monday start
+      start.setDate(start.getDate() - diff);
+      start.setHours(0, 0, 0, 0);
+      break;
+    }
     case 'this_month':
       start.setDate(1);
-      start.setHours(0, 0, 0, 0);
-      break;
-    case 'last_month':
-      start.setMonth(start.getMonth() - 1, 1);
-      start.setHours(0, 0, 0, 0);
-      end.setDate(0);
-      end.setHours(23, 59, 59, 999);
-      break;
-    case 'last_3_months':
-      start.setMonth(start.getMonth() - 3, 1);
-      start.setHours(0, 0, 0, 0);
-      break;
-    case 'last_6_months':
-      start.setMonth(start.getMonth() - 6, 1);
-      start.setHours(0, 0, 0, 0);
-      break;
-    case 'this_year':
-      start.setMonth(0, 1);
       start.setHours(0, 0, 0, 0);
       break;
   }

@@ -7,6 +7,7 @@ import { useSQLiteContext } from 'expo-sqlite';
 import { useThemeColors } from '../../hooks/useThemeColors';
 import { usePlannerStore } from '../../store';
 import { FulizaLoanRepository } from '../../database/repositories/FulizaLoanRepository';
+import { DateField } from '../../components/common/DateField';
 import { spacing, typography, borderRadius } from '../../theme';
 import type { RootStackParamList } from '../../navigation/types';
 
@@ -98,28 +99,28 @@ export function LoanFormScreen() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.bgPrimary }]} edges={['top']}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
-        </TouchableOpacity>
-        <Text style={[styles.title, { color: colors.textPrimary }]}>
-          {isEditing ? 'Edit Loan' : 'Add Loan'}
-        </Text>
-        {isEditing ? (
-          <TouchableOpacity onPress={handleDelete}>
-            <Ionicons name="trash-outline" size={22} color={colors.danger} />
-          </TouchableOpacity>
-        ) : (
-          <View style={{ width: 24 }} />
-        )}
-      </View>
-
       <ScrollView contentContainerStyle={styles.content}>
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => navigation.goBack()}>
+            <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
+          </TouchableOpacity>
+          <Text style={[styles.title, { color: colors.textPrimary }]}>
+            {isEditing ? 'Edit Loan' : 'Add Loan'}
+          </Text>
+          {isEditing ? (
+            <TouchableOpacity onPress={handleDelete}>
+              <Ionicons name="trash-outline" size={22} color={colors.danger} />
+            </TouchableOpacity>
+          ) : (
+            <View style={{ width: 24 }} />
+          )}
+        </View>
+
         <Input label="Loan name / code" value={drawCode} onChangeText={setDrawCode} placeholder="e.g. Fuliza draw" />
         <Input label="Draw amount" value={drawAmount} onChangeText={setDrawAmount} placeholder="0.00" keyboardType="decimal-pad" />
         <Input label="Total repaid" value={totalRepaid} onChangeText={setTotalRepaid} placeholder="0.00" keyboardType="decimal-pad" />
-        <Input label="Draw date" value={drawDate} onChangeText={setDrawDate} placeholder="YYYY-MM-DD" />
-        <Input label="Last repayment date (optional)" value={lastRepaymentDate} onChangeText={setLastRepaymentDate} placeholder="YYYY-MM-DD" />
+        <DateField label="Draw date" value={drawDate} onChange={setDrawDate} />
+        <DateField label="Last repayment date (optional)" value={lastRepaymentDate} onChange={setLastRepaymentDate} />
 
         <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>Status</Text>
         <View style={styles.segmentContainer}>
@@ -184,8 +185,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.base,
+    paddingVertical: spacing.sm,
   },
   title: { fontSize: typography.sizes.lg, fontWeight: typography.weights.semibold },
   content: { padding: spacing.lg },

@@ -31,28 +31,30 @@ export function IncomeScreen() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.bgPrimary }]} edges={['top']}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
-        </TouchableOpacity>
-        <View style={styles.headerTextCol}>
-          <Text style={[styles.title, { color: colors.textPrimary }]}>Income</Text>
-          <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
-            {incomes.length} entr{incomes.length === 1 ? 'y' : 'ies'} tracked
-          </Text>
-        </View>
-        <View style={{ width: 24 }} />
-      </View>
-
-      {incomes.length > 0 && (
-        <GlassCard variant="elevated" style={styles.summaryCard}>
-          <Text style={[styles.summaryLabel, { color: colors.textSecondary }]}>Total Income</Text>
-          <Text style={[styles.summaryAmount, { color: colors.success }]}>{formatCurrency(totalIncome)}</Text>
-          <Text style={[styles.summaryMeta, { color: colors.textTertiary }]}>{incomes.length} source{incomes.length > 1 ? 's' : ''}</Text>
-        </GlassCard>
-      )}
-
       <ScrollView contentContainerStyle={styles.content}>
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => navigation.goBack()}>
+            <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
+          </TouchableOpacity>
+          <View style={styles.headerTextCol}>
+            <Text style={[styles.title, { color: colors.textPrimary }]}>Income</Text>
+            <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
+              {incomes.length} entr{incomes.length === 1 ? 'y' : 'ies'} tracked
+            </Text>
+          </View>
+          <TouchableOpacity onPress={() => navigation.navigate('IncomeForm')}>
+            <Ionicons name="add" size={24} color={colors.accentPrimary} />
+          </TouchableOpacity>
+        </View>
+
+        {incomes.length > 0 && (
+          <GlassCard variant="elevated" style={styles.summaryCard}>
+            <Text style={[styles.summaryLabel, { color: colors.textSecondary }]}>Total Income</Text>
+            <Text style={[styles.summaryAmount, { color: colors.success }]}>{formatCurrency(totalIncome)}</Text>
+            <Text style={[styles.summaryMeta, { color: colors.textTertiary }]}>{incomes.length} source{incomes.length > 1 ? 's' : ''}</Text>
+          </GlassCard>
+        )}
+
         {incomes.length === 0 ? (
           <View style={styles.empty}>
             <View style={[styles.emptyIcon, { backgroundColor: colors.glassWhite }]}>
@@ -99,15 +101,6 @@ export function IncomeScreen() {
           ))
         )}
       </ScrollView>
-
-      <TouchableOpacity
-        style={[styles.fab, { backgroundColor: colors.success }]}
-        onPress={() => navigation.navigate('IncomeForm')}
-        activeOpacity={0.8}
-      >
-        <Ionicons name="add" size={20} color={colors.textInverse} />
-        <Text style={[styles.fabText, { color: colors.textInverse }]}>Add Income</Text>
-      </TouchableOpacity>
     </SafeAreaView>
   );
 }
@@ -118,8 +111,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.base,
+    paddingBottom: spacing.sm,
   },
   headerTextCol: { alignItems: 'center' },
   title: { fontSize: typography.sizes.lg, fontWeight: typography.weights.semibold },
@@ -141,7 +133,7 @@ const styles = StyleSheet.create({
     fontSize: typography.sizes.sm,
     marginTop: spacing.xs,
   },
-  content: { padding: spacing.lg, paddingTop: spacing.sm },
+  content: { paddingHorizontal: spacing.screenHorizontal, paddingVertical: spacing.lg, paddingTop: spacing.sm },
   empty: {
     paddingVertical: spacing['3xl'],
     alignItems: 'center',
@@ -172,25 +164,4 @@ const styles = StyleSheet.create({
   trailingCol: { alignItems: 'flex-end', gap: spacing.xs },
   amount: { fontSize: typography.sizes.base, fontWeight: typography.weights.bold },
   deleteButton: { padding: 2 },
-  fab: {
-    position: 'absolute',
-    left: '50%',
-    bottom: spacing.lg,
-    transform: [{ translateX: -72 }],
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.base,
-    borderRadius: borderRadius.full,
-    gap: spacing.sm,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 6,
-    elevation: 6,
-  },
-  fabText: {
-    fontSize: typography.sizes.base,
-    fontWeight: typography.weights.semibold,
-  },
 });

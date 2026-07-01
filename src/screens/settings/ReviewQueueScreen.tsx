@@ -3,6 +3,7 @@ import {
   View,
   Text,
   StyleSheet,
+  ScrollView,
   FlatList,
   TouchableOpacity,
   ActivityIndicator,
@@ -193,19 +194,6 @@ export function ReviewQueueScreen() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.bgPrimary }]} edges={['top']}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
-        </TouchableOpacity>
-        <View style={styles.headerCenter}>
-          <Text style={[styles.title, { color: colors.textPrimary }]}>Review Queue</Text>
-          <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
-            {entries.length} pending
-          </Text>
-        </View>
-        <View style={{ width: 24 }} />
-      </View>
-
       {message && (
         <View style={[styles.banner, { backgroundColor: message.includes('failed') ? colors.danger : colors.success }]}>
           <Text style={[styles.bannerText, { color: '#fff' }]}>{message}</Text>
@@ -216,24 +204,32 @@ export function ReviewQueueScreen() {
       )}
 
       {isLoading ? (
-        <View style={styles.centered}>
-          <ActivityIndicator color={colors.accentPrimary} />
-        </View>
+        <ScrollView contentContainerStyle={styles.list}>
+          <ReviewQueueHeader entries={entries} colors={colors} onBack={() => navigation.goBack()} />
+          <View style={styles.centered}>
+            <ActivityIndicator color={colors.accentPrimary} />
+          </View>
+        </ScrollView>
       ) : entries.length === 0 ? (
-        <View style={styles.centered}>
-          <Ionicons name="checkmark-circle-outline" size={56} color={colors.success} />
-          <Text style={[styles.emptyTitle, { color: colors.textPrimary }]}>Queue clear</Text>
-          <Text style={[styles.emptyDesc, { color: colors.textSecondary }]}>
-            No transactions are pending review.
-          </Text>
-        </View>
+        <ScrollView contentContainerStyle={styles.list}>
+          <ReviewQueueHeader entries={entries} colors={colors} onBack={() => navigation.goBack()} />
+          <View style={styles.centered}>
+            <Ionicons name="checkmark-circle-outline" size={56} color={colors.success} />
+            <Text style={[styles.emptyTitle, { color: colors.textPrimary }]}>Queue clear</Text>
+            <Text style={[styles.emptyDesc, { color: colors.textSecondary }]}>
+              No transactions are pending review.
+            </Text>
+          </View>
+        </ScrollView>
       ) : (
         <FlatList
           data={entries}
           keyExtractor={(item) => String(item.id)}
           contentContainerStyle={styles.list}
           ListHeaderComponent={
-            <GlassCard style={styles.bulkCard}>
+            <>
+              <ReviewQueueHeader entries={entries} colors={colors} onBack={() => navigation.goBack()} />
+              <GlassCard style={styles.bulkCard}>
               <Text style={[styles.bulkLabel, { color: colors.textSecondary }]}>
                 {entries.length} transactions need review
               </Text>
@@ -258,6 +254,7 @@ export function ReviewQueueScreen() {
                 </TouchableOpacity>
               </View>
             </GlassCard>
+            </>
           }
           renderItem={({ item }) => (
             <EntryCard
@@ -275,18 +272,42 @@ export function ReviewQueueScreen() {
   );
 }
 
+function ReviewQueueHeader({
+  entries,
+  colors,
+  onBack,
+}: {
+  entries: AuditEntry[];
+  colors: any;
+  onBack: () => void;
+}) {
+  return (
+    <View style={styles.header}>
+      <TouchableOpacity onPress={onBack}>
+        <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
+      </TouchableOpacity>
+      <View style={styles.headerCenter}>
+        <Text style={[styles.title, { color: colors.textPrimary }]}>Review Queue</Text>
+        <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
+          {entries.length} pending
+        </Text>
+      </View>
+      <View style={{ width: 24 }} />
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   container: { flex: 1 },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.base,
+    paddingBottom: spacing.sm,
   },
   headerCenter: { flex: 1, alignItems: 'center' },
   title: { fontSize: typography.sizes.xl, fontWeight: typography.weights.bold },
   subtitle: { fontSize: typography.sizes.sm },
-  list: { padding: spacing.lg, paddingBottom: spacing['4xl'], gap: spacing.sm },
+  list: { paddingHorizontal: spacing.screenHorizontal, paddingVertical: spacing.lg, paddingBottom: spacing['4xl'], gap: spacing.sm },
   bulkCard: { marginBottom: spacing.sm },
   bulkLabel: { fontSize: typography.sizes.sm, marginBottom: spacing.sm },
   bulkActions: { flexDirection: 'row', gap: spacing.sm },
@@ -311,7 +332,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: spacing.lg,
+    paddingHorizontal: spacing.screenHorizontal,
     paddingVertical: spacing.sm,
   },
   bannerText: { fontSize: typography.sizes.sm, flex: 1 },

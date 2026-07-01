@@ -1,15 +1,16 @@
 import React, { useState } from 'react';
-import { View, TextInput, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useThemeColors } from '../../hooks/useThemeColors';
-import { spacing, typography, borderRadius } from '../../theme';
+import { spacing, borderRadius } from '../../theme';
 
 interface ChatInputProps {
   onSend: (text: string) => void;
   disabled?: boolean;
+  bottomInset?: number;
 }
 
-export function ChatInput({ onSend, disabled }: ChatInputProps) {
+export function ChatInput({ onSend, disabled, bottomInset = 0 }: ChatInputProps) {
   const colors = useThemeColors();
   const [text, setText] = useState('');
 
@@ -20,15 +21,11 @@ export function ChatInput({ onSend, disabled }: ChatInputProps) {
   };
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.bgSecondary, borderTopColor: colors.border }]}>
-      <TouchableOpacity style={styles.iconButton}>
-        <Ionicons name="mic-outline" size={22} color={colors.textSecondary} />
-      </TouchableOpacity>
-
-      <View style={[styles.inputContainer, { backgroundColor: colors.glassWhite, borderColor: colors.border }]}>
+    <View style={[styles.container, { backgroundColor: colors.bgSecondary, paddingBottom: spacing.sm + bottomInset }]}>
+      <View style={[styles.inputRow, { backgroundColor: colors.glassWhite, borderColor: colors.border }]}>
         <TextInput
           style={[styles.input, { color: colors.textPrimary }]}
-          placeholder="Ask me anything..."
+          placeholder="Message BELTECH..."
           placeholderTextColor={colors.textTertiary}
           value={text}
           onChangeText={setText}
@@ -36,53 +33,50 @@ export function ChatInput({ onSend, disabled }: ChatInputProps) {
           maxLength={500}
           editable={!disabled}
         />
+        <TouchableOpacity
+          style={[
+            styles.sendButton,
+            { backgroundColor: text.trim() ? colors.accentPrimary : colors.textTertiary },
+          ]}
+          onPress={handleSend}
+          disabled={!text.trim() || disabled}
+        >
+          {disabled ? (
+            <ActivityIndicator size={20} color={colors.textInverse} />
+          ) : (
+            <Ionicons name="arrow-up" size={20} color={colors.textInverse} />
+          )}
+        </TouchableOpacity>
       </View>
-
-      <TouchableOpacity
-        style={[
-          styles.sendButton,
-          { backgroundColor: text.trim() ? colors.accentPrimary : colors.textTertiary },
-        ]}
-        onPress={handleSend}
-        disabled={!text.trim() || disabled}
-      >
-        <Ionicons name="arrow-up" size={20} color={colors.textInverse} />
-      </TouchableOpacity>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
+    paddingTop: 10,
+    paddingHorizontal: spacing.screenHorizontal,
+  },
+  inputRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: spacing.base,
-    paddingVertical: spacing.base,
-    borderTopWidth: 1,
-    gap: spacing.sm,
-  },
-  iconButton: {
-    width: 40,
-    height: 40,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  inputContainer: {
-    flex: 1,
+    alignItems: 'flex-end',
     borderRadius: borderRadius.full,
     borderWidth: 1,
-    paddingHorizontal: spacing.base,
-    maxHeight: 100,
+    paddingLeft: 16,
+    paddingRight: 8,
+    paddingVertical: 8,
+    gap: 8,
   },
   input: {
-    fontSize: typography.sizes.base,
-    paddingVertical: spacing.base,
+    flex: 1,
+    fontSize: 15,
     maxHeight: 100,
+    paddingVertical: 0,
   },
   sendButton: {
-    width: 40,
-    height: 40,
-    borderRadius: borderRadius.full,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     justifyContent: 'center',
     alignItems: 'center',
   },

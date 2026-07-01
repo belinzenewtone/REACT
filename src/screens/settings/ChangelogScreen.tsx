@@ -68,22 +68,22 @@ export function ChangelogScreen() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.bgPrimary }]} edges={['top']}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
-        </TouchableOpacity>
-        <View style={styles.headerCenter}>
-          <Text style={[styles.eyebrow, { color: colors.textSecondary }]}>PersonalOS</Text>
-          <Text style={[styles.title, { color: colors.textPrimary }]}>What's new</Text>
-        </View>
-        <View style={{ width: 24 }} />
-      </View>
-
-      <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
-        Recent updates and improvements.
-      </Text>
-
       <ScrollView contentContainerStyle={styles.content}>
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => navigation.goBack()}>
+            <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
+          </TouchableOpacity>
+          <View style={styles.headerCenter}>
+            <Text style={[styles.eyebrow, { color: colors.textSecondary }]}>PersonalOS</Text>
+            <Text style={[styles.title, { color: colors.textPrimary }]}>What's new</Text>
+          </View>
+          <View style={{ width: 24 }} />
+        </View>
+
+        <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
+          Recent updates and improvements.
+        </Text>
+
         {CHANGELOG.map((entry, index) => (
           <GlassCard key={entry.version} style={styles.card}>
             <View style={styles.cardHeader}>
@@ -125,14 +125,13 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.base,
+    paddingVertical: spacing.sm,
   },
   headerCenter: { flex: 1, alignItems: 'center' },
   eyebrow: { fontSize: typography.sizes.xs, fontWeight: typography.weights.medium },
   title: { fontSize: typography.sizes.xl, fontWeight: typography.weights.bold },
-  subtitle: { fontSize: typography.sizes.sm, paddingHorizontal: spacing.lg, marginBottom: spacing.base },
-  content: { padding: spacing.lg, paddingBottom: spacing['4xl'], gap: spacing.base },
+  subtitle: { fontSize: typography.sizes.sm, marginBottom: spacing.base },
+  content: { paddingHorizontal: spacing.screenHorizontal, paddingVertical: spacing.lg, paddingBottom: spacing['4xl'], gap: spacing.base },
   card: { gap: spacing.sm },
   cardHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   versionBadge: { fontSize: typography.sizes.sm, fontWeight: typography.weights.semibold },

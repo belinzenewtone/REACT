@@ -87,15 +87,15 @@ export function PersonalInformationScreen() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.bgPrimary }]} edges={['top']}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-          <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
-        </TouchableOpacity>
-        <Text style={[styles.title, { color: colors.textPrimary }]}>Personal Information</Text>
-        <View style={styles.headerSpacer} />
-      </View>
-
       <ScrollView contentContainerStyle={styles.content}>
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+            <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
+          </TouchableOpacity>
+          <Text style={[styles.title, { color: colors.textPrimary }]}>Personal Information</Text>
+          <View style={styles.headerSpacer} />
+        </View>
+
         <GlassCard style={styles.card}>
           <View style={styles.cardHeader}>
             <Text style={[styles.cardTitle, { color: colors.textPrimary }]}>
@@ -175,8 +175,7 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.base,
+    paddingBottom: spacing.sm,
   },
   backButton: {
     padding: spacing.sm,
@@ -192,7 +191,7 @@ const styles = StyleSheet.create({
     width: 40,
   },
   content: {
-    padding: spacing.lg,
+    paddingHorizontal: spacing.screenHorizontal, paddingVertical: spacing.lg,
   },
   card: {
     padding: 0,
@@ -213,7 +212,7 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: spacing.lg,
+    paddingHorizontal: spacing.screenHorizontal,
     paddingVertical: spacing.md,
     gap: spacing.base,
   },
@@ -240,7 +239,7 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   modalContent: {
-    padding: spacing.lg,
+    paddingHorizontal: spacing.screenHorizontal, paddingVertical: spacing.lg,
     borderTopLeftRadius: borderRadius['2xl'],
     borderTopRightRadius: borderRadius['2xl'],
   },

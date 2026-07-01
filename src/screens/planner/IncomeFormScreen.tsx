@@ -7,6 +7,7 @@ import { useSQLiteContext } from 'expo-sqlite';
 import { useThemeColors } from '../../hooks/useThemeColors';
 import { usePlannerStore } from '../../store';
 import { IncomeRepository } from '../../database/repositories/IncomeRepository';
+import { DateField } from '../../components/common/DateField';
 import { spacing, typography, borderRadius } from '../../theme';
 import type { RootStackParamList } from '../../navigation/types';
 import type { IncomeFrequency } from '../../types';
@@ -97,26 +98,26 @@ export function IncomeFormScreen() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.bgPrimary }]} edges={['top']}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
-        </TouchableOpacity>
-        <Text style={[styles.title, { color: colors.textPrimary }]}>
-          {isEditing ? 'Edit Income' : 'Add Income'}
-        </Text>
-        {isEditing ? (
-          <TouchableOpacity onPress={handleDelete}>
-            <Ionicons name="trash-outline" size={22} color={colors.danger} />
-          </TouchableOpacity>
-        ) : (
-          <View style={{ width: 24 }} />
-        )}
-      </View>
-
       <ScrollView contentContainerStyle={styles.content}>
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => navigation.goBack()}>
+            <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
+          </TouchableOpacity>
+          <Text style={[styles.title, { color: colors.textPrimary }]}>
+            {isEditing ? 'Edit Income' : 'Add Income'}
+          </Text>
+          {isEditing ? (
+            <TouchableOpacity onPress={handleDelete}>
+              <Ionicons name="trash-outline" size={22} color={colors.danger} />
+            </TouchableOpacity>
+          ) : (
+            <View style={{ width: 24 }} />
+          )}
+        </View>
+
         <Input label="Source" value={source} onChangeText={setSource} placeholder="e.g. Salary" />
         <Input label="Amount" value={amount} onChangeText={setAmount} placeholder="0.00" keyboardType="decimal-pad" />
-        <Input label="Date" value={date} onChangeText={setDate} placeholder="YYYY-MM-DD" />
+        <DateField label="Date" value={date} onChange={setDate} />
         <Input label="Note (optional)" value={note} onChangeText={setNote} placeholder="Notes..." />
 
         <TouchableOpacity
@@ -192,8 +193,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.base,
+    paddingVertical: spacing.sm,
   },
   title: { fontSize: typography.sizes.lg, fontWeight: typography.weights.semibold },
   content: { padding: spacing.lg },

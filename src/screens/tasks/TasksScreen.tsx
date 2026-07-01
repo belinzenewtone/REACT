@@ -1,8 +1,17 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet, Alert } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  ScrollView,
+  StyleSheet,
+  Alert,
+  Animated,
+  PanResponder,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import Swipeable, { type SwipeableMethods } from 'react-native-gesture-handler/ReanimatedSwipeable';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useThemeColors } from '../../hooks/useThemeColors';
@@ -129,27 +138,33 @@ export function TasksScreen() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.bgPrimary }]} edges={['top']}>
-      <View style={styles.header}>
-        <View>
-          <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>Tasks</Text>
-          <Text style={[styles.headerSubtitle, { color: colors.textSecondary }]}>
-            {openCount} open · {completedCount} completed
-          </Text>
-        </View>
-      </View>
-
-      <View style={[styles.searchBar, { backgroundColor: colors.glassWhite, borderColor: colors.border }]}>
-        <Ionicons name="search" size={18} color={colors.textTertiary} />
-        <TextInput
-          style={[styles.searchInput, { color: colors.textPrimary }]}
-          placeholder="Search tasks"
-          placeholderTextColor={colors.textTertiary}
-          value={query}
-          onChangeText={setQuery}
-        />
-      </View>
-
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => navigation.goBack()}>
+            <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
+          </TouchableOpacity>
+          <View>
+            <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>Tasks</Text>
+            <Text style={[styles.headerSubtitle, { color: colors.textSecondary }]}>
+              {openCount} open · {completedCount} completed
+            </Text>
+          </View>
+          <TouchableOpacity onPress={() => navigation.navigate('TaskForm')}>
+            <Ionicons name="add" size={24} color={colors.accentPrimary} />
+          </TouchableOpacity>
+        </View>
+
+        <View style={[styles.searchBar, { backgroundColor: colors.glassWhite, borderColor: colors.border }]}>
+          <Ionicons name="search" size={18} color={colors.textTertiary} />
+          <TextInput
+            style={[styles.searchInput, { color: colors.textPrimary }]}
+            placeholder="Search tasks"
+            placeholderTextColor={colors.textTertiary}
+            value={query}
+            onChangeText={setQuery}
+          />
+        </View>
+
         {grouped.urgent.length > 0 && (
           <PrioritySection
             title="Urgent"
@@ -236,14 +251,6 @@ export function TasksScreen() {
           </View>
         )}
       </ScrollView>
-
-      <TouchableOpacity
-        style={[styles.fab, { backgroundColor: colors.accentPrimary }]}
-        onPress={() => navigation.navigate('TaskForm')}
-        activeOpacity={0.85}
-      >
-        <Ionicons name="add" size={28} color={colors.textInverse} />
-      </TouchableOpacity>
     </SafeAreaView>
   );
 }
@@ -312,50 +319,84 @@ interface SwipeableTaskCardProps {
   onPress: () => void;
 }
 
-function SwipeableTaskCard({ task, onToggleComplete, onDelete, ...rest }: SwipeableTaskCardProps) {
+const SWIPE_ACTION_WIDTH = 64;
+
+function SwipeableTaskCard({ task, onToggleComplete, onDelete, onPress, ...rest }: SwipeableTaskCardProps) {
   const colors = useThemeColors();
+  const translateX = useRef(new Animated.Value(0)).current;
+  const openSide = useRef<'none' | 'left' | 'right'>('none');
 
-  const renderLeftActions = (
-    _progress: unknown,
-    _translation: unknown,
-    swipeableMethods: SwipeableMethods
-  ) => (
-    <TouchableOpacity
-      style={[styles.swipeAction, { backgroundColor: colors.success }]}
-      onPress={() => {
-        swipeableMethods.close();
-        onToggleComplete();
-      }}
-    >
-      <Ionicons name="checkmark" size={22} color={colors.textInverse} />
-    </TouchableOpacity>
-  );
+  const close = useCallback(() => {
+    Animated.spring(translateX, { toValue: 0, useNativeDriver: true, friction: 8 }).start();
+    openSide.current = 'none';
+  }, [translateX]);
 
-  const renderRightActions = (
-    _progress: unknown,
-    _translation: unknown,
-    swipeableMethods: SwipeableMethods
-  ) => (
-    <TouchableOpacity
-      style={[styles.swipeAction, { backgroundColor: colors.danger }]}
-      onPress={() => {
-        swipeableMethods.close();
-        onDelete();
-      }}
-    >
-      <Ionicons name="trash" size={22} color={colors.textInverse} />
-    </TouchableOpacity>
-  );
+  const openLeft = useCallback(() => {
+    Animated.spring(translateX, { toValue: SWIPE_ACTION_WIDTH, useNativeDriver: true, friction: 8 }).start();
+    openSide.current = 'left';
+  }, [translateX]);
+
+  const openRight = useCallback(() => {
+    Animated.spring(translateX, { toValue: -SWIPE_ACTION_WIDTH, useNativeDriver: true, friction: 8 }).start();
+    openSide.current = 'right';
+  }, [translateX]);
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (_, gesture) =>
+        Math.abs(gesture.dx) > 10 && Math.abs(gesture.dx) > Math.abs(gesture.dy) * 1.5,
+      onPanResponderMove: (_, gesture) => {
+        const x = Math.max(-SWIPE_ACTION_WIDTH, Math.min(SWIPE_ACTION_WIDTH, gesture.dx));
+        translateX.setValue(x);
+      },
+      onPanResponderRelease: (_, gesture) => {
+        if (gesture.dx > 40) openLeft();
+        else if (gesture.dx < -40) openRight();
+        else close();
+      },
+    })
+  ).current;
+
+  const handleComplete = () => {
+    close();
+    onToggleComplete();
+  };
+
+  const handleDelete = () => {
+    close();
+    onDelete();
+  };
 
   return (
-    <Swipeable
-      renderLeftActions={renderLeftActions}
-      renderRightActions={renderRightActions}
-      overshootLeft={false}
-      overshootRight={false}
-    >
-      <TaskCard task={task} onToggleComplete={onToggleComplete} {...rest} />
-    </Swipeable>
+    <View style={styles.swipeWrapper}>
+      <TouchableOpacity
+        style={[styles.swipeAction, styles.swipeActionLeft, { backgroundColor: colors.success }]}
+        onPress={handleComplete}
+      >
+        <Ionicons name="checkmark" size={22} color={colors.textInverse} />
+      </TouchableOpacity>
+      <TouchableOpacity
+        style={[styles.swipeAction, styles.swipeActionRight, { backgroundColor: colors.danger }]}
+        onPress={handleDelete}
+      >
+        <Ionicons name="trash" size={22} color={colors.textInverse} />
+      </TouchableOpacity>
+
+      <Animated.View style={{ transform: [{ translateX }] }} {...panResponder.panHandlers}>
+        <TaskCard
+          task={task}
+          onToggleComplete={onToggleComplete}
+          {...rest}
+          onPress={() => {
+            if (openSide.current !== 'none') {
+              close();
+            } else {
+              onPress();
+            }
+          }}
+        />
+      </Animated.View>
+    </View>
   );
 }
 
@@ -443,16 +484,17 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   header: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.base,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: spacing.sm,
   },
   headerTitle: {
-    fontSize: typography.sizes['2xl'],
-    fontWeight: typography.weights.bold,
+    fontSize: typography.sizes.lg,
+    fontWeight: typography.weights.semibold,
   },
   headerSubtitle: {
-    fontSize: typography.sizes.base,
+    fontSize: typography.sizes.xs,
     marginTop: 2,
   },
   searchBar: {
@@ -472,7 +514,7 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
   },
   scrollContent: {
-    paddingHorizontal: spacing.lg,
+    paddingHorizontal: spacing.screenHorizontal,
     paddingBottom: spacing['4xl'],
   },
   section: {
@@ -506,12 +548,23 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     padding: spacing.base,
   },
+  swipeWrapper: {
+    marginBottom: spacing.base,
+  },
   swipeAction: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
     width: 64,
     justifyContent: 'center',
     alignItems: 'center',
     borderRadius: borderRadius['2xl'],
-    marginBottom: spacing.base,
+  },
+  swipeActionLeft: {
+    left: 0,
+  },
+  swipeActionRight: {
+    right: 0,
   },
   priorityBar: {
     width: 4,
@@ -557,21 +610,6 @@ const styles = StyleSheet.create({
     fontSize: typography.sizes.sm,
     fontWeight: typography.weights.semibold,
     marginLeft: 4,
-  },
-  fab: {
-    position: 'absolute',
-    right: spacing.lg,
-    bottom: spacing.xl,
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 6,
   },
   emptyState: {
     alignItems: 'center',

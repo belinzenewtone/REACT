@@ -120,32 +120,33 @@ export function FeeAnalyticsScreen() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.bgPrimary }]} edges={['top']}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
-        </TouchableOpacity>
-        <View style={styles.headerCenter}>
-          <Text style={[styles.eyebrow, { color: colors.textSecondary }]}>Finance</Text>
-          <Text style={[styles.title, { color: colors.textPrimary }]}>Service Charges</Text>
+      <ScrollView contentContainerStyle={styles.content}>
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => navigation.goBack()}>
+            <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
+          </TouchableOpacity>
+          <View style={styles.headerCenter}>
+            <Text style={[styles.eyebrow, { color: colors.textSecondary }]}>Finance</Text>
+            <Text style={[styles.title, { color: colors.textPrimary }]}>Service Charges</Text>
+          </View>
+          <View style={{ width: 24 }} />
         </View>
-        <View style={{ width: 24 }} />
-      </View>
 
-      <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
-        Airtime, Fuliza, withdrawals and subscriptions this month
-      </Text>
+        <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
+          Airtime, Fuliza, withdrawals and subscriptions this month
+        </Text>
 
-      {isEmpty ? (
-        <View style={styles.emptyState}>
-          <Ionicons name="checkmark-circle-outline" size={48} color={colors.textTertiary} />
-          <Text style={[styles.emptyTitle, { color: colors.textPrimary }]}>No service charges this month</Text>
-          <Text style={[styles.emptyDesc, { color: colors.textSecondary }]}>
-            No airtime, Fuliza, withdrawal, or subscription transactions found.
-          </Text>
-        </View>
-      ) : (
-        <ScrollView contentContainerStyle={styles.content}>
-          <GlassCard style={styles.totalCard}>
+        {isEmpty ? (
+          <View style={styles.emptyState}>
+            <Ionicons name="checkmark-circle-outline" size={48} color={colors.textTertiary} />
+            <Text style={[styles.emptyTitle, { color: colors.textPrimary }]}>No service charges this month</Text>
+            <Text style={[styles.emptyDesc, { color: colors.textSecondary }]}>
+              No airtime, Fuliza, withdrawal, or subscription transactions found.
+            </Text>
+          </View>
+        ) : (
+          <>
+            <GlassCard style={styles.totalCard}>
             <Text style={[styles.totalLabel, { color: colors.textSecondary }]}>This Month's Charges</Text>
             <Text style={[styles.totalAmount, { color: colors.warning }]}>{formatCurrency(totalFees)}</Text>
           </GlassCard>
@@ -193,8 +194,9 @@ export function FeeAnalyticsScreen() {
               </GlassCard>
             </>
           )}
-        </ScrollView>
-      )}
+          </>
+        )}
+      </ScrollView>
     </SafeAreaView>
   );
 }
@@ -204,18 +206,16 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.base,
+    paddingVertical: spacing.sm,
   },
   headerCenter: { flex: 1, alignItems: 'center' },
   eyebrow: { fontSize: typography.sizes.xs, fontWeight: typography.weights.medium },
   title: { fontSize: typography.sizes.xl, fontWeight: typography.weights.bold },
   subtitle: {
     fontSize: typography.sizes.sm,
-    paddingHorizontal: spacing.lg,
     marginBottom: spacing.base,
   },
-  content: { padding: spacing.lg, paddingBottom: spacing['4xl'] },
+  content: { paddingHorizontal: spacing.screenHorizontal, paddingVertical: spacing.lg, paddingBottom: spacing['4xl'] },
   totalCard: { marginBottom: spacing.base },
   totalLabel: { fontSize: typography.sizes.sm, marginBottom: spacing.xs },
   totalAmount: { fontSize: typography.sizes['3xl'], fontWeight: typography.weights.bold },

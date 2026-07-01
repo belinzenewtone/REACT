@@ -14,6 +14,7 @@ export type RootStackParamList = {
   Main: NavigatorScreenParams<MainTabParamList>;
   // Shared / global screens
   Tasks: undefined;
+  Events: undefined;
   Planner: undefined;
   Budgets: undefined;
   Income: undefined;
@@ -30,7 +31,7 @@ export type RootStackParamList = {
   Settings: undefined;
   PersonalInformation: undefined;
   Export: undefined;
-  CsvImport: undefined;
+  CsvImport: { fileUri?: string; fileName?: string } | undefined;
   Insights: undefined;
   TransactionDetail: { transactionId: string };
   TransactionForm: { transactionId?: string };
@@ -38,7 +39,7 @@ export type RootStackParamList = {
   TaskDetail: { taskId: string };
   TaskForm: { taskId?: string };
   EventDetail: { eventId: string };
-  EventForm: { eventId?: string };
+  EventForm: { eventId?: string; type?: 'event' | 'birthday' | 'anniversary' | 'countdown' };
   BudgetDetail: { budgetId: string };
   BudgetForm: { budgetId?: string };
   // New screens

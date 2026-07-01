@@ -36,21 +36,23 @@ export function GoalsScreen() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.bgPrimary }]} edges={['top']}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
-        </TouchableOpacity>
-        <View style={styles.headerTextCol}>
-          <Text style={[styles.eyebrow, { color: colors.textSecondary }]}>Personal Growth</Text>
-          <Text style={[styles.title, { color: colors.textPrimary }]}>Goals</Text>
-          <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
-            {activeGoals.length} active goal{activeGoals.length === 1 ? '' : 's'}
-          </Text>
-        </View>
-        <View style={{ width: 24 }} />
-      </View>
-
       <ScrollView contentContainerStyle={styles.content}>
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => navigation.goBack()}>
+            <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
+          </TouchableOpacity>
+          <View style={styles.headerTextCol}>
+            <Text style={[styles.eyebrow, { color: colors.textSecondary }]}>Personal Growth</Text>
+            <Text style={[styles.title, { color: colors.textPrimary }]}>Goals</Text>
+            <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
+              {activeGoals.length} active goal{activeGoals.length === 1 ? '' : 's'}
+            </Text>
+          </View>
+          <TouchableOpacity onPress={() => navigation.navigate('GoalForm')}>
+            <Ionicons name="add" size={24} color={colors.accentPrimary} />
+          </TouchableOpacity>
+        </View>
+
         {goals.length === 0 ? (
           <EmptyState icon="flag-outline" title="No goals yet" subtitle="Set a goal to start tracking your progress." />
         ) : (
@@ -110,15 +112,6 @@ export function GoalsScreen() {
           })
         )}
       </ScrollView>
-
-      <TouchableOpacity
-        style={[styles.fab, { backgroundColor: colors.accentPrimary }]}
-        onPress={() => navigation.navigate('GoalForm')}
-        activeOpacity={0.8}
-      >
-        <Ionicons name="add" size={20} color={colors.textInverse} />
-        <Text style={[styles.fabText, { color: colors.textInverse }]}>Add Goal</Text>
-      </TouchableOpacity>
     </SafeAreaView>
   );
 }
@@ -129,8 +122,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.base,
+    paddingBottom: spacing.sm,
   },
   headerTextCol: { alignItems: 'center' },
   eyebrow: {
@@ -141,7 +133,7 @@ const styles = StyleSheet.create({
   },
   title: { fontSize: typography.sizes.lg, fontWeight: typography.weights.semibold, marginTop: 2 },
   subtitle: { fontSize: typography.sizes.xs, marginTop: 2 },
-  content: { padding: spacing.lg, paddingBottom: spacing['4xl'] },
+  content: { paddingHorizontal: spacing.screenHorizontal, paddingVertical: spacing.lg, paddingBottom: spacing['4xl'] },
   card: { marginBottom: spacing.base, padding: spacing.base },
   row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: spacing.sm },
   contentCol: { flex: 1, marginRight: spacing.sm },
@@ -174,25 +166,4 @@ const styles = StyleSheet.create({
     marginRight: spacing.lg,
   },
   actionText: { fontSize: typography.sizes.sm, fontWeight: typography.weights.medium },
-  fab: {
-    position: 'absolute',
-    left: '50%',
-    bottom: spacing.lg,
-    transform: [{ translateX: -60 }],
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.base,
-    borderRadius: borderRadius.full,
-    gap: spacing.sm,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 6,
-    elevation: 6,
-  },
-  fabText: {
-    fontSize: typography.sizes.base,
-    fontWeight: typography.weights.semibold,
-  },
 });

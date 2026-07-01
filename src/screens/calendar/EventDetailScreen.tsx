@@ -60,17 +60,17 @@ export function EventDetailScreen() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.bgPrimary }]} edges={['top']}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
-        </TouchableOpacity>
-        <Text style={[styles.title, { color: colors.textPrimary }]}>Event</Text>
-        <TouchableOpacity onPress={handleDelete}>
-          <Ionicons name="trash-outline" size={22} color={colors.danger} />
-        </TouchableOpacity>
-      </View>
-
       <ScrollView contentContainerStyle={styles.content}>
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => navigation.goBack()}>
+            <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
+          </TouchableOpacity>
+          <Text style={[styles.title, { color: colors.textPrimary }]}>Event</Text>
+          <TouchableOpacity onPress={handleDelete}>
+            <Ionicons name="trash-outline" size={22} color={colors.danger} />
+          </TouchableOpacity>
+        </View>
+
         <View style={[styles.card, { backgroundColor: colors.glassWhite, borderColor: colors.border }]}>
           <View style={[styles.priorityBadge, { backgroundColor: `${priorityColor}20` }]}>
             <Text style={[styles.priorityText, { color: priorityColor }]}>
@@ -122,15 +122,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.base,
+    paddingVertical: spacing.sm,
   },
   title: {
     fontSize: typography.sizes.lg,
     fontWeight: typography.weights.semibold,
   },
   content: {
-    padding: spacing.lg,
+    paddingHorizontal: spacing.screenHorizontal, paddingVertical: spacing.lg,
   },
   card: {
     borderRadius: borderRadius['2xl'],

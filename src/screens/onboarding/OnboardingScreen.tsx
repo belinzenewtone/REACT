@@ -97,30 +97,31 @@ export function OnboardingScreen() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.bgPrimary }]} edges={['top', 'bottom']}>
-      <ScrollView contentContainerStyle={styles.scroll}>
-        <HeroSurface
-          eyebrow={`Step ${onboardingStep} of ${TOTAL_STEPS}`}
-          title="PersonalOS setup"
-          subtitle={STEP_SUBTITLES[onboardingStep]}
-          leading={
-            onboardingStep > 1 ? (
-              <TouchableOpacity onPress={goBack} style={styles.backButton}>
-                <Ionicons name="arrow-back" size={22} color={colors.accentPrimary} />
-              </TouchableOpacity>
-            ) : (
-              <View style={styles.backButton} />
-            )
-          }
-        />
+      <View style={styles.inner}>
+        <ScrollView style={styles.scrollArea} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+          <HeroSurface
+            eyebrow={`Step ${onboardingStep} of ${TOTAL_STEPS}`}
+            title="PersonalOS setup"
+            subtitle={STEP_SUBTITLES[onboardingStep]}
+            leading={
+              onboardingStep > 1 ? (
+                <TouchableOpacity onPress={goBack} style={styles.backButton}>
+                  <Ionicons name="arrow-back" size={22} color={colors.accentPrimary} />
+                </TouchableOpacity>
+              ) : (
+                <View style={styles.backButton} />
+              )
+            }
+          />
 
-        {errorMessage ? (
-          <View style={styles.bannerWrap}>
-            <InlineBanner tone="warning" title={errorMessage} icon="alert-circle-outline" />
-          </View>
-        ) : null}
+          {errorMessage ? (
+            <View style={styles.bannerWrap}>
+              <InlineBanner tone="warning" title={errorMessage} icon="alert-circle-outline" />
+            </View>
+          ) : null}
 
-        <View style={styles.cardWrap}>
-          <GlassCard variant="elevated">
+          <View style={styles.cardWrap}>
+            <GlassCard variant="elevated">
             {onboardingStep === 1 ? <WelcomeStep /> : null}
             {onboardingStep === 2 ? <PillarsStep /> : null}
             {onboardingStep === 3 ? (
@@ -147,6 +148,7 @@ export function OnboardingScreen() {
             {onboardingStep === TOTAL_STEPS ? <FinalStep /> : null}
           </GlassCard>
         </View>
+        </ScrollView>
 
         <TouchableOpacity
           style={[styles.ctaButton, { backgroundColor: colors.accentPrimary }]}
@@ -171,7 +173,7 @@ export function OnboardingScreen() {
             />
           ))}
         </View>
-      </ScrollView>
+      </View>
     </SafeAreaView>
   );
 }
@@ -358,9 +360,16 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-  scroll: {
-    padding: spacing.lg,
-    paddingBottom: spacing['2xl'],
+  inner: {
+    flex: 1,
+    paddingHorizontal: spacing.screenHorizontal,
+    paddingTop: spacing.sm,
+  },
+  scrollArea: {
+    flex: 1,
+  },
+  scrollContent: {
+    paddingBottom: spacing.lg,
   },
   backButton: {
     width: 32,
@@ -368,10 +377,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   bannerWrap: {
-    marginTop: spacing.base,
+    marginVertical: spacing.md,
   },
   cardWrap: {
-    marginTop: spacing.lg,
   },
   stepCol: {
     gap: spacing.md,
@@ -379,40 +387,43 @@ const styles = StyleSheet.create({
   stepTitle: {
     fontSize: typography.sizes['2xl'],
     fontWeight: typography.weights.bold,
+    lineHeight: typography.sizes['2xl'] * 1.3,
   },
   stepSubtitle: {
     fontSize: typography.sizes.base,
+    lineHeight: typography.sizes.base * 1.5,
   },
   logoBox: {
-    width: 96,
-    height: 96,
-    borderRadius: borderRadius.xl,
+    width: 80,
+    height: 80,
+    borderRadius: borderRadius.lg,
     borderWidth: 1,
     justifyContent: 'center',
     alignItems: 'center',
     alignSelf: 'flex-start',
   },
   logoImage: {
-    width: 56,
-    height: 56,
+    width: 48,
+    height: 48,
   },
   divider: {
     height: 1,
   },
   featureRow: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: spacing.sm,
   },
   featureLabel: {
     fontSize: typography.sizes.sm,
     flex: 1,
+    lineHeight: typography.sizes.sm * 1.5,
   },
   pillarCard: {
     borderWidth: 1,
     borderRadius: borderRadius.lg,
-    padding: spacing.base,
-    gap: 4,
+    padding: spacing.lg,
+    gap: spacing.xs,
   },
   pillarTitle: {
     fontSize: typography.sizes.base,
@@ -420,6 +431,7 @@ const styles = StyleSheet.create({
   },
   pillarDescription: {
     fontSize: typography.sizes.sm,
+    lineHeight: typography.sizes.sm * 1.5,
   },
   fieldGroup: {
     gap: spacing.sm,
@@ -446,14 +458,13 @@ const styles = StyleSheet.create({
   goalCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.sm,
+    gap: spacing.md,
     borderRadius: borderRadius.lg,
-    padding: spacing.base,
-    marginBottom: spacing.sm,
+    padding: spacing.lg,
   },
   goalTextCol: {
     flex: 1,
-    gap: 2,
+    gap: spacing.xs,
   },
   allowButton: {
     borderRadius: borderRadius.full,
@@ -482,8 +493,8 @@ const styles = StyleSheet.create({
     fontWeight: typography.weights.semibold,
   },
   ctaButton: {
-    marginTop: spacing.xl,
-    height: 56,
+    marginTop: spacing.lg,
+    height: 52,
     borderRadius: borderRadius.full,
     justifyContent: 'center',
     alignItems: 'center',
@@ -496,7 +507,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'center',
     gap: spacing.sm,
-    marginTop: spacing.lg,
+    paddingVertical: spacing.lg,
   },
   dot: {
     width: 28,

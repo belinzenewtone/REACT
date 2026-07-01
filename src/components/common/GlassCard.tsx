@@ -1,7 +1,7 @@
 import React, { type ReactNode } from 'react';
 import { View, StyleSheet, type ViewStyle } from 'react-native';
 import { useThemeColors } from '../../hooks/useThemeColors';
-import { borderRadius } from '../../theme';
+import { borderRadius, spacing } from '../../theme';
 
 interface GlassCardProps {
   children: ReactNode;
@@ -38,6 +38,6 @@ const styles = StyleSheet.create({
   card: {
     borderRadius: borderRadius.xl,
     borderWidth: 1,
-    padding: 16,
+    padding: spacing.lg,
   },
 });

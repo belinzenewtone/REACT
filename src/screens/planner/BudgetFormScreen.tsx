@@ -8,12 +8,19 @@ import { useThemeColors } from '../../hooks/useThemeColors';
 import { useBudgetStore } from '../../store';
 import { BudgetRepository } from '../../database/repositories/BudgetRepository';
 import { CATEGORY_COLORS, CATEGORY_ICONS } from '../../constants';
+import { Dropdown } from '../../components/common/Dropdown';
 import { spacing, typography, borderRadius } from '../../theme';
 import type { RootStackParamList } from '../../navigation/types';
 
 type BudgetFormRouteProp = RouteProp<RootStackParamList, 'BudgetForm'>;
 
 const CATEGORIES = Object.keys(CATEGORY_COLORS).filter((c) => c !== 'income' && c !== 'uncategorized');
+const CATEGORY_OPTIONS = CATEGORIES.map((cat) => ({
+  value: cat,
+  label: cat.charAt(0).toUpperCase() + cat.slice(1),
+  icon: (CATEGORY_ICONS[cat] ?? 'help-circle') as keyof typeof Ionicons.glyphMap,
+  color: CATEGORY_COLORS[cat],
+}));
 const PERIODS = ['daily', 'weekly', 'monthly', 'yearly'] as const;
 
 export function BudgetFormScreen() {
@@ -93,60 +100,22 @@ export function BudgetFormScreen() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.bgPrimary }]} edges={['top']}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Text style={[styles.headerAction, { color: colors.textSecondary }]}>Cancel</Text>
-        </TouchableOpacity>
-        <Text style={[styles.title, { color: colors.textPrimary }]}>
-          {isEditing ? 'Edit Budget' : 'Add Budget'}
-        </Text>
-        <TouchableOpacity onPress={handleSave}>
-          <Text style={[styles.headerAction, { color: colors.accentPrimary, fontWeight: typography.weights.semibold }]}>
-            Save
-          </Text>
-        </TouchableOpacity>
-      </View>
-
       <ScrollView contentContainerStyle={styles.content}>
-        <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>Category</Text>
-        <View style={styles.categoryGrid}>
-          {CATEGORIES.map((cat) => {
-            const isSelected = category === cat;
-            const catColor = CATEGORY_COLORS[cat];
-            const iconName = CATEGORY_ICONS[cat] ?? 'help-circle';
-
-            return (
-              <TouchableOpacity
-                key={cat}
-                style={[
-                  styles.categoryChip,
-                  {
-                    backgroundColor: isSelected ? `${catColor}30` : colors.glassWhite,
-                    borderColor: isSelected ? catColor : colors.border,
-                  },
-                ]}
-                onPress={() => setCategory(cat)}
-              >
-                <Ionicons
-                  name={iconName as keyof typeof Ionicons.glyphMap}
-                  size={14}
-                  color={isSelected ? catColor : colors.textTertiary}
-                  style={{ marginRight: spacing.xs }}
-                />
-                <Text
-                  style={[
-                    styles.categoryLabel,
-                    { color: isSelected ? colors.textPrimary : colors.textSecondary },
-                  ]}
-                  numberOfLines={1}
-                  ellipsizeMode="tail"
-                >
-                  {cat}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => navigation.goBack()}>
+            <Text style={[styles.headerAction, { color: colors.textSecondary }]}>Cancel</Text>
+          </TouchableOpacity>
+          <Text style={[styles.title, { color: colors.textPrimary }]}>
+            {isEditing ? 'Edit Budget' : 'Add Budget'}
+          </Text>
+          <TouchableOpacity onPress={handleSave}>
+            <Text style={[styles.headerAction, { color: colors.accentPrimary, fontWeight: typography.weights.semibold }]}>
+              Save
+            </Text>
+          </TouchableOpacity>
         </View>
+
+        <Dropdown label="Category" value={category} options={CATEGORY_OPTIONS} onChange={setCategory} />
 
         <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>Budget Limit</Text>
         <View style={[styles.inputGroup, { backgroundColor: colors.glassWhite, borderColor: colors.border }]}>
@@ -218,8 +187,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.base,
+    paddingVertical: spacing.sm,
   },
   headerAction: {
     fontSize: typography.sizes.base,
@@ -229,31 +197,13 @@ const styles = StyleSheet.create({
     fontWeight: typography.weights.semibold,
   },
   content: {
-    padding: spacing.lg,
+    paddingHorizontal: spacing.screenHorizontal, paddingVertical: spacing.lg,
   },
   sectionLabel: {
     fontSize: typography.sizes.base,
     fontWeight: typography.weights.medium,
     marginTop: spacing.lg,
     marginBottom: spacing.sm,
-  },
-  categoryGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.sm,
-  },
-  categoryChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: spacing.base,
-    paddingVertical: spacing.sm,
-    borderRadius: borderRadius.lg,
-    borderWidth: 1,
-  },
-  categoryLabel: {
-    fontSize: typography.sizes.sm,
-    fontWeight: typography.weights.medium,
-    textTransform: 'capitalize',
   },
   inputGroup: {
     flexDirection: 'row',

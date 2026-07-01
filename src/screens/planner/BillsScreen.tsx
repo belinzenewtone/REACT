@@ -44,23 +44,23 @@ export function BillsScreen() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.bgPrimary }]} edges={['top']}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
-        </TouchableOpacity>
-        <View style={styles.headerTextCol}>
-          <Text style={[styles.eyebrow, { color: colors.textSecondary }]}>Recurring Obligations</Text>
-          <Text style={[styles.title, { color: colors.textPrimary }]}>Bills</Text>
-          <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
-            {activeBills.length} active bill{activeBills.length === 1 ? '' : 's'}
-          </Text>
-        </View>
-        <TouchableOpacity onPress={() => navigation.navigate('BillForm')}>
-          <Ionicons name="add" size={24} color={colors.accentPrimary} />
-        </TouchableOpacity>
-      </View>
-
       <ScrollView contentContainerStyle={styles.content}>
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => navigation.goBack()}>
+            <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
+          </TouchableOpacity>
+          <View style={styles.headerTextCol}>
+            <Text style={[styles.eyebrow, { color: colors.textSecondary }]}>Recurring Obligations</Text>
+            <Text style={[styles.title, { color: colors.textPrimary }]}>Bills</Text>
+            <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
+              {activeBills.length} active bill{activeBills.length === 1 ? '' : 's'}
+            </Text>
+          </View>
+          <TouchableOpacity onPress={() => navigation.navigate('BillForm')}>
+            <Ionicons name="add" size={24} color={colors.accentPrimary} />
+          </TouchableOpacity>
+        </View>
+
         {bills.length === 0 ? (
           <EmptyState
             icon="receipt-outline"
@@ -137,8 +137,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.base,
+    paddingBottom: spacing.sm,
   },
   headerTextCol: { alignItems: 'center' },
   eyebrow: {

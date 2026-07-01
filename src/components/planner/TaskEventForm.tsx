@@ -19,6 +19,9 @@ import { useCalendarStore } from '../../store';
 import { TaskRepository, type TaskRecord } from '../../database/repositories/TaskRepository';
 import { EventRepository, type EventRecord } from '../../database/repositories/EventRepository';
 import { SearchField } from '../common/SearchField';
+import { Dropdown } from '../common/Dropdown';
+import { DateField } from '../common/DateField';
+import { TimeField } from '../common/TimeField';
 import { spacing, typography, borderRadius } from '../../theme';
 import type { EventType, EventKind, RepeatRule, TaskPriority, TaskStatus } from '../../types';
 
@@ -53,6 +56,10 @@ const EVENT_KIND_OPTIONS: { key: EventKind; label: string }[] = [
   { key: 'goal', label: 'Goal' },
   { key: 'other', label: 'Other' },
 ];
+const EVENT_KIND_DROPDOWN_OPTIONS = EVENT_KIND_OPTIONS.map((option) => ({
+  value: option.key,
+  label: option.label,
+}));
 
 const REPEAT_OPTIONS: { key: RepeatRule; label: string }[] = [
   { key: 'none', label: 'Never' },
@@ -69,6 +76,12 @@ const REMINDER_PRESETS = [
   { label: '1 hour before', minutes: 60 },
   { label: '1 day before', minutes: 1440 },
 ];
+
+const REMINDER_UNIT_CONFIG: Record<'minute' | 'hour' | 'day', { label: string; max: number }> = {
+  minute: { label: 'Min', max: 60 },
+  hour: { label: 'Hour', max: 24 },
+  day: { label: 'Day', max: 30 },
+};
 
 const FALLBACK_TIMEZONES = [
   'UTC', 'Africa/Nairobi', 'Africa/Lagos', 'Africa/Cairo', 'Africa/Johannesburg',
@@ -364,13 +377,32 @@ export function TaskEventForm({ editTaskId, editEventId, defaultType = 'task' }:
   };
 
   const addCustomReminder = () => {
-    const value = parseInt(customValue, 10);
-    if (isNaN(value) || value <= 0) return;
+    const raw = parseInt(customValue, 10);
+    if (isNaN(raw) || raw <= 0) return;
+    const value = Math.min(raw, REMINDER_UNIT_CONFIG[customUnit].max);
     let minutes = value;
     if (customUnit === 'hour') minutes *= 60;
     if (customUnit === 'day') minutes *= 1440;
     setReminderOffsets((prev) => (prev.includes(minutes) ? prev : [...prev, minutes]));
     setCustomReminderOpen(false);
+  };
+
+  const handleCustomUnitChange = (unit: 'minute' | 'hour' | 'day') => {
+    setCustomUnit(unit);
+    const current = parseInt(customValue, 10);
+    if (!isNaN(current) && current > REMINDER_UNIT_CONFIG[unit].max) {
+      setCustomValue(String(REMINDER_UNIT_CONFIG[unit].max));
+    }
+  };
+
+  const handleCustomValueChange = (text: string) => {
+    const digitsOnly = text.replace(/[^0-9]/g, '');
+    if (digitsOnly === '') {
+      setCustomValue('');
+      return;
+    }
+    const clamped = Math.min(parseInt(digitsOnly, 10), REMINDER_UNIT_CONFIG[customUnit].max);
+    setCustomValue(String(clamped));
   };
 
   const addGuest = () => {
@@ -482,37 +514,13 @@ export function TaskEventForm({ editTaskId, editEventId, defaultType = 'task' }:
           <>
             <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>Deadline</Text>
             <View style={styles.row}>
-              <InputGroup label="Date" style={styles.dateInput}>
-                <TextInput
-                  style={[styles.input, { color: colors.textPrimary }]}
-                  placeholder="YYYY-MM-DD"
-                  placeholderTextColor={colors.textTertiary}
-                  value={dateText}
-                  onChangeText={setDateText}
-                />
-              </InputGroup>
-              <InputGroup label="Time" style={styles.timeInput}>
-                <TextInput
-                  style={[styles.input, { color: colors.textPrimary }]}
-                  placeholder="HH:MM"
-                  placeholderTextColor={colors.textTertiary}
-                  value={timeText}
-                  onChangeText={setTimeText}
-                />
-              </InputGroup>
+              <DateField label="Date" value={dateText} onChange={setDateText} style={styles.dateInput} />
+              <TimeField label="Time" value={timeText} onChange={setTimeText} style={styles.timeInput} />
             </View>
           </>
         ) : isSingleDateType ? (
           <>
-            <InputGroup label="Date">
-              <TextInput
-                style={[styles.input, { color: colors.textPrimary }]}
-                placeholder="YYYY-MM-DD"
-                placeholderTextColor={colors.textTertiary}
-                value={startDate}
-                onChangeText={setStartDate}
-              />
-            </InputGroup>
+            <DateField label="Date" value={startDate} onChange={setStartDate} />
 
             {type === 'birthday' && (
               <RowToggle label="Add year" value={addYear} onValueChange={setAddYear} />
@@ -521,15 +529,11 @@ export function TaskEventForm({ editTaskId, editEventId, defaultType = 'task' }:
             {type === 'countdown' && (
               <>
                 <RowButton label="Repeat" value={repeatLabel} onPress={() => setRepeatModalOpen(true)} />
-                <InputGroup label="Remind me at (time)">
-                  <TextInput
-                    style={[styles.input, { color: colors.textPrimary }]}
-                    placeholder="HH:MM"
-                    placeholderTextColor={colors.textTertiary}
-                    value={countdownReminderTime}
-                    onChangeText={setCountdownReminderTime}
-                  />
-                </InputGroup>
+                <TimeField
+                  label="Remind me at (time)"
+                  value={countdownReminderTime}
+                  onChange={setCountdownReminderTime}
+                />
                 <RowToggle
                   label="Remind 3 days before"
                   value={remind3DaysBefore}
@@ -544,50 +548,14 @@ export function TaskEventForm({ editTaskId, editEventId, defaultType = 'task' }:
 
             <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>From</Text>
             <View style={styles.row}>
-              <InputGroup label="Date" style={styles.dateInput}>
-                <TextInput
-                  style={[styles.input, { color: colors.textPrimary }]}
-                  placeholder="YYYY-MM-DD"
-                  placeholderTextColor={colors.textTertiary}
-                  value={startDate}
-                  onChangeText={setStartDate}
-                />
-              </InputGroup>
-              {!allDay && (
-                <InputGroup label="Time" style={styles.timeInput}>
-                  <TextInput
-                    style={[styles.input, { color: colors.textPrimary }]}
-                    placeholder="HH:MM"
-                    placeholderTextColor={colors.textTertiary}
-                    value={startTime}
-                    onChangeText={setStartTime}
-                  />
-                </InputGroup>
-              )}
+              <DateField label="Date" value={startDate} onChange={setStartDate} style={styles.dateInput} />
+              {!allDay && <TimeField label="Time" value={startTime} onChange={setStartTime} style={styles.timeInput} />}
             </View>
 
             <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>To</Text>
             <View style={styles.row}>
-              <InputGroup label="Date" style={styles.dateInput}>
-                <TextInput
-                  style={[styles.input, { color: colors.textPrimary }]}
-                  placeholder="YYYY-MM-DD"
-                  placeholderTextColor={colors.textTertiary}
-                  value={endDate}
-                  onChangeText={setEndDate}
-                />
-              </InputGroup>
-              {!allDay && (
-                <InputGroup label="Time" style={styles.timeInput}>
-                  <TextInput
-                    style={[styles.input, { color: colors.textPrimary }]}
-                    placeholder="HH:MM"
-                    placeholderTextColor={colors.textTertiary}
-                    value={endTime}
-                    onChangeText={setEndTime}
-                  />
-                </InputGroup>
-              )}
+              <DateField label="Date" value={endDate} onChange={setEndDate} style={styles.dateInput} />
+              {!allDay && <TimeField label="Time" value={endTime} onChange={setEndTime} style={styles.timeInput} />}
             </View>
             {endDate.trim().length > 0 && (
               <TouchableOpacity
@@ -647,32 +615,12 @@ export function TaskEventForm({ editTaskId, editEventId, defaultType = 'task' }:
               <RowButton label="Time zone" value={timeZoneId} onPress={() => setTimezoneModalOpen(true)} />
             )}
 
-            <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>Category</Text>
-            <View style={styles.chipWrap}>
-              {EVENT_KIND_OPTIONS.map((option) => {
-                const selected = kind === option.key;
-                return (
-                  <TouchableOpacity
-                    key={option.key}
-                    style={[
-                      styles.categoryChip,
-                      selected && { backgroundColor: colors.accentPrimary, borderColor: colors.accentPrimary },
-                      { borderColor: colors.border },
-                    ]}
-                    onPress={() => setKind(option.key)}
-                  >
-                    <Text
-                      style={[
-                        styles.categoryChipText,
-                        { color: selected ? colors.textInverse : colors.textSecondary },
-                      ]}
-                    >
-                      {option.label}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
+            <Dropdown
+              label="Category"
+              value={kind}
+              options={EVENT_KIND_DROPDOWN_OPTIONS}
+              onChange={(v) => setKind(v as EventKind)}
+            />
           </>
         )}
 
@@ -785,10 +733,11 @@ export function TaskEventForm({ editTaskId, editEventId, defaultType = 'task' }:
               <TextInput
                 style={[styles.customInput, { color: colors.textPrimary, borderColor: colors.border, backgroundColor: colors.bgElevated }]}
                 value={customValue}
-                onChangeText={setCustomValue}
+                onChangeText={handleCustomValueChange}
                 keyboardType="number-pad"
                 placeholder="15"
                 placeholderTextColor={colors.textTertiary}
+                maxLength={2}
               />
               <View style={styles.unitSelector}>
                 {(['minute', 'hour', 'day'] as const).map((unit) => {
@@ -798,19 +747,32 @@ export function TaskEventForm({ editTaskId, editEventId, defaultType = 'task' }:
                       key={unit}
                       style={[
                         styles.unitButton,
-                        selected && { backgroundColor: colors.accentPrimary },
-                        { backgroundColor: colors.bgElevated },
+                        {
+                          backgroundColor: selected ? `${colors.accentPrimary}1F` : colors.bgElevated,
+                          borderWidth: 1,
+                          borderColor: selected ? `${colors.accentPrimary}66` : 'transparent',
+                        },
                       ]}
-                      onPress={() => setCustomUnit(unit)}
+                      onPress={() => handleCustomUnitChange(unit)}
                     >
-                      <Text style={{ color: selected ? colors.textInverse : colors.textSecondary }}>
-                        {unit.charAt(0).toUpperCase() + unit.slice(1)}
+                      <Text
+                        style={{
+                          color: selected ? colors.accentPrimary : colors.textSecondary,
+                          fontWeight: selected ? typography.weights.semibold : typography.weights.regular,
+                        }}
+                        numberOfLines={1}
+                        adjustsFontSizeToFit
+                      >
+                        {REMINDER_UNIT_CONFIG[unit].label}
                       </Text>
                     </TouchableOpacity>
                   );
                 })}
               </View>
             </View>
+            <Text style={[styles.unitRangeHint, { color: colors.textTertiary }]}>
+              {`${REMINDER_UNIT_CONFIG[customUnit].label} · 1-${REMINDER_UNIT_CONFIG[customUnit].max}`}
+            </Text>
             <View style={styles.modalActions}>
               <TouchableOpacity onPress={() => setCustomReminderOpen(false)}>
                 <Text style={[styles.modalActionText, { color: colors.textSecondary }]}>Cancel</Text>
@@ -1051,16 +1013,6 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     marginBottom: spacing.base,
   },
-  categoryChip: {
-    paddingHorizontal: spacing.base,
-    paddingVertical: spacing.sm,
-    borderRadius: borderRadius.full,
-    borderWidth: 1,
-  },
-  categoryChipText: {
-    fontSize: typography.sizes.sm,
-    fontWeight: typography.weights.medium,
-  },
   clearEndDate: {
     alignSelf: 'flex-start',
     marginBottom: spacing.base,
@@ -1188,8 +1140,13 @@ const styles = StyleSheet.create({
   unitButton: {
     flex: 1,
     paddingVertical: spacing.base,
+    paddingHorizontal: 4,
     borderRadius: borderRadius.lg,
     alignItems: 'center',
+  },
+  unitRangeHint: {
+    fontSize: typography.sizes.xs,
+    marginTop: spacing.sm,
   },
   modalActions: {
     flexDirection: 'row',

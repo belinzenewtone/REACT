@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -10,11 +10,12 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import { useSQLiteContext } from 'expo-sqlite';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system';
 import { useThemeColors } from '../../hooks/useThemeColors';
+import type { RootStackParamList } from '../../navigation/types';
 import { useTransactionStore } from '../../store';
 import { TransactionRepository } from '../../database/repositories/TransactionRepository';
 import { GlassCard } from '../../components/common/GlassCard';
@@ -39,10 +40,13 @@ const ALL_FIELDS: { key: keyof CsvColumnMapping; label: string }[] = [
   { key: 'description', label: 'Description' },
 ];
 
+type CsvImportRouteProp = RouteProp<RootStackParamList, 'CsvImport'>;
+
 export function CsvImportScreen() {
   const colors = useThemeColors();
   const db = useSQLiteContext();
   const navigation = useNavigation<any>();
+  const route = useRoute<CsvImportRouteProp>();
   const { loadTransactions } = useTransactionStore();
 
   const [isLoading, setIsLoading] = useState(false);
@@ -59,12 +63,8 @@ export function CsvImportScreen() {
     description: '',
   });
 
-  const pickFile = async () => {
+  const processFile = async (uri: string) => {
     try {
-      const result = await DocumentPicker.getDocumentAsync({ type: 'text/csv' });
-      if (result.canceled || !result.assets?.length) return;
-
-      const uri = result.assets[0].uri;
       setIsLoading(true);
       const content = await FileSystem.readAsStringAsync(uri);
       const { headers: parsedHeaders, rows: parsedRows } = parseCsvContent(content);
@@ -90,6 +90,18 @@ export function CsvImportScreen() {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  useEffect(() => {
+    if (route.params?.fileUri) {
+      processFile(route.params.fileUri);
+    }
+  }, [route.params?.fileUri]);
+
+  const pickFile = async () => {
+    const result = await DocumentPicker.getDocumentAsync({ type: 'text/csv' });
+    if (result.canceled || !result.assets?.length) return;
+    await processFile(result.assets[0].uri);
   };
 
   const updateMapping = (field: keyof CsvColumnMapping, header: string) => {
@@ -137,15 +149,15 @@ export function CsvImportScreen() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.bgPrimary }]} edges={['top']}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
-        </TouchableOpacity>
-        <Text style={[styles.title, { color: colors.textPrimary }]}>Import CSV</Text>
-        <View style={{ width: 24 }} />
-      </View>
-
       <ScrollView contentContainerStyle={styles.content}>
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => navigation.goBack()}>
+            <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
+          </TouchableOpacity>
+          <Text style={[styles.title, { color: colors.textPrimary }]}>Import CSV</Text>
+          <View style={{ width: 24 }} />
+        </View>
+
         <TouchableOpacity
           style={[styles.pickButton, { backgroundColor: colors.accentPrimary }]}
           onPress={pickFile}
@@ -252,8 +264,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.base,
+    paddingBottom: spacing.sm,
   },
   title: { fontSize: typography.sizes.lg, fontWeight: typography.weights.semibold },
   content: { padding: spacing.lg },

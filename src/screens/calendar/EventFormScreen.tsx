@@ -7,5 +7,10 @@ type EventFormRouteProp = RouteProp<RootStackParamList, 'EventForm'>;
 
 export function EventFormScreen() {
   const route = useRoute<EventFormRouteProp>();
-  return <TaskEventForm editEventId={route.params?.eventId} defaultType="event" />;
+  return (
+    <TaskEventForm
+      editEventId={route.params?.eventId}
+      defaultType={route.params?.type ?? 'event'}
+    />
+  );
 }

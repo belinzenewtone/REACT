@@ -31,23 +31,23 @@ export function LoansScreen() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.bgPrimary }]} edges={['top']}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
-        </TouchableOpacity>
-        <View style={styles.headerTextCol}>
-          <Text style={[styles.eyebrow, { color: colors.textSecondary }]}>Finance Tools</Text>
-          <Text style={[styles.title, { color: colors.textPrimary }]}>Loans &amp; Fuliza</Text>
-          <Text style={[styles.subtitle, { color: colors.textSecondary }]} numberOfLines={1}>
-            Track outstanding draws and repayment history
-          </Text>
-        </View>
-        <TouchableOpacity onPress={() => navigation.navigate('LoanForm')}>
-          <Ionicons name="add" size={24} color={colors.accentPrimary} />
-        </TouchableOpacity>
-      </View>
-
       <ScrollView contentContainerStyle={styles.content}>
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => navigation.goBack()}>
+            <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
+          </TouchableOpacity>
+          <View style={styles.headerTextCol}>
+            <Text style={[styles.eyebrow, { color: colors.textSecondary }]}>Finance Tools</Text>
+            <Text style={[styles.title, { color: colors.textPrimary }]}>Loans &amp; Fuliza</Text>
+            <Text style={[styles.subtitle, { color: colors.textSecondary }]} numberOfLines={1}>
+              Track outstanding draws and repayment history
+            </Text>
+          </View>
+          <TouchableOpacity onPress={() => navigation.navigate('LoanForm')}>
+            <Ionicons name="add" size={24} color={colors.accentPrimary} />
+          </TouchableOpacity>
+        </View>
+
         {loans.length === 0 ? (
           <EmptyState
             icon="cash-outline"
@@ -139,8 +139,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.base,
+    paddingBottom: spacing.sm,
   },
   headerTextCol: { flex: 1, alignItems: 'center' },
   eyebrow: {
@@ -151,7 +150,7 @@ const styles = StyleSheet.create({
   },
   title: { fontSize: typography.sizes.lg, fontWeight: typography.weights.semibold, marginTop: 2 },
   subtitle: { fontSize: typography.sizes.xs, marginTop: 2 },
-  content: { padding: spacing.lg, paddingTop: spacing.sm },
+  content: { paddingHorizontal: spacing.screenHorizontal, paddingVertical: spacing.lg, paddingTop: spacing.sm },
   summaryCard: { marginBottom: spacing.lg },
   summaryLabel: { fontSize: typography.sizes.base, fontWeight: typography.weights.semibold },
   summaryAmount: {

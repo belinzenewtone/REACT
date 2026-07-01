@@ -25,8 +25,9 @@ export function MetricCard({ label, amount }: MetricCardProps) {
 
 const styles = StyleSheet.create({
   card: {
-    flex: 1,
+    width: 140,
     padding: spacing.lg,
+    marginRight: spacing.base,
   },
   label: {
     fontSize: typography.sizes.sm,

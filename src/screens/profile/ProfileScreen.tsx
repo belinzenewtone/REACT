@@ -19,7 +19,7 @@ import { useThemeColors } from '../../hooks/useThemeColors';
 import { useAppStore } from '../../store';
 import { GlassCard } from '../../components/common/GlassCard';
 import { TopBanner } from '../../components/common/TopBanner';
-import { spacing, typography, borderRadius } from '../../theme';
+import { spacing, typography, borderRadius, BOTTOM_NAV_SAFE_AREA } from '../../theme';
 
 type ToolItem = {
   icon: any;
@@ -29,7 +29,7 @@ type ToolItem = {
 };
 
 const TOOL_HUB: ToolItem[] = [
-  { icon: 'analytics-outline', label: 'Insights', color: '#2DD4BF', route: 'Insights' },
+  { icon: 'analytics-outline', label: 'Analytics', color: '#2DD4BF', route: 'Insights' },
   { icon: 'compass-outline', label: 'Review', color: '#A78BFA', route: 'WeekReview' },
   { icon: 'search-outline', label: 'Search', color: '#60A5FA', route: 'Search' },
   { icon: 'repeat-outline', label: 'Recurring', color: '#34D399', route: 'Recurring' },
@@ -380,7 +380,7 @@ export function ProfileScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  content: { padding: spacing.lg, paddingBottom: spacing['4xl'], gap: spacing.base },
+  content: { paddingHorizontal: spacing.screenHorizontal, paddingVertical: spacing.lg, paddingBottom: BOTTOM_NAV_SAFE_AREA, gap: spacing.base },
   pageTitle: { fontSize: typography.sizes['2xl'], fontWeight: typography.weights.bold },
   // Hero
   heroCard: {},
@@ -424,7 +424,7 @@ const styles = StyleSheet.create({
   pwBtnText: { fontSize: typography.sizes.base, fontWeight: typography.weights.semibold },
   // Modal
   modalOverlay: { flex: 1, justifyContent: 'flex-end' },
-  modalContent: { padding: spacing.lg, borderTopLeftRadius: borderRadius['2xl'], borderTopRightRadius: borderRadius['2xl'], gap: spacing.base },
+  modalContent: { paddingHorizontal: spacing.screenHorizontal, paddingVertical: spacing.lg, borderTopLeftRadius: borderRadius['2xl'], borderTopRightRadius: borderRadius['2xl'], gap: spacing.base },
   modalTitle: { fontSize: typography.sizes.xl, fontWeight: typography.weights.bold },
   modalInput: { borderWidth: 1, borderRadius: borderRadius.lg, paddingHorizontal: spacing.base, paddingVertical: spacing.base, fontSize: typography.sizes.base },
   saveButton: { paddingVertical: spacing.base, borderRadius: borderRadius.lg, alignItems: 'center' },

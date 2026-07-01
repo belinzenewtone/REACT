@@ -62,16 +62,17 @@ export function WeeklySpendByCategoryChart({ data }: WeeklySpendByCategoryChartP
 
             <View style={styles.chartContainer}>
               {data.map((week) => {
-                const barHeightPercent = (week.total / maxTotal) * 100;
+                const fraction = week.total > 0 ? week.total / maxTotal : 0;
+                const barHeightPercent = Math.max(fraction * 100, 2);
                 return (
                   <View key={week.week} style={styles.barColumn}>
-                    <View style={[styles.barTrack, { backgroundColor: colors.border }]}>
+                    {week.total > 0 ? (
                       <View style={[styles.barFill, { height: `${barHeightPercent}%` }]}>
                         {week.categories
                           .slice()
                           .reverse()
                           .map((cat, index) => {
-                            const segmentHeight = week.total > 0 ? (cat.amount / week.total) * 100 : 0;
+                            const segmentHeight = (cat.amount / week.total) * 100;
                             return (
                               <View
                                 key={`${week.week}-${cat.category}-${index}`}
@@ -86,7 +87,15 @@ export function WeeklySpendByCategoryChart({ data }: WeeklySpendByCategoryChartP
                             );
                           })}
                       </View>
-                    </View>
+                    ) : (
+                      <View
+                        style={[
+                          styles.barFill,
+                          styles.barEmpty,
+                          { height: `${barHeightPercent}%`, backgroundColor: colors.borderSubtle },
+                        ]}
+                      />
+                    )}
                     <Text style={[styles.barLabel, { color: colors.textSecondary }]}>{week.label}</Text>
                   </View>
                 );
@@ -144,21 +153,17 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'flex-end',
+    height: '100%',
     marginHorizontal: 4,
   },
-  barTrack: {
-    width: '60%',
-    height: '100%',
-    borderRadius: borderRadius.md,
-    overflow: 'hidden',
-    justifyContent: 'flex-end',
-  },
   barFill: {
-    width: '100%',
+    width: '60%',
     justifyContent: 'flex-end',
-    borderRadius: borderRadius.md,
+    borderTopLeftRadius: borderRadius.sm,
+    borderTopRightRadius: borderRadius.sm,
     overflow: 'hidden',
   },
+  barEmpty: {},
   barSegment: {
     width: '100%',
   },

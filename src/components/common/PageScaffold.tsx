@@ -11,7 +11,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useThemeColors } from '../../hooks/useThemeColors';
-import { spacing, typography } from '../../theme';
+import { spacing, typography, BOTTOM_NAV_SAFE_AREA } from '../../theme';
 
 interface PageScaffoldProps {
   eyebrow?: string;
@@ -54,18 +54,22 @@ export function PageScaffold({
       <View style={styles.header}>
         {onBack ? (
           <TouchableOpacity onPress={onBack} style={styles.backButton}>
-            <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
+            <Ionicons name="arrow-back" size={20} color={colors.textPrimary} />
           </TouchableOpacity>
         ) : (
           <View style={styles.backButton} />
         )}
         <View style={styles.headerText}>
           {eyebrow ? (
-            <Text style={[styles.eyebrow, { color: colors.textSecondary }]}>{eyebrow}</Text>
+            <Text style={[styles.eyebrow, { color: colors.textSecondary }]} numberOfLines={1}>
+              {eyebrow}
+            </Text>
           ) : null}
-          <Text style={[styles.title, { color: colors.textPrimary }]}>{title}</Text>
+          <Text style={[styles.title, { color: colors.textPrimary }]} numberOfLines={1} ellipsizeMode="tail">
+            {title}
+          </Text>
           {subtitle ? (
-            <Text style={[styles.subtitle, { color: colors.textTertiary }]} numberOfLines={2}>
+            <Text style={[styles.subtitle, { color: colors.textTertiary }]} numberOfLines={1}>
               {subtitle}
             </Text>
           ) : null}
@@ -97,11 +101,14 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.base,
+    paddingHorizontal: spacing.screenHorizontal,
+    paddingVertical: spacing.sm,
   },
   backButton: {
-    width: 32,
+    width: 36,
+    height: 36,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   headerText: {
     flex: 1,
@@ -114,24 +121,25 @@ const styles = StyleSheet.create({
     letterSpacing: 0.8,
   },
   title: {
-    fontSize: typography.sizes.lg,
+    fontSize: typography.sizes.md,
     fontWeight: typography.weights.semibold,
-    marginTop: 2,
   },
   subtitle: {
-    fontSize: typography.sizes.sm,
+    fontSize: typography.sizes.xs,
     marginTop: 2,
     textAlign: 'center',
+    lineHeight: typography.sizes.xs * typography.lineHeights.normal,
   },
   actions: {
-    minWidth: 32,
+    minWidth: 36,
     flexDirection: 'row',
     justifyContent: 'flex-end',
     alignItems: 'center',
     gap: spacing.sm,
   },
   contentPadding: {
-    padding: spacing.lg,
+    paddingHorizontal: spacing.screenHorizontal,
     paddingTop: spacing.sm,
+    paddingBottom: BOTTOM_NAV_SAFE_AREA,
   },
 });

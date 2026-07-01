@@ -18,7 +18,7 @@ interface HomeMenuCardProps {
 const MENU_ITEMS = [
   { key: 'tasks', icon: 'checkmark-circle', label: 'Tasks', value: (p: HomeMenuCardProps) => `${p.pendingTaskCount} pending` },
   { key: 'nextEvent', icon: 'calendar', label: 'Next Event', value: (p: HomeMenuCardProps) => p.nextEvent?.title ?? 'No event' },
-  { key: 'insights', icon: 'analytics', label: 'Insights', value: () => 'Trends' },
+  { key: 'insights', icon: 'analytics', label: 'Analytics', value: () => 'Trends' },
   { key: 'search', icon: 'search', label: 'Search', value: () => 'Explore' },
 ] as const;
 

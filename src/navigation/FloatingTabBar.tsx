@@ -4,7 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { useThemeColors } from '../hooks/useThemeColors';
-import { spacing, borderRadius } from '../theme';
+import { spacing, borderRadius, typography } from '../theme';
 
 const LABELS: Record<string, string> = {
   Home: 'Home',
@@ -103,37 +103,35 @@ export function FloatingTabBar({ state, descriptors, navigation }: BottomTabBarP
 const styles = StyleSheet.create({
   container: {
     position: 'absolute',
-    left: spacing.base,
-    right: spacing.base,
-    height: 72,
-    borderRadius: borderRadius['2xl'],
+    left: spacing.screenHorizontal,
+    right: spacing.screenHorizontal,
+    height: 58,
+    borderRadius: borderRadius.xl,
     borderWidth: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-around',
-    paddingHorizontal: spacing.sm,
+    paddingHorizontal: spacing.xs,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.35,
     shadowRadius: 16,
     elevation: 12,
-    overflow: 'hidden',
   } as ViewStyle,
   tab: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 4,
+    gap: 2,
     paddingVertical: spacing.xs,
   },
   labelPill: {
     paddingHorizontal: spacing.sm,
-    paddingVertical: 2,
+    paddingVertical: spacing.xs,
     borderRadius: borderRadius.full,
   },
   label: {
-    fontSize: 11,
-    fontWeight: '500',
-    lineHeight: 14,
+    fontSize: typography.sizes.xs - 2,
+    fontWeight: typography.weights.medium,
+    lineHeight: typography.sizes.xs + 1,
   },
 });

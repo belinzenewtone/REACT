@@ -133,15 +133,15 @@ export function SmsImportHealthScreen() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.bgPrimary }]} edges={['top']}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
-        </TouchableOpacity>
-        <Text style={[styles.title, { color: colors.textPrimary }]}>SMS Import Health</Text>
-        <View style={{ width: 24 }} />
-      </View>
-
       <ScrollView contentContainerStyle={styles.content}>
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => navigation.goBack()}>
+            <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
+          </TouchableOpacity>
+          <Text style={[styles.title, { color: colors.textPrimary }]}>SMS Import Health</Text>
+          <View style={{ width: 24 }} />
+        </View>
+
         {/* Receiver Status */}
         <SectionCard title="Receiver Status" colors={colors}>
           <View style={styles.statusRow}>
@@ -313,11 +313,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.base,
+    paddingBottom: spacing.sm,
   },
   title: { fontSize: typography.sizes.lg, fontWeight: typography.weights.bold },
-  content: { padding: spacing.lg, paddingBottom: spacing['4xl'], gap: spacing.base },
+  content: { paddingHorizontal: spacing.screenHorizontal, paddingVertical: spacing.lg, paddingBottom: spacing['4xl'], gap: spacing.base },
   sectionCard: { gap: spacing.sm },
   sectionTitle: { fontSize: typography.sizes.sm, fontWeight: typography.weights.semibold, marginBottom: spacing.xs },
   statusRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.base },

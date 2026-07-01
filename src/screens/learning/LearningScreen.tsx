@@ -221,22 +221,22 @@ export function LearningScreen() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.bgPrimary }]} edges={['top']}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
-        </TouchableOpacity>
-        <View style={styles.headerCenter}>
-          <Text style={[styles.eyebrow, { color: colors.textSecondary }]}>Growth</Text>
-          <Text style={[styles.title, { color: colors.textPrimary }]}>Learn</Text>
-        </View>
-        <View style={{ width: 24 }} />
-      </View>
-
-      <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
-        {completedCount} of {sessions.length} sessions completed
-      </Text>
-
       <ScrollView contentContainerStyle={styles.content}>
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => navigation.goBack()}>
+            <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
+          </TouchableOpacity>
+          <View style={styles.headerCenter}>
+            <Text style={[styles.eyebrow, { color: colors.textSecondary }]}>Growth</Text>
+            <Text style={[styles.title, { color: colors.textPrimary }]}>Learn</Text>
+          </View>
+          <View style={{ width: 24 }} />
+        </View>
+
+        <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
+          {completedCount} of {sessions.length} sessions completed
+        </Text>
+
         {/* Monthly Goal */}
         <GlassCard style={styles.goalCard}>
           <View style={styles.goalHeader}>
@@ -306,12 +306,12 @@ export function LearningScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing.lg, paddingVertical: spacing.base },
+  header: { flexDirection: 'row', alignItems: 'center', paddingVertical: spacing.sm },
   headerCenter: { flex: 1, alignItems: 'center' },
   eyebrow: { fontSize: typography.sizes.xs, fontWeight: typography.weights.medium },
   title: { fontSize: typography.sizes.xl, fontWeight: typography.weights.bold },
-  subtitle: { fontSize: typography.sizes.sm, paddingHorizontal: spacing.lg, marginBottom: spacing.sm },
-  content: { padding: spacing.lg, paddingBottom: 120, gap: spacing.base },
+  subtitle: { fontSize: typography.sizes.sm, marginBottom: spacing.sm },
+  content: { paddingHorizontal: spacing.screenHorizontal, paddingVertical: spacing.lg, paddingBottom: 120, gap: spacing.base },
   goalCard: {},
   goalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.sm },
   goalLabel: { fontSize: typography.sizes.sm, fontWeight: typography.weights.semibold },
@@ -319,7 +319,7 @@ const styles = StyleSheet.create({
   progressTrack: { height: 6, borderRadius: 3, overflow: 'hidden' },
   progressFill: { height: 6, borderRadius: 3 },
   chips: { maxHeight: 44 },
-  chipsContent: { gap: spacing.sm, paddingHorizontal: spacing.lg, paddingVertical: 4 },
+  chipsContent: { gap: spacing.sm, paddingHorizontal: spacing.screenHorizontal, paddingVertical: 4 },
   chip: { paddingHorizontal: spacing.base, paddingVertical: spacing.xs, borderRadius: borderRadius.full },
   chipText: { fontSize: typography.sizes.sm, fontWeight: typography.weights.medium },
   sessionCard: { borderRadius: borderRadius.lg, borderWidth: 1, padding: spacing.base, gap: spacing.sm },
@@ -338,7 +338,7 @@ const styles = StyleSheet.create({
     right: spacing.lg,
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: spacing.lg,
+    paddingHorizontal: spacing.screenHorizontal,
     paddingVertical: spacing.sm,
     borderRadius: borderRadius.full,
     gap: spacing.sm,

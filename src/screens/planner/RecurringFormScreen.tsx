@@ -7,14 +7,15 @@ import { useSQLiteContext } from 'expo-sqlite';
 import { useThemeColors } from '../../hooks/useThemeColors';
 import { usePlannerStore } from '../../store';
 import { RecurringRuleRepository } from '../../database/repositories/RecurringRuleRepository';
-import { CATEGORY_COLORS } from '../../constants';
+import { CATEGORY_COLORS, CATEGORY_ICONS } from '../../constants';
+import { Dropdown } from '../../components/common/Dropdown';
+import { DateField } from '../../components/common/DateField';
 import { spacing, typography, borderRadius } from '../../theme';
 import type { RootStackParamList } from '../../navigation/types';
 import type { RecurringCadence } from '../../types';
 
 type RecurringFormRouteProp = RouteProp<RootStackParamList, 'RecurringForm'>;
 const TYPES = ['expense', 'income', 'task'] as const;
-const CADENCES: RecurringCadence[] = ['hourly', 'daily', 'weekly', 'biweekly', 'mon_fri', 'monthly', 'yearly'];
 const CADENCE_LABELS: Record<RecurringCadence, string> = {
   hourly: 'Hourly',
   daily: 'Daily',
@@ -24,7 +25,17 @@ const CADENCE_LABELS: Record<RecurringCadence, string> = {
   monthly: 'Monthly',
   yearly: 'Yearly',
 };
+const CADENCE_OPTIONS = (Object.keys(CADENCE_LABELS) as RecurringCadence[]).map((cadence) => ({
+  value: cadence,
+  label: CADENCE_LABELS[cadence],
+}));
 const CATEGORIES = Object.keys(CATEGORY_COLORS).filter((c) => c !== 'income' && c !== 'uncategorized');
+const CATEGORY_OPTIONS = CATEGORIES.map((cat) => ({
+  value: cat,
+  label: cat.charAt(0).toUpperCase() + cat.slice(1),
+  icon: CATEGORY_ICONS[cat] as keyof typeof Ionicons.glyphMap,
+  color: CATEGORY_COLORS[cat],
+}));
 
 export function RecurringFormScreen() {
   const colors = useThemeColors();
@@ -112,26 +123,26 @@ export function RecurringFormScreen() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.bgPrimary }]} edges={['top']}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
-        </TouchableOpacity>
-        <Text style={[styles.title, { color: colors.textPrimary }]}>
-          {isEditing ? 'Edit Recurring Rule' : 'Add Recurring Rule'}
-        </Text>
-        {isEditing ? (
-          <TouchableOpacity onPress={handleDelete}>
-            <Ionicons name="trash-outline" size={22} color={colors.danger} />
-          </TouchableOpacity>
-        ) : (
-          <View style={{ width: 24 }} />
-        )}
-      </View>
-
       <ScrollView contentContainerStyle={styles.content}>
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => navigation.goBack()}>
+            <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
+          </TouchableOpacity>
+          <Text style={[styles.title, { color: colors.textPrimary }]}>
+            {isEditing ? 'Edit Recurring Rule' : 'Add Recurring Rule'}
+          </Text>
+          {isEditing ? (
+            <TouchableOpacity onPress={handleDelete}>
+              <Ionicons name="trash-outline" size={22} color={colors.danger} />
+            </TouchableOpacity>
+          ) : (
+            <View style={{ width: 24 }} />
+          )}
+        </View>
+
         <Input label="Title" value={title} onChangeText={setTitle} placeholder="e.g. Netflix subscription" />
         <Input label="Amount (optional)" value={amount} onChangeText={setAmount} placeholder="0.00" keyboardType="decimal-pad" />
-        <Input label="Next run date" value={nextRunDate} onChangeText={setNextRunDate} placeholder="YYYY-MM-DD" />
+        <DateField label="Next run date" value={nextRunDate} onChange={setNextRunDate} />
 
         <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>Type</Text>
         <View style={styles.segmentContainer}>
@@ -151,48 +162,15 @@ export function RecurringFormScreen() {
           })}
         </View>
 
-        <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>Cadence</Text>
-        <View style={styles.wrapSegmentContainer}>
-          {CADENCES.map((c) => {
-            const selected = cadence === c;
-            return (
-              <TouchableOpacity
-                key={c}
-                style={[styles.wrapSegment, selected && { backgroundColor: colors.accentPrimary }]}
-                onPress={() => setCadence(c)}
-              >
-                <Text style={[styles.segmentText, { color: selected ? colors.textInverse : colors.textSecondary }]}>
-                  {CADENCE_LABELS[c]}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
+        <Dropdown
+          label="Cadence"
+          value={cadence}
+          options={CADENCE_OPTIONS}
+          onChange={(v) => setCadence(v as RecurringCadence)}
+        />
 
         {type === 'expense' && (
-          <>
-            <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>Category</Text>
-            <View style={styles.categoryGrid}>
-              {CATEGORIES.map((cat) => {
-                const selected = category === cat;
-                const catColor = CATEGORY_COLORS[cat];
-                return (
-                  <TouchableOpacity
-                    key={cat}
-                    style={[
-                      styles.categoryChip,
-                      { backgroundColor: selected ? `${catColor}30` : colors.glassWhite, borderColor: selected ? catColor : colors.border },
-                    ]}
-                    onPress={() => setCategory(cat)}
-                  >
-                    <Text style={[styles.categoryLabel, { color: selected ? colors.textPrimary : colors.textSecondary }]} numberOfLines={1} ellipsizeMode="tail">
-                      {cat}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-          </>
+          <Dropdown label="Category" value={category} options={CATEGORY_OPTIONS} onChange={setCategory} />
         )}
 
         <TouchableOpacity
@@ -249,8 +227,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.base,
+    paddingVertical: spacing.sm,
   },
   title: { fontSize: typography.sizes.lg, fontWeight: typography.weights.semibold },
   content: { padding: spacing.lg },
@@ -270,14 +247,6 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
   },
   segmentContainer: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.base },
-  wrapSegmentContainer: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginBottom: spacing.base },
-  wrapSegment: {
-    paddingHorizontal: spacing.base,
-    paddingVertical: spacing.sm,
-    borderRadius: borderRadius.md,
-    alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.06)',
-  },
   segment: {
     flex: 1,
     paddingVertical: spacing.sm,
@@ -286,14 +255,6 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.06)',
   },
   segmentText: { fontSize: typography.sizes.sm, fontWeight: typography.weights.medium, textTransform: 'capitalize' },
-  categoryGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginBottom: spacing.base },
-  categoryChip: {
-    paddingHorizontal: spacing.base,
-    paddingVertical: spacing.sm,
-    borderRadius: borderRadius.lg,
-    borderWidth: 1,
-  },
-  categoryLabel: { fontSize: typography.sizes.sm, fontWeight: typography.weights.medium, textTransform: 'capitalize' },
   toggle: {
     borderRadius: borderRadius.lg,
     borderWidth: 1,

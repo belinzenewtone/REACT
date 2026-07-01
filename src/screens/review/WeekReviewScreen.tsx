@@ -144,34 +144,36 @@ export function WeekReviewScreen() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.bgPrimary }]} edges={['top']}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
-        </TouchableOpacity>
-        <View style={styles.headerCenter}>
-          <Text style={[styles.eyebrow, { color: colors.textSecondary }]}>Weekly Ritual</Text>
-          <Text style={[styles.title, { color: colors.textPrimary }]}>Weekly Review</Text>
+      <ScrollView contentContainerStyle={styles.content}>
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => navigation.goBack()}>
+            <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
+          </TouchableOpacity>
+          <View style={styles.headerCenter}>
+            <Text style={[styles.title, { color: colors.textPrimary }]}>Weekly Review</Text>
+          </View>
+          <View style={{ width: 24 }} />
         </View>
-        <View style={{ width: 24 }} />
-      </View>
-      <Text style={[styles.weekLabel, { color: colors.textSecondary }]}>{weekLabel}</Text>
+        <Text style={[styles.weekLabel, { color: colors.textSecondary }]}>{weekLabel}</Text>
 
-      {isLoading ? (
-        <View style={styles.centered}>
-          <ActivityIndicator color={colors.accentPrimary} />
-          <Text style={[styles.loadingText, { color: colors.textSecondary }]}>Building your review…</Text>
-        </View>
-      ) : (
-        <ScrollView contentContainerStyle={styles.content}>
-          <Text style={[styles.greeting, { color: colors.textPrimary }]}>{greeting} 👋</Text>
+        {isLoading ? (
+          <View style={styles.centered}>
+            <ActivityIndicator color={colors.accentPrimary} />
+            <Text style={[styles.loadingText, { color: colors.textSecondary }]}>Building your review…</Text>
+          </View>
+        ) : (
+          <>
+            <Text style={[styles.greeting, { color: colors.textPrimary }]}>{greeting} 👋</Text>
 
-          {/* Momentum card */}
-          <GlassCard>
-            <Text style={[styles.cardTitle, { color: colors.textPrimary }]}>Momentum Check</Text>
-            <Text style={[styles.momentumText, { color: colors.textSecondary }]}>
-              Here's how your week shaped up across spending and tasks.
-            </Text>
-          </GlassCard>
+          {/* Momentum card — only shown when there's data to report */}
+          {(data.totalSpend > 0 || data.tasksCompleted > 0 || data.tasksPending > 0) && (
+            <GlassCard>
+              <Text style={[styles.cardTitle, { color: colors.textPrimary }]}>Momentum Check</Text>
+              <Text style={[styles.momentumText, { color: colors.textSecondary }]}>
+                Here's how your week shaped up across spending and tasks.
+              </Text>
+            </GlassCard>
+          )}
 
           {/* Spending */}
           <GlassCard>
@@ -201,31 +203,23 @@ export function WeekReviewScreen() {
             </View>
           </GlassCard>
 
-          <BulletCard title="Wins" items={wins} colors={colors} />
-          <BulletCard title="Risks" items={risks} colors={colors} />
-          <BulletCard title="Top Insights" items={insights} colors={colors} />
-
-          <TouchableOpacity
-            style={[styles.assistantBtn, { backgroundColor: colors.accentPrimary }]}
-            onPress={() => navigation.navigate('Main', { screen: 'Assistant' })}
-          >
-            <Ionicons name="sparkles-outline" size={18} color={colors.textInverse} />
-            <Text style={[styles.assistantBtnText, { color: colors.textInverse }]}>Chat with Assistant</Text>
-          </TouchableOpacity>
-        </ScrollView>
-      )}
+            <BulletCard title="Wins" items={wins} colors={colors} />
+            <BulletCard title="Risks" items={risks} colors={colors} />
+            <BulletCard title="Top Insights" items={insights} colors={colors} />
+          </>
+        )}
+      </ScrollView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing.lg, paddingVertical: spacing.base },
+  header: { flexDirection: 'row', alignItems: 'center', paddingVertical: spacing.sm },
   headerCenter: { flex: 1, alignItems: 'center' },
-  eyebrow: { fontSize: typography.sizes.xs, fontWeight: typography.weights.medium },
   title: { fontSize: typography.sizes.xl, fontWeight: typography.weights.bold },
-  weekLabel: { fontSize: typography.sizes.sm, paddingHorizontal: spacing.lg, marginBottom: spacing.base },
-  content: { padding: spacing.lg, paddingBottom: spacing['4xl'], gap: spacing.base },
+  weekLabel: { fontSize: typography.sizes.sm, marginBottom: spacing.base },
+  content: { paddingHorizontal: spacing.screenHorizontal, paddingVertical: spacing.lg, paddingBottom: spacing['4xl'], gap: spacing.base },
   greeting: { fontSize: typography.sizes.lg, fontWeight: typography.weights.semibold },
   cardTitle: { fontSize: typography.sizes.base, fontWeight: typography.weights.semibold, marginBottom: spacing.sm },
   momentumText: { fontSize: typography.sizes.sm, lineHeight: typography.sizes.sm * 1.6 },
@@ -237,16 +231,6 @@ const styles = StyleSheet.create({
   bulletRow: { flexDirection: 'row', gap: spacing.sm, paddingVertical: spacing.xs },
   bulletNum: { fontSize: typography.sizes.sm, fontWeight: typography.weights.bold, width: 20 },
   bulletText: { flex: 1, fontSize: typography.sizes.sm, lineHeight: typography.sizes.sm * 1.5 },
-  assistantBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.sm,
-    paddingVertical: spacing.base,
-    borderRadius: borderRadius.full,
-    marginTop: spacing.sm,
-  },
-  assistantBtnText: { fontSize: typography.sizes.base, fontWeight: typography.weights.semibold },
   centered: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: spacing.base },
   loadingText: { fontSize: typography.sizes.sm },
 });

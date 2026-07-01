@@ -30,8 +30,10 @@ import { AnalyticsScreen } from '../screens/analytics/AnalyticsScreen';
 import { SearchScreen } from '../screens/search/SearchScreen';
 import { TransactionDetailScreen } from '../screens/finance/TransactionDetailScreen';
 import { CategorizeScreen } from '../screens/finance/CategorizeScreen';
+import { TasksScreen } from '../screens/tasks/TasksScreen';
 import { TaskFormScreen } from '../screens/tasks/TaskFormScreen';
 import { TaskDetailScreen } from '../screens/tasks/TaskDetailScreen';
+import { EventsScreen } from '../screens/calendar/EventsScreen';
 import { EventFormScreen } from '../screens/calendar/EventFormScreen';
 import { EventDetailScreen } from '../screens/calendar/EventDetailScreen';
 import { FeeAnalyticsScreen } from '../screens/finance/FeeAnalyticsScreen';
@@ -106,8 +108,10 @@ export function AppNavigator() {
             <Stack.Screen name="Search" component={SearchScreen} />
             <Stack.Screen name="TransactionDetail" component={TransactionDetailScreen} />
             <Stack.Screen name="Categorize" component={CategorizeScreen} />
+            <Stack.Screen name="Tasks" component={TasksScreen} />
             <Stack.Screen name="TaskDetail" component={TaskDetailScreen} />
             <Stack.Screen name="TaskForm" component={TaskFormScreen} />
+            <Stack.Screen name="Events" component={EventsScreen} />
             <Stack.Screen name="EventDetail" component={EventDetailScreen} />
             <Stack.Screen name="EventForm" component={EventFormScreen} />
             <Stack.Screen name="FeeAnalytics" component={FeeAnalyticsScreen} />

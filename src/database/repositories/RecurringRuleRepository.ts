@@ -95,4 +95,12 @@ export class RecurringRuleRepository extends BaseRepository<RecurringRuleDbRecor
       `SELECT * FROM recurring_rules WHERE ${this.notDeletedClause()} ORDER BY next_run_at ASC`
     );
   }
+
+  async search(query: string, limit: number = 50): Promise<RecurringRuleDbRecord[]> {
+    const like = `%${query}%`;
+    return await this.db.getAllAsync<RecurringRuleDbRecord>(
+      `SELECT * FROM recurring_rules WHERE ${this.notDeletedClause()} AND (title LIKE ? OR category LIKE ?) ORDER BY next_run_at ASC LIMIT ?`,
+      [like, like, limit]
+    );
+  }
 }

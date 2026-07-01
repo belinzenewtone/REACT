@@ -82,22 +82,22 @@ export function CategorizeScreen() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.bgPrimary }]} edges={['top']}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-          <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
-        </TouchableOpacity>
-        <View style={styles.headerText}>
-          <Text style={[styles.eyebrow, { color: colors.textSecondary }]}>Finance</Text>
-          <Text style={[styles.title, { color: colors.textPrimary }]}>Categorize</Text>
-        </View>
-        <View style={styles.backButton} />
-      </View>
-
       {message ? (
         <TopBanner tone={message.tone} message={message.text} visible onDismiss={() => setMessage(null)} />
       ) : null}
 
       <ScrollView contentContainerStyle={styles.content}>
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+            <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
+          </TouchableOpacity>
+          <View style={styles.headerText}>
+            <Text style={[styles.eyebrow, { color: colors.textSecondary }]}>Finance</Text>
+            <Text style={[styles.title, { color: colors.textPrimary }]}>Categorize</Text>
+          </View>
+          <View style={styles.backButton} />
+        </View>
+
         {isLoading ? (
           <View style={styles.loadingWrap}>
             <ActivityIndicator color={colors.accentPrimary} />
@@ -214,8 +214,7 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.base,
+    paddingVertical: spacing.sm,
   },
   backButton: {
     width: 32,
@@ -236,7 +235,7 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   content: {
-    padding: spacing.lg,
+    paddingHorizontal: spacing.screenHorizontal, paddingVertical: spacing.lg,
     paddingTop: spacing.sm,
   },
   loadingWrap: {

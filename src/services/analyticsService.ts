@@ -1,6 +1,7 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 import { TransactionRepository } from '../database/repositories/TransactionRepository';
 import { BudgetRepository } from '../database/repositories/BudgetRepository';
+import { TaskRepository } from '../database/repositories/TaskRepository';
 
 export interface CategoryBreakdownItem {
   category: string;
@@ -37,6 +38,19 @@ export interface MerchantSpendItem {
   amount: number;
 }
 
+export interface InsightItem {
+  icon: string;
+  title: string;
+  description: string;
+  color: string;
+}
+
+export interface ProductivityData {
+  tasksCompleted: number;
+  tasksPending: number;
+  completionRate: number;
+}
+
 export interface AnalyticsData {
   totalSpend: number;
   totalIncome: number;
@@ -48,6 +62,8 @@ export interface AnalyticsData {
   monthlyTrend: MonthlyTrendItem[];
   budgetVsActual: BudgetVsActualItem[];
   topMerchants: MerchantSpendItem[];
+  insights: InsightItem[];
+  productivity: ProductivityData;
 }
 
 export async function computeAnalytics(
@@ -137,6 +153,50 @@ export async function computeAnalytics(
     .sort((a, b) => b.actual - a.actual)
     .slice(0, 5);
 
+  // Task productivity
+  const taskRepo = new TaskRepository(db);
+  const allTasks = await taskRepo.findAll();
+  const tasksCompleted = allTasks.filter((t) => t.status === 'completed').length;
+  const tasksPending = allTasks.filter((t) => t.status !== 'completed').length;
+  const totalTasks = tasksCompleted + tasksPending;
+  const completionRate = totalTasks > 0 ? (tasksCompleted / totalTasks) * 100 : 0;
+
+  // Generate insights
+  const insights: InsightItem[] = [];
+  if (totalSpend > 0) {
+    insights.push({
+      icon: 'cash-outline',
+      title: `Month so far: KSh ${totalSpend.toLocaleString()}`,
+      description: `Across ${categoryBreakdown.length} categories`,
+      color: categoryBreakdown[0]?.color ?? '#4DB8FF',
+    });
+  }
+  if (tasksPending > 0) {
+    insights.push({
+      icon: 'alert-circle-outline',
+      title: `${tasksPending} task${tasksPending !== 1 ? 's' : ''} need${tasksPending === 1 ? 's' : ''} attention`,
+      description: `${completionRate.toFixed(0)}% completion rate`,
+      color: '#EF4444',
+    });
+  }
+  if (totalSpend > 0 && totalIncome > 0 && totalIncome > totalSpend) {
+    const savingsRate = ((totalIncome - totalSpend) / totalIncome) * 100;
+    insights.push({
+      icon: 'trending-up-outline',
+      title: `Saving ${savingsRate.toFixed(0)}% of income`,
+      description: `Net: KSh ${(totalIncome - totalSpend).toLocaleString()}`,
+      color: '#34D399',
+    });
+  }
+  if (categoryBreakdown.length > 0) {
+    insights.push({
+      icon: 'pie-chart-outline',
+      title: `Top category: ${categoryBreakdown[0].category}`,
+      description: `KSh ${categoryBreakdown[0].amount.toLocaleString()} spent`,
+      color: '#8B5CF6',
+    });
+  }
+
   const averageTransaction = transactions.length > 0
     ? transactions.reduce((sum, tx) => sum + tx.amount, 0) / transactions.length
     : 0;
@@ -152,6 +212,8 @@ export async function computeAnalytics(
     monthlyTrend,
     budgetVsActual,
     topMerchants,
+    insights,
+    productivity: { tasksCompleted, tasksPending, completionRate },
   };
 }
 

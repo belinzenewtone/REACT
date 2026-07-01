@@ -17,6 +17,7 @@ interface CalendarState {
   setSelectedDate: (date: string) => void;
   goToPrevMonth: () => void;
   goToNextMonth: () => void;
+  goToToday: () => void;
   loadCalendar: (db: SQLiteDatabase) => Promise<void>;
 }
 
@@ -50,6 +51,15 @@ export const useCalendarStore = create<CalendarState>((set, get) => {
       const newMonth = currentMonth === 12 ? 1 : currentMonth + 1;
       const newYear = currentMonth === 12 ? currentYear + 1 : currentYear;
       set({ currentYear: newYear, currentMonth: newMonth });
+    },
+
+    goToToday: () => {
+      const now = new Date();
+      set({
+        currentYear: now.getUTCFullYear(),
+        currentMonth: now.getUTCMonth() + 1,
+        selectedDate: now.toISOString(),
+      });
     },
 
     loadCalendar: async (db) => {

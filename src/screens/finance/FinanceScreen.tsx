@@ -29,12 +29,13 @@ import { useThemeColors } from '../../hooks/useThemeColors';
 import { useTransactionStore, useDashboardStore, useBudgetStore, usePlannerStore, useAppStore } from '../../store';
 import { TransactionRepository } from '../../database/repositories/TransactionRepository';
 import { SearchFilterBar } from '../../components/finance/SearchFilterBar';
-import { CategoryChips } from '../../components/finance/CategoryChips';
 import { TransactionListItem } from '../../components/finance/TransactionListItem';
 import { GlassCard } from '../../components/common/GlassCard';
+import { ImportCsvSheet } from '../../components/finance/ImportCsvSheet';
+import { ImportSmsSheet } from '../../components/finance/ImportSmsSheet';
 import { CATEGORY_COLORS } from '../../constants';
 import { formatCurrency, formatDate, formatRelativeDay } from '../../utils/formatters';
-import { spacing, typography, borderRadius } from '../../theme';
+import { spacing, typography, borderRadius, BOTTOM_NAV_SAFE_AREA } from '../../theme';
 import type { TransactionListItemData } from '../../components/finance/TransactionListItem';
 import type { TransactionPeriod } from '../../store/useTransactionStore';
 
@@ -82,6 +83,8 @@ export function FinanceScreen() {
 
   const [feesTotal, setFeesTotal] = useState(0);
   const [uncategorizedCount, setUncategorizedCount] = useState(0);
+  const [csvSheetVisible, setCsvSheetVisible] = useState(false);
+  const [smsSheetVisible, setSmsSheetVisible] = useState(false);
 
   useEffect(() => {
     loadTransactions(repo, true);
@@ -190,23 +193,11 @@ export function FinanceScreen() {
     [fulizaOpenLoans]
   );
 
-  const exportNudge = useMemo(
-    () => ({
-      title: 'Exports and reports',
-      summary:
-        transactions.length === 0
-          ? 'Prepare a clean export setup before the ledger grows.'
-          : `Create a CSV, JSON, or shareable report from ${transactions.length} visible transactions.`,
-      actionLabel: 'Open export center',
-    }),
-    [transactions.length]
-  );
-
   const actionChips: ActionChip[] = [
     { icon: 'add', label: 'Add', onPress: () => navigation.navigate('TransactionForm') },
     { icon: 'grid-outline', label: 'Hub', onPress: () => navigation.navigate('Planner') },
-    { icon: 'chatbubble-outline', label: 'Import SMS', onPress: () => navigation.navigate('CsvImport') },
-    { icon: 'document-outline', label: 'Import CSV', onPress: () => navigation.navigate('CsvImport') },
+    { icon: 'chatbubble-outline', label: 'Import SMS', onPress: () => setSmsSheetVisible(true) },
+    { icon: 'document-outline', label: 'Import CSV', onPress: () => setCsvSheetVisible(true) },
     { icon: 'download-outline', label: 'Export Data', onPress: () => navigation.navigate('Export') },
   ];
 
@@ -274,34 +265,6 @@ export function FinanceScreen() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.bgPrimary }]} edges={['top']}>
-      <View style={styles.header}>
-        <Text style={[styles.title, { color: colors.textPrimary }]}>Finance</Text>
-        <View style={styles.headerActions}>
-          <TouchableOpacity
-            style={[styles.iconButton, { backgroundColor: colors.glassWhite }]}
-            onPress={() => navigation.navigate('Planner')}
-          >
-            <Ionicons name="grid-outline" size={20} color={colors.textPrimary} />
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.iconButton, { backgroundColor: colors.glassWhite }]}
-            onPress={() => {
-              const next: typeof filters.orderBy =
-                filters.orderBy === 'date_desc'
-                  ? 'date_asc'
-                  : filters.orderBy === 'date_asc'
-                  ? 'amount_desc'
-                  : filters.orderBy === 'amount_desc'
-                  ? 'amount_asc'
-                  : 'date_desc';
-              setFilters({ orderBy: next });
-            }}
-          >
-            <Ionicons name="swap-vertical" size={20} color={colors.textPrimary} />
-          </TouchableOpacity>
-        </View>
-      </View>
-
       <FlatList
         data={flatData}
         keyExtractor={(item, index) =>
@@ -336,6 +299,10 @@ export function FinanceScreen() {
         onEndReachedThreshold={0.5}
         ListHeaderComponent={
           <>
+            <View style={styles.header}>
+              <Text style={[styles.title, { color: colors.textPrimary }]}>Finance</Text>
+            </View>
+
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
@@ -491,20 +458,6 @@ export function FinanceScreen() {
               )}
             </ScrollView>
 
-            <GlassCard style={styles.nudgeCard}>
-              <View style={styles.nudgeHeader}>
-                <Text style={[styles.nudgeTitle, { color: colors.textPrimary }]} numberOfLines={1}>
-                  {exportNudge.title}
-                </Text>
-                <TouchableOpacity onPress={() => navigation.navigate('Export')}>
-                  <Text style={[styles.nudgeAction, { color: colors.accentPrimary }]}>{exportNudge.actionLabel}</Text>
-                </TouchableOpacity>
-              </View>
-              <Text style={[styles.nudgeSummary, { color: colors.textSecondary }]} numberOfLines={2}>
-                {exportNudge.summary}
-              </Text>
-            </GlassCard>
-
             <View style={styles.periodFilter}>
               {PERIODS.map((p) => {
                 const isSelected = filters.period === p.key;
@@ -536,36 +489,7 @@ export function FinanceScreen() {
             <SearchFilterBar
               search={filters.search}
               onSearchChange={(search) => setFilters({ search })}
-              hasActiveFilters={filters.type !== undefined || filters.status !== undefined}
-              onFilterPress={() => {
-                const nextType =
-                  filters.type === undefined
-                    ? 'expense'
-                    : filters.type === 'expense'
-                    ? 'income'
-                    : filters.type === 'income'
-                    ? 'transfer'
-                    : undefined;
-                setFilters({ type: nextType });
-              }}
             />
-
-            <CategoryChips
-              categories={CATEGORIES}
-              selected={filters.category}
-              onSelect={(category) => setFilters({ category })}
-            />
-
-            {filters.type && (
-              <View style={styles.activeFilterRow}>
-                <Text style={[styles.activeFilterText, { color: colors.textSecondary }]} numberOfLines={1}>
-                  Type: <Text style={{ color: colors.accentPrimary }}>{filters.type}</Text>
-                </Text>
-                <TouchableOpacity onPress={() => setFilters({ type: undefined })}>
-                  <Ionicons name="close-circle" size={18} color={colors.textSecondary} />
-                </TouchableOpacity>
-              </View>
-            )}
 
             <View style={styles.transactionsHeader}>
               <Text style={[styles.transactionsTitle, { color: colors.textPrimary }]}>
@@ -593,6 +517,20 @@ export function FinanceScreen() {
       >
         <Ionicons name="add" size={28} color={colors.textInverse} />
       </TouchableOpacity>
+
+      <ImportCsvSheet
+        visible={csvSheetVisible}
+        onClose={() => setCsvSheetVisible(false)}
+        onFilePicked={(fileUri, fileName) => navigation.navigate('CsvImport', { fileUri, fileName })}
+      />
+      <ImportSmsSheet
+        visible={smsSheetVisible}
+        onClose={() => setSmsSheetVisible(false)}
+        onSelectPeriod={() => {
+          setSmsSheetVisible(false);
+          navigation.navigate('SmsImportHealth');
+        }}
+      />
     </SafeAreaView>
   );
 }
@@ -618,8 +556,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.base,
+    paddingHorizontal: spacing.screenHorizontal,
+    paddingVertical: spacing.sm,
   },
   title: {
     fontSize: typography.sizes['2xl'],
@@ -637,7 +575,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   actionChipsContainer: {
-    paddingHorizontal: spacing.lg,
+    paddingHorizontal: spacing.screenHorizontal,
     gap: spacing.sm,
     paddingBottom: spacing.base,
   },
@@ -655,7 +593,7 @@ const styles = StyleSheet.create({
     fontWeight: typography.weights.medium,
   },
   metricsRow: {
-    paddingHorizontal: spacing.lg,
+    paddingHorizontal: spacing.screenHorizontal,
     gap: spacing.base,
     marginBottom: spacing.base,
   },
@@ -714,7 +652,7 @@ const styles = StyleSheet.create({
     fontWeight: typography.weights.semibold,
   },
   insightsRow: {
-    paddingHorizontal: spacing.lg,
+    paddingHorizontal: spacing.screenHorizontal,
     gap: spacing.sm,
     marginBottom: spacing.base,
   },
@@ -771,7 +709,7 @@ const styles = StyleSheet.create({
   },
   periodFilter: {
     flexDirection: 'row',
-    paddingHorizontal: spacing.lg,
+    paddingHorizontal: spacing.screenHorizontal,
     gap: spacing.sm,
     marginBottom: spacing.base,
   },
@@ -790,7 +728,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: spacing.lg,
+    paddingHorizontal: spacing.screenHorizontal,
     marginTop: spacing.sm,
   },
   activeFilterText: {
@@ -801,7 +739,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: spacing.lg,
+    paddingHorizontal: spacing.screenHorizontal,
     marginTop: spacing.lg,
     marginBottom: spacing.base,
   },
@@ -813,10 +751,10 @@ const styles = StyleSheet.create({
     fontSize: typography.sizes.sm,
   },
   listContent: {
-    paddingBottom: spacing['4xl'],
+    paddingBottom: BOTTOM_NAV_SAFE_AREA,
   },
   dateHeader: {
-    paddingHorizontal: spacing.lg,
+    paddingHorizontal: spacing.screenHorizontal,
     paddingTop: spacing.lg,
     paddingBottom: spacing.sm,
   },

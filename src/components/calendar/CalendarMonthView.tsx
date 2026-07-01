@@ -1,5 +1,5 @@
-import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import React, { useRef } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, PanResponder, Animated } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useThemeColors } from '../../hooks/useThemeColors';
 import { spacing, typography, borderRadius } from '../../theme';
@@ -21,6 +21,7 @@ interface CalendarMonthViewProps {
   onSelectDate: (date: string) => void;
   onPrevMonth: () => void;
   onNextMonth: () => void;
+  onGoToToday?: () => void;
 }
 
 const WEEKDAYS = ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'];
@@ -28,6 +29,8 @@ const MONTH_NAMES = [
   'January', 'February', 'March', 'April', 'May', 'June',
   'July', 'August', 'September', 'October', 'November', 'December',
 ];
+
+const SWIPE_THRESHOLD = 50;
 
 export function CalendarMonthView({
   year,
@@ -37,8 +40,32 @@ export function CalendarMonthView({
   onSelectDate,
   onPrevMonth,
   onNextMonth,
+  onGoToToday,
 }: CalendarMonthViewProps) {
   const colors = useThemeColors();
+  const fade = useRef(new Animated.Value(1)).current;
+
+  const runTransition = (action: () => void) => {
+    Animated.sequence([
+      Animated.timing(fade, { toValue: 0.3, duration: 90, useNativeDriver: true }),
+      Animated.timing(fade, { toValue: 1, duration: 150, useNativeDriver: true }),
+    ]).start();
+    action();
+  };
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (_, gesture) =>
+        Math.abs(gesture.dx) > 12 && Math.abs(gesture.dx) > Math.abs(gesture.dy) * 1.5,
+      onPanResponderRelease: (_, gesture) => {
+        if (gesture.dx <= -SWIPE_THRESHOLD) {
+          runTransition(onNextMonth);
+        } else if (gesture.dx >= SWIPE_THRESHOLD) {
+          runTransition(onPrevMonth);
+        }
+      },
+    })
+  ).current;
 
   const days = React.useMemo(() => {
     const firstDayOfMonth = new Date(Date.UTC(year, month - 1, 1));
@@ -101,17 +128,30 @@ export function CalendarMonthView({
   }, [year, month, eventsByDate]);
 
   const selectedDateStr = toDateString(new Date(selectedDate));
+  const now = new Date();
+  const isViewingCurrentMonth = year === now.getUTCFullYear() && month === now.getUTCMonth() + 1;
 
   return (
     <View style={[styles.container, { backgroundColor: colors.glassWhite, borderColor: colors.border }]}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={onPrevMonth} style={styles.arrowButton} activeOpacity={0.7}>
+        <TouchableOpacity onPress={() => runTransition(onPrevMonth)} style={styles.arrowButton} activeOpacity={0.7}>
           <Ionicons name="chevron-back" size={22} color={colors.textPrimary} />
         </TouchableOpacity>
-        <Text style={[styles.monthTitle, { color: colors.textPrimary }]}>
-          {MONTH_NAMES[month - 1]} {year}
-        </Text>
-        <TouchableOpacity onPress={onNextMonth} style={styles.arrowButton} activeOpacity={0.7}>
+        <View style={styles.headerCenter}>
+          <Text style={[styles.monthTitle, { color: colors.textPrimary }]}>
+            {MONTH_NAMES[month - 1]} {year}
+          </Text>
+          {!isViewingCurrentMonth && onGoToToday ? (
+            <TouchableOpacity
+              onPress={() => runTransition(onGoToToday)}
+              activeOpacity={0.7}
+              style={[styles.todayButton, { backgroundColor: `${colors.accentPrimary}16` }]}
+            >
+              <Text style={[styles.todayLabel, { color: colors.accentPrimary }]}>Today</Text>
+            </TouchableOpacity>
+          ) : null}
+        </View>
+        <TouchableOpacity onPress={() => runTransition(onNextMonth)} style={styles.arrowButton} activeOpacity={0.7}>
           <Ionicons name="chevron-forward" size={22} color={colors.textPrimary} />
         </TouchableOpacity>
       </View>
@@ -124,7 +164,7 @@ export function CalendarMonthView({
         ))}
       </View>
 
-      <View style={styles.daysGrid}>
+      <Animated.View style={[styles.daysGrid, { opacity: fade }]} {...panResponder.panHandlers}>
         {days.map((day, index) => {
           const dayStr = toDateString(new Date(day.fullDate));
           const isSelected = dayStr === selectedDateStr;
@@ -133,22 +173,26 @@ export function CalendarMonthView({
             <TouchableOpacity
               key={index}
               activeOpacity={0.7}
-              style={[
-                styles.dayCell,
-                day.isToday && !isSelected && { borderWidth: 1.5, borderColor: colors.accentPrimary },
-                isSelected && { backgroundColor: colors.accentPrimary },
-              ]}
+              style={styles.dayCell}
               onPress={() => onSelectDate(day.fullDate)}
             >
-              <Text
+              <View
                 style={[
-                  styles.dayText,
-                  { color: day.isCurrentMonth ? colors.textPrimary : colors.textTertiary },
-                  isSelected && { color: colors.textInverse },
+                  styles.dayCircle,
+                  day.isToday && !isSelected && { borderWidth: 1.5, borderColor: colors.accentPrimary },
+                  isSelected && { backgroundColor: colors.accentPrimary },
                 ]}
               >
-                {day.date}
-              </Text>
+                <Text
+                  style={[
+                    styles.dayText,
+                    { color: day.isCurrentMonth ? colors.textPrimary : colors.textTertiary },
+                    isSelected && { color: colors.textInverse, fontWeight: typography.weights.bold },
+                  ]}
+                >
+                  {day.date}
+                </Text>
+              </View>
               <View style={styles.indicators}>
                 {day.hasEvent && (
                   <View style={[styles.dot, { backgroundColor: colors.accentSecondary }]} />
@@ -160,7 +204,7 @@ export function CalendarMonthView({
             </TouchableOpacity>
           );
         })}
-      </View>
+      </Animated.View>
     </View>
   );
 }
@@ -171,7 +215,7 @@ function toDateString(date: Date): string {
 
 const styles = StyleSheet.create({
   container: {
-    borderRadius: borderRadius.xl,
+    borderRadius: 20,
     borderWidth: 1,
     padding: spacing.base,
   },
@@ -179,7 +223,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: spacing.base,
+    marginBottom: spacing.sm,
+  },
+  headerCenter: {
+    flex: 1,
+    alignItems: 'center',
+    gap: spacing.xs,
   },
   arrowButton: {
     padding: spacing.sm,
@@ -188,9 +237,19 @@ const styles = StyleSheet.create({
     fontSize: typography.sizes.lg,
     fontWeight: typography.weights.semibold,
   },
+  todayButton: {
+    marginTop: 2,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 3,
+    borderRadius: borderRadius.full,
+  },
+  todayLabel: {
+    fontSize: typography.sizes.xs,
+    fontWeight: typography.weights.semibold,
+  },
   weekdayRow: {
     flexDirection: 'row',
-    marginBottom: spacing.sm,
+    marginBottom: 4,
   },
   weekdayText: {
     flex: 1,
@@ -207,16 +266,24 @@ const styles = StyleSheet.create({
     aspectRatio: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    borderRadius: borderRadius.lg,
+    padding: 2,
+  },
+  dayCircle: {
+    flex: 1,
+    width: '100%',
+    borderRadius: 999,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   dayText: {
     fontSize: typography.sizes.base,
     fontWeight: typography.weights.medium,
   },
   indicators: {
+    position: 'absolute',
+    bottom: 4,
     flexDirection: 'row',
-    gap: 3,
-    marginTop: 3,
+    gap: 2,
   },
   dot: {
     width: 4,

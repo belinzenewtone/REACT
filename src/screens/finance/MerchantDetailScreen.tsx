@@ -65,34 +65,35 @@ export function MerchantDetailScreen() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.bgPrimary }]} edges={['top']}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
-        </TouchableOpacity>
-        <View style={styles.headerCenter}>
-          <Text style={[styles.eyebrow, { color: colors.textSecondary }]}>Merchant</Text>
-          <Text style={[styles.title, { color: colors.textPrimary }]} numberOfLines={1}>
-            {merchant || 'Merchant'}
-          </Text>
+      <ScrollView contentContainerStyle={styles.content}>
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => navigation.goBack()}>
+            <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
+          </TouchableOpacity>
+          <View style={styles.headerCenter}>
+            <Text style={[styles.eyebrow, { color: colors.textSecondary }]}>Merchant</Text>
+            <Text style={[styles.title, { color: colors.textPrimary }]} numberOfLines={1}>
+              {merchant || 'Merchant'}
+            </Text>
+          </View>
+          <View style={{ width: 24 }} />
         </View>
-        <View style={{ width: 24 }} />
-      </View>
 
-      <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
-        {transactions.length} transaction{transactions.length !== 1 ? 's' : ''}
-      </Text>
+        <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
+          {transactions.length} transaction{transactions.length !== 1 ? 's' : ''}
+        </Text>
 
-      {transactions.length === 0 && !isLoading ? (
-        <View style={styles.emptyState}>
-          <Ionicons name="receipt-outline" size={48} color={colors.textTertiary} />
-          <Text style={[styles.emptyTitle, { color: colors.textPrimary }]}>No transactions</Text>
-          <Text style={[styles.emptyDesc, { color: colors.textSecondary }]}>
-            No transactions found for this merchant.
-          </Text>
-        </View>
-      ) : (
-        <ScrollView contentContainerStyle={styles.content}>
-          <GlassCard style={styles.statsCard}>
+        {transactions.length === 0 && !isLoading ? (
+          <View style={styles.emptyState}>
+            <Ionicons name="receipt-outline" size={48} color={colors.textTertiary} />
+            <Text style={[styles.emptyTitle, { color: colors.textPrimary }]}>No transactions</Text>
+            <Text style={[styles.emptyDesc, { color: colors.textSecondary }]}>
+              No transactions found for this merchant.
+            </Text>
+          </View>
+        ) : (
+          <>
+            <GlassCard style={styles.statsCard}>
             <View style={styles.statsRow}>
               <StatColumn label="Total Spend" value={formatCurrency(totalSpend)} colors={colors} />
               <View style={[styles.statDivider, { backgroundColor: colors.border }]} />
@@ -139,8 +140,9 @@ export function MerchantDetailScreen() {
               );
             })}
           </GlassCard>
-        </ScrollView>
-      )}
+          </>
+        )}
+      </ScrollView>
     </SafeAreaView>
   );
 }
@@ -150,14 +152,13 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.base,
+    paddingVertical: spacing.sm,
   },
   headerCenter: { flex: 1, alignItems: 'center' },
   eyebrow: { fontSize: typography.sizes.xs, fontWeight: typography.weights.medium },
   title: { fontSize: typography.sizes.xl, fontWeight: typography.weights.bold },
-  subtitle: { fontSize: typography.sizes.sm, paddingHorizontal: spacing.lg, marginBottom: spacing.base },
-  content: { padding: spacing.lg, paddingBottom: spacing['4xl'] },
+  subtitle: { fontSize: typography.sizes.sm, marginBottom: spacing.base },
+  content: { paddingHorizontal: spacing.screenHorizontal, paddingVertical: spacing.lg, paddingBottom: spacing['4xl'] },
   statsCard: { marginBottom: spacing.base },
   statsRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-evenly' },
   statCol: { alignItems: 'center', gap: 4 },

@@ -137,7 +137,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scroll: {
-    padding: spacing.lg,
+    paddingHorizontal: spacing.screenHorizontal, paddingVertical: spacing.lg,
     paddingBottom: spacing['2xl'],
   },
   loadingContent: {

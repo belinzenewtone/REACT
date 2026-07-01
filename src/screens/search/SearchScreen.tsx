@@ -7,9 +7,6 @@ import {
   ScrollView,
   StyleSheet,
   ActivityIndicator,
-  LayoutAnimation,
-  Platform,
-  UIManager,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -21,12 +18,7 @@ import { useSearchStore } from '../../store';
 import { searchAll, type SearchResults, type SearchResultType } from '../../services/searchService';
 import { GlassCard } from '../../components/common/GlassCard';
 import { formatCurrency, formatDate, formatDateTime } from '../../utils/formatters';
-import { CATEGORY_COLORS } from '../../constants';
 import { spacing, typography, borderRadius } from '../../theme';
-
-if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
-  UIManager.setLayoutAnimationEnabledExperimental(true);
-}
 
 type FilterType = 'all' | SearchResultType;
 
@@ -35,12 +27,12 @@ const FILTERS: { key: FilterType; label: string; icon: keyof typeof Ionicons.gly
   { key: 'transaction', label: 'Finance', icon: 'cash-outline' },
   { key: 'task', label: 'Tasks', icon: 'checkbox-outline' },
   { key: 'event', label: 'Events', icon: 'calendar-outline' },
+  { key: 'birthday', label: 'Birthdays', icon: 'gift-outline' },
+  { key: 'anniversary', label: 'Anniversary', icon: 'heart-outline' },
+  { key: 'countdown', label: 'Countdown', icon: 'timer-outline' },
   { key: 'budget', label: 'Budgets', icon: 'wallet-outline' },
-  { key: 'merchant', label: 'Merchants', icon: 'storefront-outline' },
+  { key: 'recurring', label: 'Recurring', icon: 'repeat-outline' },
 ];
-
-const TYPES = ['expense', 'income', 'transfer'] as const;
-const CATEGORIES = Object.keys(CATEGORY_COLORS).filter((c) => c !== 'income' && c !== 'uncategorized');
 
 function SectionHeader({
   title,
@@ -70,40 +62,41 @@ export function SearchScreen() {
   const colors = useThemeColors();
   const db = useSQLiteContext();
   const navigation = useNavigation<any>();
-  const { recentSearches, filters, addRecentSearch, clearRecentSearches, setFilters, resetFilters } =
-    useSearchStore();
+  const { recentSearches, addRecentSearch, clearRecentSearches } = useSearchStore();
 
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<FilterType>('all');
   const [results, setResults] = useState<SearchResults | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [showFilters, setShowFilters] = useState(false);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({
     transactions: true,
     tasks: true,
     events: true,
+    birthdays: true,
+    anniversaries: true,
+    countdowns: true,
     budgets: true,
-    merchants: true,
+    recurring: true,
   });
 
   const debouncedQuery = useDebounce(query, 300);
   const hasAddedRecent = useRef(false);
 
   const performSearch = useCallback(async () => {
-    if (!debouncedQuery.trim() && Object.keys(filters).length === 0) {
+    if (!debouncedQuery.trim()) {
       setResults(null);
       return;
     }
     setIsLoading(true);
     try {
-      const data = await searchAll(db, debouncedQuery, filters, 30);
+      const data = await searchAll(db, debouncedQuery);
       setResults(data);
     } catch (error) {
       console.error('Search failed:', error);
     } finally {
       setIsLoading(false);
     }
-  }, [db, debouncedQuery, filters]);
+  }, [db, debouncedQuery]);
 
   useEffect(() => {
     performSearch();
@@ -117,7 +110,6 @@ export function SearchScreen() {
   };
 
   const toggleSection = (key: string) => {
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setExpanded((prev) => ({ ...prev, [key]: !prev[key] }));
   };
 
@@ -125,19 +117,50 @@ export function SearchScreen() {
     ? results.transactions.length +
         results.tasks.length +
         results.events.length +
+        results.birthdays.length +
+        results.anniversaries.length +
+        results.countdowns.length +
         results.budgets.length +
-        results.merchants.length >
+        results.recurring.length >
       0
     : false;
 
-  const updateFilter = (key: keyof typeof filters, value: any) => setFilters({ ...filters, [key]: value });
-  const clearFilter = (key: keyof typeof filters) => {
-    const next = { ...filters };
-    delete next[key];
-    setFilters(next);
-  };
+  const isIdle = !debouncedQuery.trim();
 
-  const isIdle = !debouncedQuery.trim() && Object.keys(filters).length === 0;
+  function renderResultCard({
+    icon,
+    iconBg,
+    title,
+    subtitle,
+    right,
+    onPress,
+  }: {
+    icon: keyof typeof Ionicons.glyphMap;
+    iconBg: string;
+    title: string;
+    subtitle: string;
+    right?: React.ReactNode;
+    onPress: () => void;
+  }) {
+    return (
+      <TouchableOpacity onPress={onPress}>
+        <GlassCard style={styles.card}>
+          <View style={styles.cardRow}>
+            <View style={[styles.iconBox, { backgroundColor: iconBg }]}>
+              <Ionicons name={icon} size={16} color="#FFF" />
+            </View>
+            <View style={styles.cardContent}>
+              <Highlight text={title} query={debouncedQuery} style={[styles.cardTitle, { color: colors.textPrimary }]} />
+              <Text style={[styles.cardSub, { color: colors.textSecondary }]} numberOfLines={1}>
+                {subtitle}
+              </Text>
+            </View>
+            {right}
+          </View>
+        </GlassCard>
+      </TouchableOpacity>
+    );
+  }
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.bgPrimary }]} edges={['top']}>
@@ -167,13 +190,6 @@ export function SearchScreen() {
             </TouchableOpacity>
           )}
         </View>
-        <TouchableOpacity onPress={() => setShowFilters((v) => !v)} style={styles.iconBtn}>
-          <Ionicons
-            name={showFilters ? 'options' : 'options-outline'}
-            size={22}
-            color={Object.keys(filters).length > 0 ? colors.accentPrimary : colors.textSecondary}
-          />
-        </TouchableOpacity>
       </View>
 
       {/* Filter chips */}
@@ -198,40 +214,6 @@ export function SearchScreen() {
         })}
       </ScrollView>
 
-      {/* Advanced filters panel */}
-      {showFilters && (
-        <View style={[styles.advPanel, { borderColor: colors.border, backgroundColor: colors.bgSecondary }]}>
-          <View style={styles.rowInputs}>
-            <FilterInput label="Min amount" value={filters.minAmount?.toString() ?? ''} onChangeText={(t) => updateFilter('minAmount', t ? parseFloat(t) : undefined)} placeholder="0" keyboardType="decimal-pad" />
-            <FilterInput label="Max amount" value={filters.maxAmount?.toString() ?? ''} onChangeText={(t) => updateFilter('maxAmount', t ? parseFloat(t) : undefined)} placeholder="∞" keyboardType="decimal-pad" />
-          </View>
-          <View style={styles.rowInputs}>
-            <FilterInput label="From date" value={filters.startDate?.split('T')[0] ?? ''} onChangeText={(t) => updateFilter('startDate', t ? new Date(`${t}T00:00:00.000Z`).toISOString() : undefined)} placeholder="YYYY-MM-DD" />
-            <FilterInput label="To date" value={filters.endDate?.split('T')[0] ?? ''} onChangeText={(t) => updateFilter('endDate', t ? new Date(`${t}T23:59:59.999Z`).toISOString() : undefined)} placeholder="YYYY-MM-DD" />
-          </View>
-          <Text style={[styles.filterGroupLabel, { color: colors.textSecondary }]}>Type</Text>
-          <View style={styles.chipRow}>
-            {(['any', ...TYPES] as const).map((t) => {
-              const active = t === 'any' ? !filters.type : filters.type === t;
-              return (
-                <TouchableOpacity
-                  key={t}
-                  style={[styles.smallChip, { backgroundColor: active ? colors.accentPrimary : colors.glassWhite, borderColor: colors.border }]}
-                  onPress={() => t === 'any' ? clearFilter('type') : updateFilter('type', t)}
-                >
-                  <Text style={{ color: active ? colors.textInverse : colors.textPrimary, fontSize: 12, textTransform: 'capitalize' }}>
-                    {t === 'any' ? 'Any' : t}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-          <TouchableOpacity style={[styles.resetBtn, { borderColor: colors.border }]} onPress={resetFilters}>
-            <Text style={{ color: colors.textSecondary, fontSize: 13 }}>Reset filters</Text>
-          </TouchableOpacity>
-        </View>
-      )}
-
       <ScrollView contentContainerStyle={styles.content}>
         {/* Idle state */}
         {isIdle && recentSearches.length === 0 && (
@@ -239,7 +221,7 @@ export function SearchScreen() {
             <Ionicons name="search-outline" size={48} color={colors.textTertiary} />
             <Text style={[styles.idleTitle, { color: colors.textPrimary }]}>Search everything</Text>
             <Text style={[styles.idleHint, { color: colors.textSecondary }]}>
-              Transactions, tasks, events, budgets and merchants.
+              Transactions, tasks, events, birthdays and more.
             </Text>
           </View>
         )}
@@ -366,19 +348,122 @@ export function SearchScreen() {
                   onToggle={() => toggleSection('events')}
                   colors={colors}
                 />
-                {expanded.events && results.events.map((event) => (
+                {expanded.events && results.events.map((event) => (() => {
+                  const eventIcon = event.type === 'birthday' ? 'gift-outline' as const
+                    : event.type === 'anniversary' ? 'heart-outline' as const
+                    : event.type === 'countdown' ? 'timer-outline' as const
+                    : 'calendar-outline' as const;
+                  const eventColor = event.type === 'birthday' ? '#FF69B4'
+                    : event.type === 'anniversary' ? '#FF6B6B'
+                    : event.type === 'countdown' ? '#FFA726'
+                    : colors.warning;
+                  return (
+                    <TouchableOpacity key={event.id} onPress={() => navigation.navigate('EventDetail', { eventId: event.id })}>
+                      <GlassCard style={styles.card}>
+                        <View style={styles.cardRow}>
+                          <View style={[styles.iconBox, { backgroundColor: `${eventColor}20` }]}>
+                            <Ionicons name={eventIcon} size={16} color={eventColor} />
+                          </View>
+                          <View style={styles.cardContent}>
+                            <Highlight text={event.title} query={debouncedQuery} style={[styles.cardTitle, { color: colors.textPrimary }]} />
+                            <Text style={[styles.cardSub, { color: colors.textSecondary }]}>
+                              {formatDateTime(event.date)}{event.location ? ` · ${event.location}` : ''}
+                            </Text>
+                          </View>
+                        </View>
+                      </GlassCard>
+                    </TouchableOpacity>
+                  );
+                })())}
+              </View>
+            )}
+
+            {/* Birthdays */}
+            {(filter === 'all' || filter === 'birthday') && results.birthdays.length > 0 && (
+              <View style={styles.section}>
+                <SectionHeader
+                  title="Birthdays"
+                  count={results.birthdays.length}
+                  expanded={expanded.birthdays}
+                  onToggle={() => toggleSection('birthdays')}
+                  colors={colors}
+                />
+                {expanded.birthdays && results.birthdays.map((event) => (
                   <TouchableOpacity key={event.id} onPress={() => navigation.navigate('EventDetail', { eventId: event.id })}>
                     <GlassCard style={styles.card}>
                       <View style={styles.cardRow}>
-                        <View style={[styles.iconBox, { backgroundColor: `${colors.warning}20` }]}>
-                          <Ionicons name="calendar-outline" size={16} color={colors.warning} />
+                        <View style={[styles.iconBox, { backgroundColor: '#FF69B440' }]}>
+                          <Ionicons name="gift-outline" size={16} color="#FF69B4" />
                         </View>
                         <View style={styles.cardContent}>
                           <Highlight text={event.title} query={debouncedQuery} style={[styles.cardTitle, { color: colors.textPrimary }]} />
                           <Text style={[styles.cardSub, { color: colors.textSecondary }]}>
-                            {formatDateTime(event.date)}{event.location ? ` · ${event.location}` : ''}
+                            {formatDateTime(event.date)}
                           </Text>
                         </View>
+                        <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
+                      </View>
+                    </GlassCard>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+
+            {/* Anniversaries */}
+            {(filter === 'all' || filter === 'anniversary') && results.anniversaries.length > 0 && (
+              <View style={styles.section}>
+                <SectionHeader
+                  title="Anniversaries"
+                  count={results.anniversaries.length}
+                  expanded={expanded.anniversaries}
+                  onToggle={() => toggleSection('anniversaries')}
+                  colors={colors}
+                />
+                {expanded.anniversaries && results.anniversaries.map((event) => (
+                  <TouchableOpacity key={event.id} onPress={() => navigation.navigate('EventDetail', { eventId: event.id })}>
+                    <GlassCard style={styles.card}>
+                      <View style={styles.cardRow}>
+                        <View style={[styles.iconBox, { backgroundColor: '#FF6B6B40' }]}>
+                          <Ionicons name="heart-outline" size={16} color="#FF6B6B" />
+                        </View>
+                        <View style={styles.cardContent}>
+                          <Highlight text={event.title} query={debouncedQuery} style={[styles.cardTitle, { color: colors.textPrimary }]} />
+                          <Text style={[styles.cardSub, { color: colors.textSecondary }]}>
+                            {formatDateTime(event.date)}
+                          </Text>
+                        </View>
+                        <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
+                      </View>
+                    </GlassCard>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+
+            {/* Countdowns */}
+            {(filter === 'all' || filter === 'countdown') && results.countdowns.length > 0 && (
+              <View style={styles.section}>
+                <SectionHeader
+                  title="Countdowns"
+                  count={results.countdowns.length}
+                  expanded={expanded.countdowns}
+                  onToggle={() => toggleSection('countdowns')}
+                  colors={colors}
+                />
+                {expanded.countdowns && results.countdowns.map((event) => (
+                  <TouchableOpacity key={event.id} onPress={() => navigation.navigate('EventDetail', { eventId: event.id })}>
+                    <GlassCard style={styles.card}>
+                      <View style={styles.cardRow}>
+                        <View style={[styles.iconBox, { backgroundColor: '#FFA72640' }]}>
+                          <Ionicons name="timer-outline" size={16} color="#FFA726" />
+                        </View>
+                        <View style={styles.cardContent}>
+                          <Highlight text={event.title} query={debouncedQuery} style={[styles.cardTitle, { color: colors.textPrimary }]} />
+                          <Text style={[styles.cardSub, { color: colors.textSecondary }]}>
+                            {formatDateTime(event.date)}
+                          </Text>
+                        </View>
+                        <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
                       </View>
                     </GlassCard>
                   </TouchableOpacity>
@@ -417,33 +502,33 @@ export function SearchScreen() {
               </View>
             )}
 
-            {/* Merchants */}
-            {(filter === 'all' || filter === 'merchant') && results.merchants.length > 0 && (
+            {/* Recurring */}
+            {(filter === 'all' || filter === 'recurring') && results.recurring.length > 0 && (
               <View style={styles.section}>
                 <SectionHeader
-                  title="Merchants"
-                  count={results.merchants.length}
-                  expanded={expanded.merchants}
-                  onToggle={() => toggleSection('merchants')}
+                  title="Recurring"
+                  count={results.recurring.length}
+                  expanded={expanded.recurring}
+                  onToggle={() => toggleSection('recurring')}
                   colors={colors}
                 />
-                {expanded.merchants && results.merchants.map((merchant) => (
-                  <GlassCard key={merchant.id} style={styles.card}>
-                    <View style={styles.cardRow}>
-                      <View style={[styles.iconBox, { backgroundColor: `${colors.accentSecondary ?? colors.info}20` }]}>
-                        <Ionicons name="storefront-outline" size={16} color={colors.accentSecondary ?? colors.info} />
+                {expanded.recurring && results.recurring.map((rule) => (
+                  <TouchableOpacity key={rule.id} onPress={() => navigation.navigate('RecurringForm', { ruleId: rule.id })}>
+                    <GlassCard style={styles.card}>
+                      <View style={styles.cardRow}>
+                        <View style={[styles.iconBox, { backgroundColor: `${colors.info ?? '#4DB8FF'}20` }]}>
+                          <Ionicons name="repeat-outline" size={16} color={colors.info ?? '#4DB8FF'} />
+                        </View>
+                        <View style={styles.cardContent}>
+                          <Highlight text={rule.title} query={debouncedQuery} style={[styles.cardTitle, { color: colors.textPrimary }]} />
+                          <Text style={[styles.cardSub, { color: colors.textSecondary }]}>
+                            {rule.cadence}{rule.amount ? ` · ${formatCurrency(rule.amount)}` : ''}
+                          </Text>
+                        </View>
+                        <Ionicons name={rule.enabled ? 'checkmark-circle' : 'ellipse-outline'} size={16} color={rule.enabled ? colors.success : colors.textTertiary} />
                       </View>
-                      <View style={styles.cardContent}>
-                        <Highlight text={merchant.name} query={debouncedQuery} style={[styles.cardTitle, { color: colors.textPrimary }]} />
-                        <Text style={[styles.cardSub, { color: colors.textSecondary }]}>
-                          {merchant.transactionCount} transactions
-                        </Text>
-                      </View>
-                      <Text style={[styles.amount, { color: colors.textPrimary }]}>
-                        {formatCurrency(merchant.totalSpent)}
-                      </Text>
-                    </View>
-                  </GlassCard>
+                    </GlassCard>
+                  </TouchableOpacity>
                 ))}
               </View>
             )}
@@ -469,30 +554,11 @@ function Highlight({ text, query, style, numberOfLines }: { text: string; query:
   );
 }
 
-function FilterInput({ label, value, onChangeText, placeholder, keyboardType }: {
-  label: string; value: string; onChangeText: (t: string) => void; placeholder?: string; keyboardType?: 'default' | 'decimal-pad' | 'numeric';
-}) {
-  const colors = useThemeColors();
-  return (
-    <View style={[styles.filterInput, { backgroundColor: colors.glassWhite, borderColor: colors.border }]}>
-      <Text style={[styles.filterInputLabel, { color: colors.textSecondary }]}>{label}</Text>
-      <TextInput
-        style={{ color: colors.textPrimary, fontSize: typography.sizes.base }}
-        placeholder={placeholder}
-        placeholderTextColor={colors.textTertiary}
-        value={value}
-        onChangeText={onChangeText}
-        keyboardType={keyboardType}
-      />
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
   container: { flex: 1 },
   headerRow: {
     flexDirection: 'row', alignItems: 'center',
-    paddingHorizontal: spacing.lg, paddingVertical: spacing.base, gap: spacing.sm,
+    paddingHorizontal: spacing.screenHorizontal, paddingVertical: spacing.base, gap: spacing.sm,
   },
   iconBtn: { width: 44, height: 44, justifyContent: 'center', alignItems: 'center' },
   inputWrap: {
@@ -501,31 +567,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.base, height: 48, gap: spacing.sm,
   },
   input: { flex: 1, fontSize: typography.sizes.base, height: '100%' },
-  chips: { paddingHorizontal: spacing.lg, paddingBottom: spacing.base, gap: spacing.sm },
+  chips: { paddingHorizontal: spacing.screenHorizontal, paddingBottom: spacing.base, flexDirection: 'row', alignItems: 'center' },
   chip: {
     flexDirection: 'row', alignItems: 'center',
     paddingHorizontal: spacing.base, paddingVertical: spacing.sm,
-    borderRadius: borderRadius.full, borderWidth: 1, gap: 4,
+    borderRadius: borderRadius.full, borderWidth: 1, gap: 4, marginRight: spacing.sm,
   },
   chipText: { fontSize: typography.sizes.sm, fontWeight: typography.weights.medium },
-  advPanel: {
-    marginHorizontal: spacing.lg, marginBottom: spacing.base,
-    borderRadius: borderRadius.lg, borderWidth: 1, padding: spacing.base,
-  },
-  rowInputs: { flexDirection: 'row', gap: spacing.base, marginBottom: spacing.base },
-  filterInput: {
-    flex: 1, borderRadius: borderRadius.md, borderWidth: 1,
-    paddingHorizontal: spacing.base, paddingVertical: spacing.sm,
-  },
-  filterInputLabel: { fontSize: typography.sizes.xs, marginBottom: 2 },
-  filterGroupLabel: { fontSize: typography.sizes.sm, marginBottom: spacing.sm },
-  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginBottom: spacing.sm },
-  smallChip: {
-    paddingHorizontal: spacing.base, paddingVertical: spacing.sm,
-    borderRadius: borderRadius.full, borderWidth: 1,
-  },
-  resetBtn: { marginTop: spacing.sm, paddingVertical: spacing.sm, borderRadius: borderRadius.md, borderWidth: 1, alignItems: 'center' },
-  content: { padding: spacing.lg, paddingTop: 0, paddingBottom: spacing['4xl'] },
+  content: { paddingHorizontal: spacing.screenHorizontal, paddingVertical: spacing.lg, paddingTop: 0, paddingBottom: spacing['4xl'] },
   idleState: { alignItems: 'center', paddingTop: spacing['4xl'], gap: spacing.sm },
   loadingState: { alignItems: 'center', paddingTop: spacing['2xl'], gap: spacing.sm },
   idleTitle: { fontSize: typography.sizes.xl, fontWeight: typography.weights.semibold },

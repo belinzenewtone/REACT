@@ -7,12 +7,13 @@ import { useSQLiteContext } from 'expo-sqlite';
 import { useThemeColors } from '../../hooks/useThemeColors';
 import { usePlannerStore } from '../../store';
 import { BillRepository } from '../../database/repositories/BillRepository';
+import { Dropdown } from '../../components/common/Dropdown';
+import { DateField } from '../../components/common/DateField';
 import { spacing, typography, borderRadius } from '../../theme';
 import type { RootStackParamList } from '../../navigation/types';
 import type { BillCycle } from '../../types';
 
 type BillFormRouteProp = RouteProp<RootStackParamList, 'BillForm'>;
-const CYCLES: BillCycle[] = ['daily', 'weekly', 'monthly', 'yearly', 'one_time'];
 const CYCLE_LABELS: Record<BillCycle, string> = {
   daily: 'Daily',
   weekly: 'Weekly',
@@ -20,6 +21,10 @@ const CYCLE_LABELS: Record<BillCycle, string> = {
   yearly: 'Yearly',
   one_time: 'One-time',
 };
+const CYCLE_OPTIONS = (Object.keys(CYCLE_LABELS) as BillCycle[]).map((cycle) => ({
+  value: cycle,
+  label: CYCLE_LABELS[cycle],
+}));
 
 export function BillFormScreen() {
   const colors = useThemeColors();
@@ -107,45 +112,29 @@ export function BillFormScreen() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.bgPrimary }]} edges={['top']}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
-        </TouchableOpacity>
-        <Text style={[styles.title, { color: colors.textPrimary }]}>
-          {isEditing ? 'Edit Bill' : 'Add Bill'}
-        </Text>
-        {isEditing ? (
-          <TouchableOpacity onPress={handleDelete}>
-            <Ionicons name="trash-outline" size={22} color={colors.danger} />
-          </TouchableOpacity>
-        ) : (
-          <View style={{ width: 24 }} />
-        )}
-      </View>
-
       <ScrollView contentContainerStyle={styles.content}>
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => navigation.goBack()}>
+            <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
+          </TouchableOpacity>
+          <Text style={[styles.title, { color: colors.textPrimary }]}>
+            {isEditing ? 'Edit Bill' : 'Add Bill'}
+          </Text>
+          {isEditing ? (
+            <TouchableOpacity onPress={handleDelete}>
+              <Ionicons name="trash-outline" size={22} color={colors.danger} />
+            </TouchableOpacity>
+          ) : (
+            <View style={{ width: 24 }} />
+          )}
+        </View>
+
         <Input label="Title" value={title} onChangeText={setTitle} placeholder="e.g. Rent" />
         <Input label="Amount" value={amount} onChangeText={setAmount} placeholder="0.00" keyboardType="decimal-pad" />
-        <Input label="Next due date" value={nextDueDate} onChangeText={setNextDueDate} placeholder="YYYY-MM-DD" />
+        <DateField label="Next due date" value={nextDueDate} onChange={setNextDueDate} />
         <Input label="Notes (optional)" value={notes} onChangeText={setNotes} placeholder="Notes..." />
 
-        <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>Cycle</Text>
-        <View style={styles.wrapSegmentContainer}>
-          {CYCLES.map((c) => {
-            const selected = cycle === c;
-            return (
-              <TouchableOpacity
-                key={c}
-                style={[styles.wrapSegment, selected && { backgroundColor: colors.accentPrimary }]}
-                onPress={() => setCycle(c)}
-              >
-                <Text style={[styles.segmentText, { color: selected ? colors.textInverse : colors.textSecondary }]}>
-                  {CYCLE_LABELS[c]}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
+        <Dropdown label="Cycle" value={cycle} options={CYCLE_OPTIONS} onChange={(v) => setCycle(v as BillCycle)} />
 
         <TouchableOpacity
           style={[styles.toggle, { backgroundColor: paidStatus ? colors.success : colors.glassWhite, borderColor: colors.border }]}
@@ -210,8 +199,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.base,
+    paddingBottom: spacing.sm,
   },
   title: { fontSize: typography.sizes.lg, fontWeight: typography.weights.semibold },
   content: { padding: spacing.lg },
@@ -230,23 +218,6 @@ const styles = StyleSheet.create({
     marginTop: spacing.lg,
     marginBottom: spacing.sm,
   },
-  segmentContainer: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.base },
-  wrapSegmentContainer: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginBottom: spacing.base },
-  wrapSegment: {
-    paddingHorizontal: spacing.base,
-    paddingVertical: spacing.sm,
-    borderRadius: borderRadius.md,
-    alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.06)',
-  },
-  segment: {
-    flex: 1,
-    paddingVertical: spacing.sm,
-    borderRadius: borderRadius.md,
-    alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.06)',
-  },
-  segmentText: { fontSize: typography.sizes.sm, fontWeight: typography.weights.medium, textTransform: 'capitalize' },
   toggle: {
     borderRadius: borderRadius.lg,
     borderWidth: 1,

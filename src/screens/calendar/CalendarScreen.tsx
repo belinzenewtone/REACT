@@ -8,6 +8,7 @@ import {
   TextInput,
   Alert,
   RefreshControl,
+  Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -17,10 +18,22 @@ import { format } from 'date-fns';
 import { useThemeColors } from '../../hooks/useThemeColors';
 import { useCalendarStore } from '../../store';
 import { CalendarMonthView } from '../../components/calendar/CalendarMonthView';
-import { spacing, typography, borderRadius } from '../../theme';
+import { spacing, typography, borderRadius, BOTTOM_NAV_SAFE_AREA } from '../../theme';
 import { GlassCard } from '../../components/common/GlassCard';
 
 type Tab = 'Calendar' | 'Tasks' | 'Events';
+
+const ADD_MENU_OPTIONS: {
+  key: 'task' | 'event' | 'birthday' | 'anniversary' | 'countdown';
+  label: string;
+  icon: keyof typeof Ionicons.glyphMap;
+}[] = [
+  { key: 'task', label: 'Task', icon: 'checkbox-outline' },
+  { key: 'event', label: 'Event', icon: 'calendar-outline' },
+  { key: 'birthday', label: 'Birthday', icon: 'gift-outline' },
+  { key: 'anniversary', label: 'Anniversary', icon: 'heart-outline' },
+  { key: 'countdown', label: 'Countdown', icon: 'timer-outline' },
+];
 
 function PillTabBar({ selected, onSelect, colors }: { selected: Tab; onSelect: (t: Tab) => void; colors: any }) {
   const tabs: Tab[] = ['Calendar', 'Tasks', 'Events'];
@@ -72,6 +85,7 @@ export function CalendarScreen() {
   const [calendarQuery, setCalendarQuery] = useState('');
   const [tasksQuery, setTasksQuery] = useState('');
   const [eventsQuery, setEventsQuery] = useState('');
+  const [addMenuOpen, setAddMenuOpen] = useState(false);
 
   const {
     isLoading,
@@ -85,6 +99,7 @@ export function CalendarScreen() {
     setSelectedDate,
     goToPrevMonth,
     goToNextMonth,
+    goToToday,
     loadCalendar,
   } = useCalendarStore();
 
@@ -149,21 +164,29 @@ export function CalendarScreen() {
     }
   }
 
+  function handleAddPress() {
+    if (selectedTab === 'Tasks') {
+      navigation.navigate('TaskForm');
+      return;
+    }
+    if (selectedTab === 'Events') {
+      navigation.navigate('EventForm');
+      return;
+    }
+    setAddMenuOpen(true);
+  }
+
+  function handleAddMenuSelect(key: (typeof ADD_MENU_OPTIONS)[number]['key']) {
+    setAddMenuOpen(false);
+    if (key === 'task') {
+      navigation.navigate('TaskForm');
+    } else {
+      navigation.navigate('EventForm', { type: key });
+    }
+  }
+
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.bgPrimary }]} edges={['top']}>
-      {/* Header */}
-      <View style={styles.header}>
-        <View>
-          <Text style={[styles.title, { color: colors.textPrimary }]}>Calendar</Text>
-          <Text style={[styles.subtitle, { color: colors.textSecondary }]}>{headerSubtitle}</Text>
-        </View>
-      </View>
-
-      {/* Pill tab bar */}
-      <View style={styles.tabBarWrapper}>
-        <PillTabBar selected={selectedTab} onSelect={setSelectedTab} colors={colors} />
-      </View>
-
       <ScrollView
         contentContainerStyle={styles.content}
         refreshControl={
@@ -175,6 +198,22 @@ export function CalendarScreen() {
           />
         }
       >
+        {/* Header */}
+        <View style={styles.header}>
+          <View>
+            <Text style={[styles.title, { color: colors.textPrimary }]}>Calendar</Text>
+            <Text style={[styles.subtitle, { color: colors.textSecondary }]}>{headerSubtitle}</Text>
+          </View>
+          <TouchableOpacity onPress={handleAddPress}>
+            <Ionicons name="add" size={24} color={colors.accentPrimary} />
+          </TouchableOpacity>
+        </View>
+
+        {/* Pill tab bar */}
+        <View style={styles.tabBarWrapper}>
+          <PillTabBar selected={selectedTab} onSelect={setSelectedTab} colors={colors} />
+        </View>
+
         {/* ─── Calendar Tab ─── */}
         {selectedTab === 'Calendar' && (
           <>
@@ -186,6 +225,7 @@ export function CalendarScreen() {
               onSelectDate={setSelectedDate}
               onPrevMonth={goToPrevMonth}
               onNextMonth={goToNextMonth}
+              onGoToToday={goToToday}
             />
 
             <Text style={[styles.dateLabel, { color: colors.textPrimary }]}>{selectedDateLabel}</Text>
@@ -352,18 +392,29 @@ export function CalendarScreen() {
         )}
       </ScrollView>
 
-      {/* FAB */}
-      <TouchableOpacity
-        style={[styles.fab, { backgroundColor: colors.accentPrimary }]}
-        onPress={() =>
-          selectedTab === 'Tasks'
-            ? navigation.navigate('TaskForm')
-            : navigation.navigate('EventForm')
-        }
-      >
-        <Ionicons name="add" size={22} color={colors.textInverse} />
-        <Text style={[styles.fabText, { color: colors.textInverse }]}>Add</Text>
-      </TouchableOpacity>
+      {/* Add menu (Calendar tab only — Tasks/Events tabs jump straight to their form) */}
+      <Modal visible={addMenuOpen} transparent animationType="slide" onRequestClose={() => setAddMenuOpen(false)}>
+        <View style={[styles.addMenuOverlay, { backgroundColor: colors.glassBlack }]}>
+          <View style={[styles.addMenuContent, { backgroundColor: colors.bgSecondary }]}>
+            <View style={styles.addMenuHeader}>
+              <Text style={[styles.addMenuTitle, { color: colors.textPrimary }]}>Add</Text>
+              <TouchableOpacity onPress={() => setAddMenuOpen(false)}>
+                <Ionicons name="close" size={24} color={colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+            {ADD_MENU_OPTIONS.map((option) => (
+              <TouchableOpacity
+                key={option.key}
+                style={styles.addMenuOption}
+                onPress={() => handleAddMenuSelect(option.key)}
+              >
+                <Ionicons name={option.icon} size={20} color={colors.accentPrimary} />
+                <Text style={[styles.addMenuOptionText, { color: colors.textPrimary }]}>{option.label}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -374,13 +425,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.base,
-    paddingBottom: spacing.sm,
+    paddingVertical: spacing.sm,
   },
   title: { fontSize: typography.sizes['2xl'], fontWeight: typography.weights.bold },
   subtitle: { fontSize: typography.sizes.sm, marginTop: 2 },
-  tabBarWrapper: { paddingHorizontal: spacing.lg, marginBottom: spacing.sm },
+  tabBarWrapper: { marginBottom: spacing.sm },
   tabBar: {
     flexDirection: 'row',
     borderRadius: borderRadius.full,
@@ -394,7 +443,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   tabText: { fontSize: typography.sizes.sm, fontWeight: typography.weights.semibold },
-  content: { padding: spacing.lg, paddingBottom: 100, gap: spacing.base },
+  content: { paddingHorizontal: spacing.screenHorizontal, paddingVertical: spacing.lg, paddingBottom: BOTTOM_NAV_SAFE_AREA, gap: spacing.base },
   dateLabel: { fontSize: typography.sizes.base, fontWeight: typography.weights.semibold },
   searchBar: {
     flexDirection: 'row',
@@ -453,21 +502,36 @@ const styles = StyleSheet.create({
   eventTitle: { fontSize: typography.sizes.base, fontWeight: typography.weights.medium },
   eventDate: { fontSize: typography.sizes.xs, marginTop: 2 },
   deleteBtn: { padding: spacing.xs },
-  fab: {
-    position: 'absolute',
-    bottom: spacing['2xl'],
-    right: spacing.lg,
+  addMenuOverlay: {
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  addMenuContent: {
+    borderTopLeftRadius: borderRadius['2xl'],
+    borderTopRightRadius: borderRadius['2xl'],
+    padding: spacing.lg,
+    paddingBottom: spacing['2xl'],
+  },
+  addMenuHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing.lg,
+  },
+  addMenuTitle: {
+    fontSize: typography.sizes.xl,
+    fontWeight: typography.weights.semibold,
+  },
+  addMenuOption: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
-    borderRadius: borderRadius.full,
-    gap: spacing.sm,
-    elevation: 6,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
+    gap: spacing.base,
+    paddingVertical: spacing.base,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.06)',
   },
-  fabText: { fontSize: typography.sizes.base, fontWeight: typography.weights.semibold },
+  addMenuOptionText: {
+    fontSize: typography.sizes.base,
+    fontWeight: typography.weights.medium,
+  },
 });

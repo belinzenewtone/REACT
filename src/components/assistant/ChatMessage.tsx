@@ -31,13 +31,14 @@ export function ChatMessage({ message, onActionPress }: ChatMessageProps) {
     >
       {!isUser && (
         <View style={[styles.avatar, { backgroundColor: colors.accentPrimary }]}>
-          <Ionicons name="sparkles" size={14} color={colors.textInverse} />
+          <Ionicons name="sparkles" size={16} color={colors.textInverse} />
         </View>
       )}
 
       <View
         style={[
           styles.bubble,
+          isUser ? styles.userBubble : styles.assistantBubble,
           {
             backgroundColor: isUser ? colors.accentPrimary : colors.glassWhite,
             borderColor: isUser ? colors.accentPrimary : colors.border,
@@ -47,7 +48,10 @@ export function ChatMessage({ message, onActionPress }: ChatMessageProps) {
         <Text
           style={[
             styles.content,
-            { color: isUser ? colors.textInverse : colors.textPrimary },
+            {
+              color: isUser ? colors.textInverse : colors.textPrimary,
+              fontWeight: isUser ? typography.weights.semibold : typography.weights.regular,
+            },
           ]}
         >
           {message.content}
@@ -94,7 +98,7 @@ const styles = StyleSheet.create({
   container: {
     flexDirection: 'row',
     marginBottom: spacing.base,
-    maxWidth: '85%',
+    maxWidth: '78%',
   },
   userContainer: {
     alignSelf: 'flex-end',
@@ -103,23 +107,34 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
   },
   avatar: {
-    width: 28,
-    height: 28,
-    borderRadius: borderRadius.full,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: spacing.sm,
-    alignSelf: 'flex-end',
-    marginBottom: spacing.sm,
+    marginRight: 8,
+    marginTop: 'auto',
   },
   bubble: {
-    borderRadius: borderRadius.xl,
     borderWidth: 1,
-    padding: spacing.base,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  userBubble: {
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    borderBottomLeftRadius: 20,
+    borderBottomRightRadius: 4,
+  },
+  assistantBubble: {
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    borderBottomLeftRadius: 4,
+    borderBottomRightRadius: 20,
   },
   content: {
-    fontSize: typography.sizes.base,
-    lineHeight: typography.sizes.base * 1.4,
+    fontSize: 14,
+    lineHeight: 20,
   },
   actions: {
     flexDirection: 'row',

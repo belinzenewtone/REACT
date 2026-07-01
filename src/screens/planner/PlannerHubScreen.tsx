@@ -4,7 +4,6 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { useThemeColors } from '../../hooks/useThemeColors';
-import { GlassCard } from '../../components/common/GlassCard';
 import { spacing, typography, borderRadius } from '../../theme';
 
 const HUB_SECTIONS = [
@@ -24,24 +23,16 @@ export function PlannerHubScreen() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.bgPrimary }]} edges={['top']}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
-        </TouchableOpacity>
-        <View style={styles.headerText}>
-          <Text style={[styles.overline, { color: colors.textSecondary }]}>Finance Tools</Text>
-          <Text style={[styles.title, { color: colors.textPrimary }]}>Finance Hub</Text>
-        </View>
-        <View style={{ width: 24 }} />
-      </View>
-
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        <GlassCard variant="elevated" style={styles.introCard}>
-          <Ionicons name="briefcase-outline" size={24} color={colors.accentPrimary} />
-          <Text style={[styles.introText, { color: colors.textSecondary }]}>
-            Manage budgets, income, recurring payments, loans, bills, and goals from one place.
-          </Text>
-        </GlassCard>
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => navigation.goBack()}>
+            <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
+          </TouchableOpacity>
+          <View style={styles.headerText}>
+            <Text style={[styles.title, { color: colors.textPrimary }]}>Finance Hub</Text>
+          </View>
+          <View style={{ width: 24 }} />
+        </View>
 
         <View style={styles.list}>
           {HUB_SECTIONS.map((section, index) => (
@@ -80,37 +71,18 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.base,
+    paddingBottom: spacing.sm,
   },
   headerText: {
     alignItems: 'center',
   },
-  overline: {
-    fontSize: typography.sizes.xs,
-    fontWeight: typography.weights.medium,
-    textTransform: 'uppercase',
-    letterSpacing: 0.8,
-  },
   title: {
     fontSize: typography.sizes.lg,
     fontWeight: typography.weights.semibold,
-    marginTop: 2,
   },
   content: {
-    padding: spacing.lg,
+    paddingHorizontal: spacing.screenHorizontal, paddingVertical: spacing.lg,
     paddingTop: spacing.sm,
-  },
-  introCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.base,
-    marginBottom: spacing.xl,
-  },
-  introText: {
-    flex: 1,
-    fontSize: typography.sizes.sm,
-    lineHeight: typography.sizes.sm * 1.6,
   },
   list: {
     borderRadius: borderRadius.xl,

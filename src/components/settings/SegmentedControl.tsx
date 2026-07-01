@@ -42,6 +42,9 @@ export function SegmentedControl<T extends string>({
                   color: isActive ? colors.textInverse : colors.textSecondary,
                 },
               ]}
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.85}
             >
               {option.label}
             </Text>
@@ -57,8 +60,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     borderRadius: borderRadius.lg,
     borderWidth: 1,
-    padding: 4,
-    gap: 4,
+    padding: spacing.xs,
+    gap: spacing.xs,
   },
   segment: {
     flex: 1,

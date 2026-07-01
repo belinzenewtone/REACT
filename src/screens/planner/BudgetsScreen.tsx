@@ -51,19 +51,6 @@ export function BudgetsScreen() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.bgPrimary }]} edges={['top']}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
-        </TouchableOpacity>
-        <View style={styles.headerText}>
-          <Text style={[styles.overline, { color: colors.textSecondary }]}>Spending Guardrails</Text>
-          <Text style={[styles.title, { color: colors.textPrimary }]}>Budgets</Text>
-        </View>
-        <TouchableOpacity onPress={() => navigation.navigate('BudgetForm')}>
-          <Ionicons name="add" size={24} color={colors.accentPrimary} />
-        </TouchableOpacity>
-      </View>
-
       <FlatList
         data={budgets}
         keyExtractor={(item) => item.budget.id}
@@ -78,6 +65,19 @@ export function BudgetsScreen() {
         }
         ListHeaderComponent={
           <>
+            <View style={styles.header}>
+              <TouchableOpacity onPress={() => navigation.goBack()}>
+                <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
+              </TouchableOpacity>
+              <View style={styles.headerText}>
+                <Text style={[styles.overline, { color: colors.textSecondary }]}>Spending Guardrails</Text>
+                <Text style={[styles.title, { color: colors.textPrimary }]}>Budgets</Text>
+              </View>
+              <TouchableOpacity onPress={() => navigation.navigate('BudgetForm')}>
+                <Ionicons name="add" size={24} color={colors.accentPrimary} />
+              </TouchableOpacity>
+            </View>
+
             <GlassCard variant="elevated" style={styles.summaryCard}>
               <View style={styles.summaryTop}>
                 <View>
@@ -231,8 +231,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.base,
+    paddingBottom: spacing.sm,
   },
   headerText: {
     alignItems: 'center',
@@ -249,7 +248,7 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   listContent: {
-    padding: spacing.lg,
+    paddingHorizontal: spacing.screenHorizontal, paddingVertical: spacing.lg,
     paddingTop: spacing.sm,
   },
   summaryCard: {

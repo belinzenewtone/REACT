@@ -105,15 +105,18 @@ export type ColorTheme = {
 };
 
 export const spacing = {
+  /** Screen edge to component gap (matches Kotlin AppSpacing.ScreenHorizontal = 8.dp) */
+  screenHorizontal: 8,
   xs: 4,
   sm: 8,
-  md: 12,
-  base: 16,
+  md: 14,
   lg: 20,
-  xl: 24,
-  '2xl': 32,
-  '3xl': 40,
-  '4xl': 48,
+  xl: 28,
+  '2xl': 36,
+  '3xl': 44,
+  '4xl': 56,
+  // Kept for backward compat — maps to closest Kotlin equivalent
+  base: 16,
 } as const;
 
 export const borderRadius = {
@@ -121,7 +124,7 @@ export const borderRadius = {
   md: 12,
   lg: 16,
   xl: 20,
-  '2xl': 24,
+  '2xl': 28,
   full: 9999,
 } as const;
 
@@ -149,6 +152,9 @@ export const typography = {
     relaxed: 1.6,
   },
 } as const;
+
+/** Bottom safe area to prevent content from being hidden behind the floating tab bar (58dp + offset) */
+export const BOTTOM_NAV_SAFE_AREA = 100;
 
 export const shadows = {
   none: {

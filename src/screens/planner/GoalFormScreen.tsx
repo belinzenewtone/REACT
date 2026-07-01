@@ -7,6 +7,7 @@ import { useSQLiteContext } from 'expo-sqlite';
 import { useThemeColors } from '../../hooks/useThemeColors';
 import { usePlannerStore } from '../../store';
 import { GoalRepository } from '../../database/repositories/GoalRepository';
+import { DateField } from '../../components/common/DateField';
 import { spacing, typography, borderRadius } from '../../theme';
 import type { RootStackParamList } from '../../navigation/types';
 
@@ -96,29 +97,29 @@ export function GoalFormScreen() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.bgPrimary }]} edges={['top']}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
-        </TouchableOpacity>
-        <Text style={[styles.title, { color: colors.textPrimary }]}>
-          {isEditing ? 'Edit Goal' : 'Add Goal'}
-        </Text>
-        {isEditing ? (
-          <TouchableOpacity onPress={handleDelete}>
-            <Ionicons name="trash-outline" size={22} color={colors.danger} />
-          </TouchableOpacity>
-        ) : (
-          <View style={{ width: 24 }} />
-        )}
-      </View>
-
       <ScrollView contentContainerStyle={styles.content}>
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => navigation.goBack()}>
+            <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
+          </TouchableOpacity>
+          <Text style={[styles.title, { color: colors.textPrimary }]}>
+            {isEditing ? 'Edit Goal' : 'Add Goal'}
+          </Text>
+          {isEditing ? (
+            <TouchableOpacity onPress={handleDelete}>
+              <Ionicons name="trash-outline" size={22} color={colors.danger} />
+            </TouchableOpacity>
+          ) : (
+            <View style={{ width: 24 }} />
+          )}
+        </View>
+
         <Input label="Title" value={title} onChangeText={setTitle} placeholder="e.g. Emergency fund" />
         <Input label="Description (optional)" value={description} onChangeText={setDescription} placeholder="Notes..." />
         <Input label="Target value" value={targetValue} onChangeText={setTargetValue} placeholder="0.00" keyboardType="decimal-pad" />
         <Input label="Current value" value={currentValue} onChangeText={setCurrentValue} placeholder="0.00" keyboardType="decimal-pad" />
         <Input label="Unit (optional)" value={unit} onChangeText={setUnit} placeholder="e.g. KES, km" />
-        <Input label="Deadline (optional)" value={deadline} onChangeText={setDeadline} placeholder="YYYY-MM-DD" />
+        <DateField label="Deadline (optional)" value={deadline} onChange={setDeadline} />
 
         <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>Status</Text>
         <View style={styles.segmentContainer}>
@@ -183,8 +184,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.base,
+    paddingVertical: spacing.sm,
   },
   title: { fontSize: typography.sizes.lg, fontWeight: typography.weights.semibold },
   content: { padding: spacing.lg },

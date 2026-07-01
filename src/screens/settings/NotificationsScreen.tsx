@@ -5,6 +5,9 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
+  LayoutAnimation,
+  Platform,
+  UIManager,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -17,6 +20,10 @@ import { SettingsRow } from '../../components/settings/SettingsRow';
 import { SliderRow } from '../../components/settings/SliderRow';
 import { TimePickerModal } from '../../components/settings/TimePickerModal';
 import { spacing, typography } from '../../theme';
+
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
 
 export function NotificationsScreen() {
   const colors = useThemeColors();
@@ -49,17 +56,17 @@ export function NotificationsScreen() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.bgPrimary }]} edges={['top']}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
-        </TouchableOpacity>
-        <Text style={[styles.title, { color: colors.textPrimary }]}>Notifications</Text>
-        <View style={{ width: 24 }} />
-      </View>
-
       <TopBanner tone="success" message={infoMessage ?? ''} visible={!!infoMessage} onDismiss={() => setInfoMessage(null)} />
 
       <ScrollView contentContainerStyle={styles.content}>
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => navigation.goBack()}>
+            <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
+          </TouchableOpacity>
+          <Text style={[styles.title, { color: colors.textPrimary }]}>Notifications</Text>
+          <View style={{ width: 24 }} />
+        </View>
+
         <GlassCard>
           <SettingsRow
             icon="notifications-outline"
@@ -80,6 +87,7 @@ export function NotificationsScreen() {
             toggle
             toggleValue={settings.budgetThresholdAlerts}
             onToggleChange={(value) => {
+              LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
               updateSettings({ budgetThresholdAlerts: value });
               setInfoMessage(value ? 'Budget alerts enabled' : 'Budget alerts disabled');
             }}
@@ -87,36 +95,40 @@ export function NotificationsScreen() {
           />
         </GlassCard>
 
-        <SectionLabel label="Alert Levels" />
-        <GlassCard>
-          <SliderRow
-            label="High"
-            value={settings.alertThresholds.high}
-            minimumValue={50}
-            maximumValue={100}
-            step={5}
-            suffix="%"
-            onValueChange={(value) => setAlertThreshold('high', value)}
-          />
-          <SliderRow
-            label="Medium"
-            value={settings.alertThresholds.medium}
-            minimumValue={30}
-            maximumValue={90}
-            step={5}
-            suffix="%"
-            onValueChange={(value) => setAlertThreshold('medium', value)}
-          />
-          <SliderRow
-            label="Low"
-            value={settings.alertThresholds.low}
-            minimumValue={10}
-            maximumValue={70}
-            step={5}
-            suffix="%"
-            onValueChange={(value) => setAlertThreshold('low', value)}
-          />
-        </GlassCard>
+        {settings.budgetThresholdAlerts && (
+          <>
+            <SectionLabel label="Alert Levels" />
+            <GlassCard>
+              <SliderRow
+                label="High"
+                value={settings.alertThresholds.high}
+                minimumValue={50}
+                maximumValue={100}
+                step={5}
+                suffix="%"
+                onValueChange={(value) => setAlertThreshold('high', value)}
+              />
+              <SliderRow
+                label="Medium"
+                value={settings.alertThresholds.medium}
+                minimumValue={30}
+                maximumValue={90}
+                step={5}
+                suffix="%"
+                onValueChange={(value) => setAlertThreshold('medium', value)}
+              />
+              <SliderRow
+                label="Low"
+                value={settings.alertThresholds.low}
+                minimumValue={10}
+                maximumValue={70}
+                step={5}
+                suffix="%"
+                onValueChange={(value) => setAlertThreshold('low', value)}
+              />
+            </GlassCard>
+          </>
+        )}
 
         <SectionLabel label="Daily Digest" />
         <GlassCard>
@@ -172,15 +184,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.base,
+    paddingBottom: spacing.sm,
   },
   title: {
     fontSize: typography.sizes.lg,
     fontWeight: typography.weights.semibold,
   },
   content: {
-    padding: spacing.lg,
+    paddingHorizontal: spacing.screenHorizontal, paddingVertical: spacing.lg,
     paddingTop: spacing.sm,
     paddingBottom: spacing['4xl'],
   },

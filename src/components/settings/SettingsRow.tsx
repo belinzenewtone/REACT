@@ -67,6 +67,7 @@ export function SettingsRow({
               styles.label,
               { color: destructive ? colors.danger : colors.textPrimary },
             ]}
+            numberOfLines={1}
           >
             {label}
           </Text>
@@ -80,7 +81,9 @@ export function SettingsRow({
 
       <View style={styles.right}>
         {value ? (
-          <Text style={[styles.value, { color: colors.textSecondary }]}>{value}</Text>
+          <Text style={[styles.value, { color: colors.textSecondary }]} numberOfLines={1}>
+            {value}
+          </Text>
         ) : null}
         {toggle ? (
           <LifeOSSwitch value={!!toggleValue} onValueChange={onToggleChange ?? (() => {})} disabled={disabled} />

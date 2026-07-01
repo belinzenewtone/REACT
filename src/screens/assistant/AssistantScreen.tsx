@@ -6,6 +6,7 @@ import {
   StyleSheet,
   TouchableOpacity,
   KeyboardAvoidingView,
+  Keyboard,
   Platform,
   Alert,
 } from 'react-native';
@@ -17,7 +18,7 @@ import { useAssistantStore } from '../../store';
 import { ChatMessage } from '../../components/assistant/ChatMessage';
 import { ChatInput } from '../../components/assistant/ChatInput';
 import { SuggestedPrompts } from '../../components/assistant/SuggestedPrompts';
-import { spacing, typography, borderRadius } from '../../theme';
+import { spacing, typography, borderRadius, BOTTOM_NAV_SAFE_AREA } from '../../theme';
 
 const SUGGESTED_PROMPTS = [
   'How much did I spend this week?',
@@ -43,9 +44,19 @@ export function AssistantScreen() {
   const colors = useThemeColors();
   const db = useSQLiteContext();
   const listRef = useRef<FlatList>(null);
-  const [showClearConfirm, setShowClearConfirm] = useState(false);
-
   const { messages, isLoading, loadMessages, sendMessage, clearConversation } = useAssistantStore();
+  const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
+
+  useEffect(() => {
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const showSub = Keyboard.addListener(showEvent, () => setIsKeyboardVisible(true));
+    const hideSub = Keyboard.addListener(hideEvent, () => setIsKeyboardVisible(false));
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
 
   useEffect(() => {
     loadMessages(db);
@@ -84,7 +95,7 @@ export function AssistantScreen() {
       <KeyboardAvoidingView
         style={styles.flex}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={0}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
       >
         {/* Header */}
         <View style={styles.header}>
@@ -101,35 +112,37 @@ export function AssistantScreen() {
           )}
         </View>
 
-        {/* Empty state */}
-        {!hasMessages ? (
-          <View style={styles.emptyState}>
-            <View style={[styles.iconCircle, { backgroundColor: `${colors.accentPrimary}20` }]}>
-              <Ionicons name="sparkles" size={36} color={colors.accentPrimary} />
+        {/* Messages or Empty state — takes remaining space */}
+        <View style={styles.messagesArea}>
+          {!hasMessages ? (
+            <View style={styles.emptyState}>
+              <View style={[styles.iconCircle, { backgroundColor: `${colors.accentPrimary}20` }]}>
+                <Ionicons name="sparkles" size={36} color={colors.accentPrimary} />
+              </View>
+              <Text style={[styles.emptyTitle, { color: colors.textPrimary }]}>Ask me anything</Text>
+              <Text style={[styles.emptySubtitle, { color: colors.textSecondary }]}>
+                I can check your spending, income, budgets, tasks, and transactions.
+              </Text>
             </View>
-            <Text style={[styles.emptyTitle, { color: colors.textPrimary }]}>Ask me anything</Text>
-            <Text style={[styles.emptySubtitle, { color: colors.textSecondary }]}>
-              I can check your spending, income, budgets, tasks, and transactions.
-            </Text>
-          </View>
-        ) : (
-          <FlatList
-            ref={listRef}
-            data={messages}
-            keyExtractor={(item) => item.id}
-            renderItem={({ item }) => (
-              <ChatMessage
-                message={item}
-                onActionPress={(action) => sendMessage(db, action)}
-              />
-            )}
-            contentContainerStyle={styles.listContent}
-            onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: true })}
-            ListFooterComponent={isLoading ? <TypingIndicator colors={colors} /> : null}
-          />
-        )}
+          ) : (
+            <FlatList
+              ref={listRef}
+              data={messages}
+              keyExtractor={(item) => item.id}
+              renderItem={({ item }) => (
+                <ChatMessage
+                  message={item}
+                  onActionPress={(action) => sendMessage(db, action)}
+                />
+              )}
+              contentContainerStyle={styles.listContent}
+              onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: true })}
+              ListFooterComponent={isLoading ? <TypingIndicator colors={colors} /> : null}
+            />
+          )}
+        </View>
 
-        {/* Suggestions — only when ≤1 messages */}
+        {/* Suggestions */}
         {showSuggestions && (
           <SuggestedPrompts
             prompts={SUGGESTED_PROMPTS}
@@ -137,7 +150,12 @@ export function AssistantScreen() {
           />
         )}
 
-        <ChatInput onSend={handleSend} disabled={isLoading} />
+        {/* Input bar */}
+        <ChatInput
+          onSend={handleSend}
+          disabled={isLoading}
+          bottomInset={isKeyboardVisible ? 0 : BOTTOM_NAV_SAFE_AREA - spacing.sm}
+        />
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -150,12 +168,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.base,
+    paddingHorizontal: spacing.screenHorizontal,
+    paddingVertical: spacing.sm,
   },
   title: { fontSize: typography.sizes['2xl'], fontWeight: typography.weights.bold },
   subtitle: { fontSize: typography.sizes.xs, marginTop: 2 },
   clearBtn: { padding: spacing.xs },
+  messagesArea: { flex: 1 },
   emptyState: {
     flex: 1,
     justifyContent: 'center',
@@ -182,8 +201,9 @@ const styles = StyleSheet.create({
     lineHeight: typography.sizes.base * 1.6,
   },
   listContent: {
-    padding: spacing.lg,
+    paddingHorizontal: spacing.screenHorizontal,
     paddingTop: spacing.sm,
+    paddingBottom: spacing.sm,
     gap: spacing.base,
   },
   typingRow: {

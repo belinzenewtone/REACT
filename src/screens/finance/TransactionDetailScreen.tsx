@@ -81,22 +81,22 @@ export function TransactionDetailScreen() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.bgPrimary }]} edges={['top']}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
-        </TouchableOpacity>
-        <Text style={[styles.title, { color: colors.textPrimary }]}>Transaction</Text>
-        <View style={styles.headerActions}>
-          <TouchableOpacity onPress={handleShare} style={styles.actionButton}>
-            <Ionicons name="share-outline" size={22} color={colors.textPrimary} />
-          </TouchableOpacity>
-          <TouchableOpacity onPress={handleDelete} style={styles.actionButton}>
-            <Ionicons name="trash-outline" size={22} color={colors.danger} />
-          </TouchableOpacity>
-        </View>
-      </View>
-
       <ScrollView contentContainerStyle={styles.content}>
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => navigation.goBack()}>
+            <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
+          </TouchableOpacity>
+          <Text style={[styles.title, { color: colors.textPrimary }]}>Transaction</Text>
+          <View style={styles.headerActions}>
+            <TouchableOpacity onPress={handleShare} style={styles.actionButton}>
+              <Ionicons name="share-outline" size={22} color={colors.textPrimary} />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={handleDelete} style={styles.actionButton}>
+              <Ionicons name="trash-outline" size={22} color={colors.danger} />
+            </TouchableOpacity>
+          </View>
+        </View>
+
         <View style={[styles.card, { backgroundColor: colors.glassWhite, borderColor: colors.border }]}>
           <View style={[styles.iconContainer, { backgroundColor: `${categoryColor}20` }]}>
             <Ionicons name={iconName} size={32} color={categoryColor} />
@@ -149,8 +149,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.base,
+    paddingVertical: spacing.sm,
   },
   title: {
     fontSize: typography.sizes.lg,
@@ -167,7 +166,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   content: {
-    padding: spacing.lg,
+    paddingHorizontal: spacing.screenHorizontal, paddingVertical: spacing.lg,
   },
   card: {
     borderRadius: borderRadius['2xl'],
