@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { Animated, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useThemeColors } from '../../hooks/useThemeColors';
 import { spacing, typography, borderRadius } from '../../theme';
@@ -23,6 +24,7 @@ const ICONS: Record<BannerTone, keyof typeof Ionicons.glyphMap> = {
 
 export function TopBanner({ tone, message, visible, onDismiss, autoDismissMs }: TopBannerProps) {
   const colors = useThemeColors();
+  const insets = useSafeAreaInsets();
   const opacity = useRef(new Animated.Value(0)).current;
   const toneColor = colors[tone === 'error' ? 'danger' : tone];
 
@@ -43,7 +45,10 @@ export function TopBanner({ tone, message, visible, onDismiss, autoDismissMs }: 
   if (!visible) return null;
 
   return (
-    <Animated.View pointerEvents="box-none" style={[styles.wrapper, { opacity }]}>
+    <Animated.View
+      pointerEvents="box-none"
+      style={[styles.wrapper, { top: insets.top + spacing.xs, opacity }]}
+    >
       <Animated.View
         style={[styles.banner, { backgroundColor: `${toneColor}20`, borderColor: toneColor }]}
       >
@@ -64,7 +69,6 @@ export function TopBanner({ tone, message, visible, onDismiss, autoDismissMs }: 
 const styles = StyleSheet.create({
   wrapper: {
     position: 'absolute',
-    top: spacing.xs,
     left: 0,
     right: 0,
     zIndex: 50,

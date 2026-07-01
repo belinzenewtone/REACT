@@ -38,7 +38,6 @@ export function NotificationsScreen() {
     updateSettings({
       alertThresholds: { ...settings.alertThresholds, [key]: value },
     });
-    setInfoMessage(`${key.charAt(0).toUpperCase() + key.slice(1)} alert threshold set to ${value}%`);
   };
 
   const formatTime = (time: string) => {
