@@ -38,6 +38,18 @@
         }
       ],
       "@react-native-community/datetimepicker"
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "f7df9ed3-50f4-44bd-9f01-61d89d031c84"
+      }
+    },
+    "owner": "belinze",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/f7df9ed3-50f4-44bd-9f01-61d89d031c84"
+    }
   }
 }

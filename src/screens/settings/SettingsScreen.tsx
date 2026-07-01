@@ -6,7 +6,9 @@ import {
   ScrollView,
   TouchableOpacity,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
+import * as Updates from 'expo-updates';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
@@ -38,6 +40,9 @@ export function SettingsScreen() {
 
   const [fulizaVisible, setFulizaVisible] = useState(false);
   const [infoMessage, setInfoMessage] = useState<string | null>(null);
+  const [checkingUpdate, setCheckingUpdate] = useState(false);
+  const [downloadingUpdate, setDownloadingUpdate] = useState(false);
+  const [updateAvailable, setUpdateAvailable] = useState(false);
 
   useEffect(() => {
     if (!infoMessage) return;
@@ -77,12 +82,52 @@ export function SettingsScreen() {
     );
   };
 
-  const handleCheckUpdates = () => {
-    Alert.alert('App Updates', `You are on the latest version (${APP_VERSION}).`);
+  const handleCheckUpdates = async () => {
+    if (!Updates.isEnabled) {
+      Alert.alert(
+        'App Updates',
+        `You're running ${APP_VERSION} in a development build — update checks only work in a published EAS build.`
+      );
+      return;
+    }
+    setCheckingUpdate(true);
+    try {
+      const result = await Updates.checkForUpdateAsync();
+      setUpdateAvailable(result.isAvailable);
+      Alert.alert(
+        'App Updates',
+        result.isAvailable
+          ? 'A new update is available to download.'
+          : `You are on the latest version (${APP_VERSION}).`
+      );
+    } catch (error) {
+      Alert.alert('Could not check for updates', 'Please try again later.');
+    } finally {
+      setCheckingUpdate(false);
+    }
   };
 
-  const handleDownloadUpdate = () => {
-    Alert.alert('Download Update', 'No update available at this time.');
+  const handleDownloadUpdate = async () => {
+    if (!Updates.isEnabled) {
+      Alert.alert('App Updates', 'Updates only work in a published EAS build, not in this development environment.');
+      return;
+    }
+    if (!updateAvailable) {
+      Alert.alert('Download Update', 'No update available yet. Check for updates first.');
+      return;
+    }
+    setDownloadingUpdate(true);
+    try {
+      await Updates.fetchUpdateAsync();
+      Alert.alert('Update downloaded', 'Restart the app to apply the update.', [
+        { text: 'Later', style: 'cancel' },
+        { text: 'Restart now', onPress: () => Updates.reloadAsync() },
+      ]);
+    } catch (error) {
+      Alert.alert('Download failed', 'Could not download the update. Please try again.');
+    } finally {
+      setDownloadingUpdate(false);
+    }
   };
 
   return (
@@ -222,21 +267,31 @@ export function SettingsScreen() {
             <TouchableOpacity
               style={[
                 styles.updateButton,
-                { backgroundColor: colors.glassWhite, borderColor: colors.border },
+                { backgroundColor: colors.glassWhite, borderColor: colors.border, opacity: checkingUpdate ? 0.6 : 1 },
               ]}
               onPress={handleCheckUpdates}
+              disabled={checkingUpdate}
             >
-              <Ionicons name="refresh-outline" size={18} color={colors.textPrimary} />
+              {checkingUpdate ? (
+                <ActivityIndicator size="small" color={colors.textPrimary} />
+              ) : (
+                <Ionicons name="refresh-outline" size={18} color={colors.textPrimary} />
+              )}
               <Text style={[styles.updateButtonText, { color: colors.textPrimary }]}>Check</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={[
                 styles.updateButton,
-                { backgroundColor: colors.accentPrimary },
+                { backgroundColor: colors.accentPrimary, opacity: downloadingUpdate ? 0.6 : 1 },
               ]}
               onPress={handleDownloadUpdate}
+              disabled={downloadingUpdate}
             >
-              <Ionicons name="download-outline" size={18} color={colors.textInverse} />
+              {downloadingUpdate ? (
+                <ActivityIndicator size="small" color={colors.textInverse} />
+              ) : (
+                <Ionicons name="download-outline" size={18} color={colors.textInverse} />
+              )}
               <Text style={[styles.updateButtonText, { color: colors.textInverse }]}>Download</Text>
             </TouchableOpacity>
           </View>

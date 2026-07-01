@@ -18,6 +18,7 @@ import { useNavigation } from '@react-navigation/native';
 import { useSQLiteContext } from 'expo-sqlite';
 import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { startOfWeek, startOfMonth, subDays, format } from 'date-fns';
+import CryptoJS from 'crypto-js';
 import { useThemeColors } from '../../hooks/useThemeColors';
 import { usePlannerStore } from '../../store';
 import { TransactionRepository } from '../../database/repositories/TransactionRepository';
@@ -359,21 +360,32 @@ export function ExportScreen() {
     return { content: lines.join('\n'), count: transactions.length + tasks.length + events.length + budgets.length };
   };
 
+  const applyEncryption = (content: string) =>
+    encryptEnabled ? CryptoJS.AES.encrypt(content, passphrase).toString() : content;
+
   const handleExport = async () => {
+    if (encryptEnabled && !passphrase.trim()) {
+      Alert.alert('Passphrase required', 'Enter a passphrase to encrypt this export, or turn off encryption.');
+      return;
+    }
+
     setIsExporting(true);
     try {
       if (format_ === 'csv') {
         const { content, count } = await buildCsv();
-        await Share.share({ message: content, title: 'Transactions CSV' });
-        await createExport(db, { filePath: 'transactions.csv', format: 'csv', recordCount: count });
+        const fileName = encryptEnabled ? 'transactions.csv.enc' : 'transactions.csv';
+        await Share.share({ message: applyEncryption(content), title: encryptEnabled ? 'Transactions CSV (Encrypted)' : 'Transactions CSV' });
+        await createExport(db, { filePath: fileName, format: 'csv', recordCount: count });
       } else if (format_ === 'json') {
         const { content, count } = await buildJson();
-        await Share.share({ message: content, title: 'Full Data JSON' });
-        await createExport(db, { filePath: 'lifeos_export.json', format: 'json', recordCount: count });
+        const fileName = encryptEnabled ? 'lifeos_export.json.enc' : 'lifeos_export.json';
+        await Share.share({ message: applyEncryption(content), title: encryptEnabled ? 'Full Data JSON (Encrypted)' : 'Full Data JSON' });
+        await createExport(db, { filePath: fileName, format: 'json', recordCount: count });
       } else {
         const { content, count } = await buildPdfText();
-        const title = `LifeOS_Export_${new Date().toISOString().split('T')[0]}.txt`;
-        await Share.share({ message: content, title });
+        const baseTitle = `LifeOS_Export_${new Date().toISOString().split('T')[0]}.txt`;
+        const title = encryptEnabled ? `${baseTitle}.enc` : baseTitle;
+        await Share.share({ message: applyEncryption(content), title });
         await createExport(db, { filePath: title, format: 'pdf', recordCount: count });
       }
     } catch (error) {
