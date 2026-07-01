@@ -1,5 +1,14 @@
-import React, { useEffect, useRef } from 'react';
-import { View, Text, FlatList, StyleSheet, TouchableOpacity } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import {
+  View,
+  Text,
+  FlatList,
+  StyleSheet,
+  TouchableOpacity,
+  KeyboardAvoidingView,
+  Platform,
+  Alert,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useSQLiteContext } from 'expo-sqlite';
@@ -8,20 +17,33 @@ import { useAssistantStore } from '../../store';
 import { ChatMessage } from '../../components/assistant/ChatMessage';
 import { ChatInput } from '../../components/assistant/ChatInput';
 import { SuggestedPrompts } from '../../components/assistant/SuggestedPrompts';
-import { spacing, typography } from '../../theme';
+import { spacing, typography, borderRadius } from '../../theme';
 
 const SUGGESTED_PROMPTS = [
-  'How much did I spend?',
+  'How much did I spend this week?',
   'What is my balance?',
   'Show my budgets',
-  'What tasks are due?',
+  'What tasks are due today?',
   'Recent transactions',
+  'Summarize my spending',
 ];
+
+function TypingIndicator({ colors }: { colors: any }) {
+  return (
+    <View style={[styles.typingRow, { backgroundColor: colors.bgSecondary, borderColor: colors.border }]}>
+      <View style={[styles.typingDot, { backgroundColor: colors.textTertiary }]} />
+      <View style={[styles.typingDot, { backgroundColor: colors.textTertiary, opacity: 0.6 }]} />
+      <View style={[styles.typingDot, { backgroundColor: colors.textTertiary, opacity: 0.3 }]} />
+      <Text style={[styles.typingText, { color: colors.textSecondary }]}>Thinking…</Text>
+    </View>
+  );
+}
 
 export function AssistantScreen() {
   const colors = useThemeColors();
   const db = useSQLiteContext();
   const listRef = useRef<FlatList>(null);
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
 
   const { messages, isLoading, loadMessages, sendMessage, clearConversation } = useAssistantStore();
 
@@ -39,64 +61,91 @@ export function AssistantScreen() {
     await sendMessage(db, text);
   };
 
+  const handleClearConfirm = () => {
+    Alert.alert(
+      'Clear chat history?',
+      'This will remove your current assistant conversation and start a fresh one.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Clear',
+          style: 'destructive',
+          onPress: () => clearConversation(db),
+        },
+      ]
+    );
+  };
+
   const hasMessages = messages.length > 0;
+  const showSuggestions = messages.length <= 1;
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.bgPrimary }]} edges={['top']}>
-      <View style={styles.header}>
-        <View>
-          <Text style={[styles.title, { color: colors.textPrimary }]}>Assistant</Text>
-          <Text style={[styles.subtitle, { color: colors.textSecondary }]}>Offline • Rule-based</Text>
-        </View>
-        {hasMessages && (
-          <TouchableOpacity onPress={() => clearConversation(db)}>
-            <Ionicons name="trash-outline" size={22} color={colors.danger} />
-          </TouchableOpacity>
-        )}
-      </View>
-
-      {!hasMessages ? (
-        <View style={styles.emptyState}>
-          <View style={[styles.iconCircle, { backgroundColor: `${colors.accentPrimary}20` }]}>
-            <Ionicons name="sparkles" size={32} color={colors.accentPrimary} />
+      <KeyboardAvoidingView
+        style={styles.flex}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={0}
+      >
+        {/* Header */}
+        <View style={styles.header}>
+          <View>
+            <Text style={[styles.title, { color: colors.textPrimary }]}>Assistant</Text>
+            <Text style={[styles.subtitle, { color: isLoading ? colors.accentPrimary : colors.textSecondary }]}>
+              {isLoading ? 'Thinking…' : 'Offline · Rule-based'}
+            </Text>
           </View>
-          <Text style={[styles.emptyTitle, { color: colors.textPrimary }]}>
-            Ask me anything
-          </Text>
-          <Text style={[styles.emptySubtitle, { color: colors.textSecondary }]}>
-            I can check your spending, income, budgets, tasks, and transactions.
-          </Text>
-        </View>
-      ) : (
-        <FlatList
-          ref={listRef}
-          data={messages}
-          keyExtractor={(item) => item.id}
-          renderItem={({ item }) => (
-            <ChatMessage
-              message={item}
-              onActionPress={(action) => sendMessage(db, action)}
-            />
+          {hasMessages && (
+            <TouchableOpacity onPress={handleClearConfirm} style={styles.clearBtn}>
+              <Ionicons name="trash-outline" size={22} color={colors.danger} />
+            </TouchableOpacity>
           )}
-          contentContainerStyle={styles.listContent}
-          onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: true })}
-        />
-      )}
+        </View>
 
-      <SuggestedPrompts
-        prompts={SUGGESTED_PROMPTS}
-        onPromptPress={(prompt) => handleSend(prompt)}
-      />
+        {/* Empty state */}
+        {!hasMessages ? (
+          <View style={styles.emptyState}>
+            <View style={[styles.iconCircle, { backgroundColor: `${colors.accentPrimary}20` }]}>
+              <Ionicons name="sparkles" size={36} color={colors.accentPrimary} />
+            </View>
+            <Text style={[styles.emptyTitle, { color: colors.textPrimary }]}>Ask me anything</Text>
+            <Text style={[styles.emptySubtitle, { color: colors.textSecondary }]}>
+              I can check your spending, income, budgets, tasks, and transactions.
+            </Text>
+          </View>
+        ) : (
+          <FlatList
+            ref={listRef}
+            data={messages}
+            keyExtractor={(item) => item.id}
+            renderItem={({ item }) => (
+              <ChatMessage
+                message={item}
+                onActionPress={(action) => sendMessage(db, action)}
+              />
+            )}
+            contentContainerStyle={styles.listContent}
+            onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: true })}
+            ListFooterComponent={isLoading ? <TypingIndicator colors={colors} /> : null}
+          />
+        )}
 
-      <ChatInput onSend={handleSend} disabled={isLoading} />
+        {/* Suggestions — only when ≤1 messages */}
+        {showSuggestions && (
+          <SuggestedPrompts
+            prompts={SUGGESTED_PROMPTS}
+            onPromptPress={(prompt) => handleSend(prompt)}
+          />
+        )}
+
+        <ChatInput onSend={handleSend} disabled={isLoading} />
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
+  container: { flex: 1 },
+  flex: { flex: 1 },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -104,14 +153,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.base,
   },
-  title: {
-    fontSize: typography.sizes['2xl'],
-    fontWeight: typography.weights.bold,
-  },
-  subtitle: {
-    fontSize: typography.sizes.xs,
-    marginTop: 2,
-  },
+  title: { fontSize: typography.sizes['2xl'], fontWeight: typography.weights.bold },
+  subtitle: { fontSize: typography.sizes.xs, marginTop: 2 },
+  clearBtn: { padding: spacing.xs },
   emptyState: {
     flex: 1,
     justifyContent: 'center',
@@ -119,9 +163,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.xl,
   },
   iconCircle: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
+    width: 80,
+    height: 80,
+    borderRadius: 40,
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: spacing.lg,
@@ -130,14 +174,36 @@ const styles = StyleSheet.create({
     fontSize: typography.sizes.xl,
     fontWeight: typography.weights.semibold,
     marginBottom: spacing.sm,
+    textAlign: 'center',
   },
   emptySubtitle: {
     fontSize: typography.sizes.base,
     textAlign: 'center',
-    lineHeight: typography.sizes.base * 1.5,
+    lineHeight: typography.sizes.base * 1.6,
   },
   listContent: {
     padding: spacing.lg,
     paddingTop: spacing.sm,
+    gap: spacing.base,
+  },
+  typingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    paddingHorizontal: spacing.base,
+    paddingVertical: spacing.sm,
+    borderRadius: borderRadius.lg,
+    borderWidth: 1,
+    gap: 4,
+    marginTop: spacing.sm,
+  },
+  typingDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  typingText: {
+    fontSize: typography.sizes.xs,
+    marginLeft: 4,
   },
 });
