@@ -232,6 +232,20 @@ export class TransactionRepository extends BaseRepository<TransactionRecord> {
     );
   }
 
+  async getUncategorized(): Promise<TransactionRecord[]> {
+    return await this.db.getAllAsync<TransactionRecord>(
+      `SELECT * FROM transactions WHERE ${this.notDeletedClause()} AND category = 'uncategorized' ORDER BY date DESC`
+    );
+  }
+
+  async updateCategoryForMerchant(merchant: string, category: string): Promise<void> {
+    await this.db.runAsync(
+      `UPDATE transactions SET category = ?, updated_at = ?, sync_state = 'pending', revision = revision + 1
+       WHERE merchant = ? AND category = 'uncategorized' AND ${this.notDeletedClause()}`,
+      [category, nowIso(), merchant]
+    );
+  }
+
   async getTotalsInRange(start: string, end: string): Promise<{ income: number; expense: number }> {
     const rows = await this.db.getAllAsync<{ transaction_type: TransactionType; total: number }>(
       `SELECT transaction_type, SUM(amount) as total FROM transactions

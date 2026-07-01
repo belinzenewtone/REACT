@@ -29,6 +29,7 @@ import { CsvImportScreen } from '../screens/planner/CsvImportScreen';
 import { AnalyticsScreen } from '../screens/analytics/AnalyticsScreen';
 import { SearchScreen } from '../screens/search/SearchScreen';
 import { TransactionDetailScreen } from '../screens/finance/TransactionDetailScreen';
+import { CategorizeScreen } from '../screens/finance/CategorizeScreen';
 import { TaskFormScreen } from '../screens/tasks/TaskFormScreen';
 import { TaskDetailScreen } from '../screens/tasks/TaskDetailScreen';
 import { EventFormScreen } from '../screens/calendar/EventFormScreen';
@@ -104,6 +105,7 @@ export function AppNavigator() {
             <Stack.Screen name="Insights" component={AnalyticsScreen} />
             <Stack.Screen name="Search" component={SearchScreen} />
             <Stack.Screen name="TransactionDetail" component={TransactionDetailScreen} />
+            <Stack.Screen name="Categorize" component={CategorizeScreen} />
             <Stack.Screen name="TaskDetail" component={TaskDetailScreen} />
             <Stack.Screen name="TaskForm" component={TaskFormScreen} />
             <Stack.Screen name="EventDetail" component={EventDetailScreen} />
