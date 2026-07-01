@@ -59,7 +59,6 @@ const defaultSettings: AppSettings = {
   screenLockEnabled: false,
   pinCode: '',
   fingerprintEnabled: false,
-  faceUnlockEnabled: false,
   assistantQuickSuggestions: true,
   budgetThresholdAlerts: true,
   alertThresholds: { high: 90, medium: 75, low: 50 },

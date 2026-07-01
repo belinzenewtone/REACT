@@ -47,8 +47,8 @@ export function SettingsScreen() {
 
   const screenLockSubtitle = (() => {
     const parts: string[] = [];
-    if (settings.fingerprintEnabled || settings.faceUnlockEnabled) parts.push('Biometric');
-    if (settings.pinCode) parts.push('PIN');
+    if (settings.fingerprintEnabled) parts.push('Fingerprint');
+    if (settings.pinCode && settings.screenLockEnabled) parts.push('PIN');
     return parts.length ? parts.join(' · ') : 'No lock configured';
   })();
 

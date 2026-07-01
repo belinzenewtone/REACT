@@ -66,6 +66,7 @@ export function AppNavigator() {
   const [dbReady, setDbReady] = useState(false);
   const appState = useRef(AppState.currentState);
   const armedForLock = useRef(false);
+  const backgroundedAt = useRef<number | null>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -88,7 +89,8 @@ export function AppNavigator() {
   // Cold start is handled synchronously during store rehydration (see useAppStore).
   // Here we only need to re-arm the lock when the app returns to the foreground after
   // being backgrounded — not on transient 'inactive' states (e.g. an iOS control-center
-  // pull-down), only after a real background trip.
+  // pull-down), only after a real background trip. PIN-only locks immediately; with
+  // Fingerprint enabled, the configured auto-lock grace period applies instead.
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (nextState: AppStateStatus) => {
       const isLockable =
@@ -96,14 +98,28 @@ export function AppNavigator() {
 
       if (nextState === 'background') {
         armedForLock.current = true;
+        backgroundedAt.current = Date.now();
       } else if (nextState === 'active' && armedForLock.current) {
         armedForLock.current = false;
-        if (isLockable) setIsAppLocked(true);
+        if (isLockable) {
+          const graceMs = settings.fingerprintEnabled ? settings.lockTimeoutMinutes * 60 * 1000 : 0;
+          const elapsedMs = backgroundedAt.current ? Date.now() - backgroundedAt.current : Infinity;
+          if (elapsedMs >= graceMs) setIsAppLocked(true);
+        }
+        backgroundedAt.current = null;
       }
       appState.current = nextState;
     });
     return () => subscription.remove();
-  }, [hasCompletedOnboarding, isAuthenticated, settings.screenLockEnabled, settings.pinCode, setIsAppLocked]);
+  }, [
+    hasCompletedOnboarding,
+    isAuthenticated,
+    settings.screenLockEnabled,
+    settings.pinCode,
+    settings.fingerprintEnabled,
+    settings.lockTimeoutMinutes,
+    setIsAppLocked,
+  ]);
 
   if (isLoading || !dbReady || !hasHydrated) {
     return <LoadingScreen />;

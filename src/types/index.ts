@@ -258,7 +258,6 @@ export interface AppSettings {
   screenLockEnabled: boolean;
   pinCode: string;
   fingerprintEnabled: boolean;
-  faceUnlockEnabled: boolean;
   assistantQuickSuggestions: boolean;
   budgetThresholdAlerts: boolean;
   alertThresholds: { high: number; medium: number; low: number };
