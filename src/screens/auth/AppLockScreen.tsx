@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Vibration, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useThemeColors } from '../../hooks/useThemeColors';
 import { useAppStore } from '../../store';
 import { spacing, typography, borderRadius, motion } from '../../theme';
+import { promptBiometrics } from '../../utils/biometrics';
 
 const KEYPAD_ROWS: (string | null)[][] = [
   ['1', '2', '3'],
@@ -21,6 +22,25 @@ export function AppLockScreen() {
 
   const [entered, setEntered] = useState('');
   const [error, setError] = useState(false);
+  const [checkingFingerprint, setCheckingFingerprint] = useState(settings.fingerprintEnabled);
+  const attemptedFingerprint = useRef(false);
+
+  const attemptFingerprint = async () => {
+    setCheckingFingerprint(true);
+    const result = await promptBiometrics('Unlock the app with your fingerprint');
+    setCheckingFingerprint(false);
+    if (result.ok) {
+      setIsAppLocked(false);
+    }
+  };
+
+  useEffect(() => {
+    if (settings.fingerprintEnabled && !attemptedFingerprint.current) {
+      attemptedFingerprint.current = true;
+      attemptFingerprint();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleForgotPin = () => {
     Alert.alert(
@@ -32,7 +52,7 @@ export function AppLockScreen() {
           text: 'Turn off screen lock',
           style: 'destructive',
           onPress: () => {
-            updateSettings({ screenLockEnabled: false, pinCode: '' });
+            updateSettings({ screenLockEnabled: false, pinCode: '', fingerprintEnabled: false });
             setIsAppLocked(false);
           },
         },
@@ -69,12 +89,31 @@ export function AppLockScreen() {
     <SafeAreaView style={[styles.container, { backgroundColor: colors.bgPrimary }]}>
       <View style={styles.content}>
         <View style={[styles.iconCircle, { backgroundColor: `${colors.accentPrimary}20` }]}>
-          <Ionicons name="lock-closed" size={32} color={colors.accentPrimary} />
+          <Ionicons
+            name={checkingFingerprint ? 'finger-print' : 'lock-closed'}
+            size={32}
+            color={colors.accentPrimary}
+          />
         </View>
-        <Text style={[styles.title, { color: colors.textPrimary }]}>Enter your PIN</Text>
-        <Text style={[styles.subtitle, { color: error ? colors.danger : colors.textSecondary }]}>
-          {error ? 'Incorrect PIN, try again' : 'Unlock to continue'}
+        <Text style={[styles.title, { color: colors.textPrimary }]}>
+          {checkingFingerprint ? 'Fingerprint required' : 'Enter your PIN'}
         </Text>
+        <Text style={[styles.subtitle, { color: error ? colors.danger : colors.textSecondary }]}>
+          {checkingFingerprint
+            ? 'Confirm your fingerprint to continue'
+            : error
+            ? 'Incorrect PIN, try again'
+            : 'Unlock to continue'}
+        </Text>
+
+        {settings.fingerprintEnabled && !checkingFingerprint && (
+          <TouchableOpacity onPress={attemptFingerprint} style={styles.retryFingerprint}>
+            <Ionicons name="finger-print-outline" size={18} color={colors.accentPrimary} />
+            <Text style={[styles.retryFingerprintText, { color: colors.accentPrimary }]}>
+              Try fingerprint again
+            </Text>
+          </TouchableOpacity>
+        )}
 
         <View style={styles.dotsRow}>
           {Array.from({ length: pinLength }).map((_, index) => (
@@ -156,6 +195,16 @@ const styles = StyleSheet.create({
   subtitle: {
     fontSize: typography.sizes.sm,
     marginTop: spacing.sm,
+  },
+  retryFingerprint: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginTop: spacing.lg,
+  },
+  retryFingerprintText: {
+    fontSize: typography.sizes.sm,
+    fontWeight: typography.weights.semibold,
   },
   dotsRow: {
     flexDirection: 'row',

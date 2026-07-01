@@ -19,6 +19,9 @@ import { SegmentedControl } from '../../components/settings/SegmentedControl';
 import { SettingsRow } from '../../components/settings/SettingsRow';
 import { Dropdown } from '../../components/common/Dropdown';
 import { spacing, typography, borderRadius } from '../../theme';
+import { promptBiometrics } from '../../utils/biometrics';
+
+const PIN_LENGTH = 6;
 
 type LockTab = 'fingerprint' | 'pin';
 
@@ -36,6 +39,19 @@ const TIMEOUT_OPTIONS = [
   { value: '60', label: 'After 1 hour' },
 ];
 
+function biometricFailureMessage(reason: 'no-hardware' | 'not-enrolled' | 'failed' | 'cancelled') {
+  switch (reason) {
+    case 'no-hardware':
+      return 'This device has no fingerprint sensor.';
+    case 'not-enrolled':
+      return 'No fingerprint is enrolled on this device. Add one in your device settings first.';
+    case 'cancelled':
+      return 'Fingerprint check cancelled.';
+    default:
+      return "We couldn't verify your fingerprint. Please try again.";
+  }
+}
+
 export function ScreenLockScreen() {
   const colors = useThemeColors();
   const navigation = useNavigation<any>();
@@ -47,6 +63,7 @@ export function ScreenLockScreen() {
   const [newPin, setNewPin] = useState('');
   const [confirmPin, setConfirmPin] = useState('');
   const [message, setMessage] = useState<string | null>(null);
+  const [verifyingFingerprint, setVerifyingFingerprint] = useState(false);
 
   useEffect(() => {
     if (!message) return;
@@ -54,8 +71,13 @@ export function ScreenLockScreen() {
     return () => clearTimeout(timer);
   }, [message]);
 
-  const handleToggleFingerprint = (value: boolean) => {
-    if (value && !settings.pinCode) {
+  const handleToggleFingerprint = async (value: boolean) => {
+    if (!value) {
+      updateSettings({ fingerprintEnabled: false });
+      return;
+    }
+
+    if (!settings.pinCode) {
       Alert.alert(
         'Set up a PIN first',
         'Fingerprint unlock needs a PIN as a fallback, in case fingerprint matching fails. Set up your PIN, then turn Fingerprint back on.',
@@ -63,7 +85,17 @@ export function ScreenLockScreen() {
       );
       return;
     }
-    updateSettings({ fingerprintEnabled: value });
+
+    setVerifyingFingerprint(true);
+    const result = await promptBiometrics('Confirm your fingerprint to enable Fingerprint unlock');
+    setVerifyingFingerprint(false);
+
+    if (result.ok) {
+      updateSettings({ fingerprintEnabled: true });
+      setMessage('Fingerprint unlock enabled');
+    } else {
+      Alert.alert('Fingerprint not confirmed', biometricFailureMessage(result.reason));
+    }
   };
 
   const handleSavePin = () => {
@@ -71,8 +103,8 @@ export function ScreenLockScreen() {
       Alert.alert('Incorrect PIN', 'Your current PIN is incorrect.');
       return;
     }
-    if (newPin.length < 4 || confirmPin.length < 4) {
-      Alert.alert('PIN too short', 'PIN must be at least 4 digits.');
+    if (newPin.length !== PIN_LENGTH || confirmPin.length !== PIN_LENGTH) {
+      Alert.alert('PIN incomplete', `PIN must be exactly ${PIN_LENGTH} digits.`);
       return;
     }
     if (newPin !== confirmPin) {
@@ -87,7 +119,10 @@ export function ScreenLockScreen() {
     setMessage(isFirstSetup ? 'PIN set up successfully' : 'PIN changed successfully');
   };
 
-  const canSavePin = newPin.length >= 4 && confirmPin.length >= 4 && (!settings.pinCode || currentPin.length >= 4);
+  const canSavePin =
+    newPin.length === PIN_LENGTH &&
+    confirmPin.length === PIN_LENGTH &&
+    (!settings.pinCode || currentPin.length === PIN_LENGTH);
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.bgPrimary }]} edges={['top']}>
@@ -114,7 +149,13 @@ export function ScreenLockScreen() {
             <SettingsRow
               icon="finger-print-outline"
               label="Fingerprint"
-              subtitle={settings.pinCode ? undefined : 'Requires a PIN as fallback'}
+              subtitle={
+                verifyingFingerprint
+                  ? 'Confirm your fingerprint…'
+                  : settings.pinCode
+                  ? undefined
+                  : 'Requires a PIN as fallback'
+              }
               toggle
               toggleValue={settings.fingerprintEnabled}
               onToggleChange={handleToggleFingerprint}
@@ -157,6 +198,13 @@ export function ScreenLockScreen() {
 
             {settings.screenLockEnabled && (
               <View style={styles.pinForm}>
+                <Text style={[styles.pinFormTitle, { color: colors.textPrimary }]}>
+                  {settings.pinCode ? 'Reset your secure access code' : 'Set up your secure access code'}
+                </Text>
+                <Text style={[styles.pinFormSubtitle, { color: colors.textTertiary }]}>
+                  Use exactly {PIN_LENGTH} digits. Your new PIN is stored only on this device.
+                </Text>
+
                 {settings.pinCode ? (
                   <PinInput
                     label="Current PIN"
@@ -166,7 +214,7 @@ export function ScreenLockScreen() {
                 ) : null}
                 <PinInput label="New PIN" value={newPin} onChangeText={setNewPin} />
                 <PinInput
-                  label="Confirm PIN"
+                  label="Confirm new PIN"
                   value={confirmPin}
                   onChangeText={setConfirmPin}
                 />
@@ -179,7 +227,7 @@ export function ScreenLockScreen() {
                   disabled={!canSavePin}
                 >
                   <Text style={[styles.saveButtonText, { color: colors.textInverse }]}>
-                    {settings.pinCode ? 'Change PIN' : 'Save PIN'}
+                    {settings.pinCode ? 'Update PIN' : 'Set PIN'}
                   </Text>
                 </TouchableOpacity>
               </View>
@@ -204,7 +252,12 @@ function PinInput({
 
   return (
     <View style={styles.inputGroup}>
-      <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>{label}</Text>
+      <View style={styles.inputLabelRow}>
+        <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>{label}</Text>
+        <Text style={[styles.inputCounter, { color: colors.textTertiary }]}>
+          {value.length}/{PIN_LENGTH}
+        </Text>
+      </View>
       <TextInput
         style={[
           styles.input,
@@ -215,11 +268,11 @@ function PinInput({
           },
         ]}
         value={value}
-        onChangeText={(text) => onChangeText(text.replace(/[^0-9]/g, '').slice(0, 8))}
+        onChangeText={(text) => onChangeText(text.replace(/[^0-9]/g, '').slice(0, PIN_LENGTH))}
         keyboardType="number-pad"
         secureTextEntry
-        maxLength={8}
-        placeholder="••••"
+        maxLength={PIN_LENGTH}
+        placeholder="0 0 0 0 0 0"
         placeholderTextColor={colors.textTertiary}
       />
     </View>
@@ -264,13 +317,32 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: 'transparent',
   },
+  pinFormTitle: {
+    fontSize: typography.sizes.base,
+    fontWeight: typography.weights.semibold,
+    marginBottom: spacing.xs,
+  },
+  pinFormSubtitle: {
+    fontSize: typography.sizes.xs,
+    lineHeight: typography.sizes.xs * 1.5,
+    marginBottom: spacing.lg,
+  },
   inputGroup: {
     marginBottom: spacing.base,
+  },
+  inputLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: spacing.sm,
   },
   inputLabel: {
     fontSize: typography.sizes.sm,
     fontWeight: typography.weights.medium,
-    marginBottom: spacing.sm,
+  },
+  inputCounter: {
+    fontSize: typography.sizes.xs,
+    fontWeight: typography.weights.medium,
   },
   input: {
     borderWidth: 1,
