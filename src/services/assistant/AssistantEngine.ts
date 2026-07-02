@@ -514,7 +514,7 @@ export class AssistantEngine {
     }
 
     const high = tasks.filter((t) => t.priority === 'high');
-    const overdue = tasks.filter((t) => t.due_date && new Date(t.due_date) < now);
+    const overdue = tasks.filter((t) => t.deadline && new Date(t.deadline) < now);
     const upcoming = tasks.slice(0, 4);
 
     let text = `${tasks.length} task${tasks.length !== 1 ? 's' : ''} due in the next 7 days`;
@@ -523,8 +523,8 @@ export class AssistantEngine {
     text += '.';
 
     const list = upcoming.map((t) => {
-      const due = t.due_date
-        ? new Date(t.due_date).toLocaleDateString('en-KE', { weekday: 'short', day: 'numeric', month: 'short' })
+      const due = t.deadline
+        ? new Date(t.deadline).toLocaleDateString('en-KE', { weekday: 'short', day: 'numeric', month: 'short' })
         : 'no date';
       return `• ${t.title} (${due})`;
     }).join('\n');
