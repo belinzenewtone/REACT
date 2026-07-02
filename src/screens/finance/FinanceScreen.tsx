@@ -596,7 +596,7 @@ function MetricCard({ label, amount }: { label: string; amount: number }) {
   return (
     <GlassCard style={styles.metricCard}>
       <Text style={[styles.metricLabel, { color: colors.textSecondary }]}>{label}</Text>
-      <Text style={[styles.metricAmount, { color: colors.textPrimary }]} numberOfLines={1} ellipsizeMode="tail">
+      <Text style={[styles.metricAmount, { color: colors.textPrimary }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>
         {formatCurrency(amount, { decimals: 0 })}
       </Text>
     </GlassCard>
