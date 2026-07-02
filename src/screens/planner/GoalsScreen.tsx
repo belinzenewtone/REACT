@@ -1,5 +1,6 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, StyleSheet, Alert } from 'react-native';
+import { TopBanner } from '../../components/common/TopBanner';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
@@ -17,6 +18,7 @@ export function GoalsScreen() {
   const db = useSQLiteContext();
   const navigation = useNavigation<any>();
   const { goals, loadAll, updateGoal, deleteGoal } = usePlannerStore();
+  const [banner, setBanner] = useState<string | null>(null);
 
   useEffect(() => {
     loadAll(db);
@@ -25,8 +27,10 @@ export function GoalsScreen() {
   const activeGoals = goals.filter((g) => g.status === 'active');
 
   const handleComplete = (id: string) => {
+    const goal = goals.find((g) => g.id === id);
     animateLayout();
     updateGoal(db, id, { status: 'completed' });
+    setBanner(`${goal?.title ?? 'Goal'} marked as complete`);
   };
 
   const handleDelete = (id: string, title: string) => {
@@ -45,6 +49,7 @@ export function GoalsScreen() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.bgPrimary }]} edges={['top']}>
+      <TopBanner tone="success" message={banner ?? ''} visible={!!banner} autoDismissMs={2500} onDismiss={() => setBanner(null)} />
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.header}>
           <TouchableOpacity onPress={() => navigation.goBack()}>

@@ -1,8 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet, Alert } from 'react-native';
+import { Animated, View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet, Alert } from 'react-native';
+import { useFormFadeIn } from '../../hooks/useFormFadeIn';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
+import { TopBanner } from '../../components/common/TopBanner';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useThemeColors } from '../../hooks/useThemeColors';
 import { usePlannerStore } from '../../store';
@@ -47,6 +49,9 @@ export function RecurringFormScreen() {
   const ruleId = route.params?.ruleId;
   const isEditing = !!ruleId;
 
+  const [isReady, setIsReady] = useState(!isEditing);
+  const contentOpacity = useFormFadeIn(isReady);
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [title, setTitle] = useState('');
   const [type, setType] = useState<'expense' | 'income' | 'task'>('expense');
   const [cadence, setCadence] = useState<RecurringCadence>('monthly');
@@ -68,6 +73,7 @@ export function RecurringFormScreen() {
         setCategory(rule.category ?? CATEGORIES[0]);
         setEnabled(rule.enabled === 1);
       }
+      setIsReady(true);
     });
   }, [ruleId, db]);
 
@@ -96,10 +102,12 @@ export function RecurringFormScreen() {
     try {
       if (isEditing && ruleId) {
         await updateRecurringRule(db, ruleId, data);
+        setSuccessMsg('Rule updated');
       } else {
         await createRecurringRule(db, data);
+        setSuccessMsg('Rule added');
       }
-      navigation.goBack();
+      setTimeout(() => navigation.goBack(), 900);
     } catch (error) {
       console.error('Failed to save recurring rule:', error);
       Alert.alert('Error', 'Failed to save recurring rule');
@@ -123,6 +131,8 @@ export function RecurringFormScreen() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.bgPrimary }]} edges={['top']}>
+      <TopBanner tone="success" message={successMsg ?? ''} visible={!!successMsg} />
+      <Animated.View style={{ flex: 1, opacity: contentOpacity }}>
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.header}>
           <TouchableOpacity onPress={() => navigation.goBack()}>
@@ -188,6 +198,7 @@ export function RecurringFormScreen() {
           </Text>
         </TouchableOpacity>
       </ScrollView>
+      </Animated.View>
     </SafeAreaView>
   );
 }

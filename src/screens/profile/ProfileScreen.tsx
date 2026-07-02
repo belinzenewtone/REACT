@@ -52,6 +52,8 @@ function ToolHubCard({ item, onPress, colors }: { item: ToolItem; onPress: () =>
   );
 }
 
+const USERNAME_MAX = 8;
+
 export function ProfileScreen() {
   const colors = useThemeColors();
   const navigation = useNavigation<any>();
@@ -60,13 +62,8 @@ export function ProfileScreen() {
 
   const [editVisible, setEditVisible] = useState(false);
   const [editName, setEditName] = useState(profile?.name ?? '');
-  const [editEmail, setEditEmail] = useState(profile?.email ?? '');
-  const [editPhone, setEditPhone] = useState(profile?.phone ?? '');
-  const [securityExpanded, setSecurityExpanded] = useState(false);
-  const [currentPw, setCurrentPw] = useState('');
-  const [newPw, setNewPw] = useState('');
-  const [confirmPw, setConfirmPw] = useState('');
-  const [pwError, setPwError] = useState('');
+  const [editUsername, setEditUsername] = useState(profile?.username ?? '');
+  const [usernameError, setUsernameError] = useState('');
   const [photoSheetVisible, setPhotoSheetVisible] = useState(false);
   const [photoViewerVisible, setPhotoViewerVisible] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
@@ -78,17 +75,29 @@ export function ProfileScreen() {
   }, [successMessage]);
 
   const handleSaveProfile = () => {
+    const trimmedUsername = editUsername.trim().toLowerCase().replace(/[^a-z0-9_]/g, '');
+    if (trimmedUsername.length > USERNAME_MAX) {
+      setUsernameError(`Username must be ${USERNAME_MAX} characters or fewer`);
+      return;
+    }
+    setUsernameError('');
     setProfile({
       id: profile?.id ?? 'default',
       name: editName.trim() || 'User',
-      email: editEmail.trim() || undefined,
-      phone: editPhone.trim() || undefined,
+      username: trimmedUsername || undefined,
       avatarUri: profile?.avatarUri,
       createdAt: profile?.createdAt ?? new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     });
     setEditVisible(false);
     setSuccessMessage('Profile updated');
+  };
+
+  const handleUsernameChange = (text: string) => {
+    // Only allow lowercase alphanumeric and underscore, max 8 chars
+    const cleaned = text.toLowerCase().replace(/[^a-z0-9_]/g, '').slice(0, USERNAME_MAX);
+    setEditUsername(cleaned);
+    setUsernameError('');
   };
 
   const handleChooseFromGallery = async () => {
@@ -129,6 +138,8 @@ export function ProfileScreen() {
     ? format(new Date(profile.createdAt), 'MMM yyyy')
     : null;
 
+  const displayUsername = profile?.username ? `@${profile.username}` : 'No username set';
+
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.bgPrimary }]} edges={['top']}>
       <TopBanner
@@ -166,7 +177,9 @@ export function ProfileScreen() {
               <Text style={[styles.heroName, { color: colors.textPrimary }]} numberOfLines={1}>
                 {profile?.name?.trim() || 'Set up your profile'}
               </Text>
-              <Text style={[styles.heroWorkspace, { color: colors.textSecondary }]}>Local Workspace</Text>
+              <Text style={[styles.heroUsername, { color: colors.accentPrimary }]}>
+                {displayUsername}
+              </Text>
               {memberSince && (
                 <View style={[styles.memberBadge, { backgroundColor: colors.bgTertiary }]}>
                   <Text style={[styles.memberBadgeText, { color: colors.textSecondary }]}>
@@ -183,8 +196,8 @@ export function ProfileScreen() {
               style={[styles.heroBtn, { borderColor: colors.border }]}
               onPress={() => {
                 setEditName(profile?.name ?? '');
-                setEditEmail(profile?.email ?? '');
-                setEditPhone(profile?.phone ?? '');
+                setEditUsername(profile?.username ?? '');
+                setUsernameError('');
                 setEditVisible(true);
               }}
             >
@@ -216,81 +229,6 @@ export function ProfileScreen() {
           </View>
         </GlassCard>
 
-        {/* ── Security Section ── */}
-        <GlassCard>
-          <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>SECURITY</Text>
-          <TouchableOpacity
-            style={styles.securityHeader}
-            onPress={() => setSecurityExpanded((v) => !v)}
-          >
-            <View style={[styles.securityIconBox, { backgroundColor: colors.bgTertiary }]}>
-              <Ionicons name="lock-closed-outline" size={18} color={colors.textSecondary} />
-            </View>
-            <Text style={[styles.securityTitle, { color: colors.textPrimary }]}>Password</Text>
-            <Ionicons
-              name={securityExpanded ? 'chevron-up' : 'chevron-down'}
-              size={20}
-              color={colors.textTertiary}
-            />
-          </TouchableOpacity>
-
-          {securityExpanded && (
-            <View style={styles.securityForm}>
-              <View style={[styles.formDivider, { backgroundColor: colors.border }]} />
-              <TextInput
-                style={[styles.formInput, { borderColor: colors.border, color: colors.textPrimary, backgroundColor: colors.bgTertiary }]}
-                placeholder="Current password"
-                placeholderTextColor={colors.textTertiary}
-                secureTextEntry
-                value={currentPw}
-                onChangeText={setCurrentPw}
-              />
-              <TextInput
-                style={[styles.formInput, { borderColor: colors.border, color: colors.textPrimary, backgroundColor: colors.bgTertiary }]}
-                placeholder="New password"
-                placeholderTextColor={colors.textTertiary}
-                secureTextEntry
-                value={newPw}
-                onChangeText={setNewPw}
-              />
-              <TextInput
-                style={[styles.formInput, { borderColor: colors.border, color: colors.textPrimary, backgroundColor: colors.bgTertiary }]}
-                placeholder="Confirm new password"
-                placeholderTextColor={colors.textTertiary}
-                secureTextEntry
-                value={confirmPw}
-                onChangeText={setConfirmPw}
-              />
-              {pwError ? <Text style={[styles.pwError, { color: colors.danger }]}>{pwError}</Text> : null}
-              <View style={styles.pwButtons}>
-                <TouchableOpacity
-                  style={[styles.pwBtn, { borderColor: colors.border }]}
-                  onPress={() => {
-                    setSecurityExpanded(false);
-                    setCurrentPw(''); setNewPw(''); setConfirmPw(''); setPwError('');
-                  }}
-                >
-                  <Text style={[styles.pwBtnText, { color: colors.textSecondary }]}>Cancel</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.pwBtn, { backgroundColor: colors.accentPrimary, borderColor: colors.accentPrimary }]}
-                  onPress={() => {
-                    if (!currentPw) { setPwError('Enter current password'); return; }
-                    if (newPw.length < 4) { setPwError('New password too short'); return; }
-                    if (newPw !== confirmPw) { setPwError('Passwords do not match'); return; }
-                    setPwError('');
-                    setCurrentPw(''); setNewPw(''); setConfirmPw('');
-                    setSecurityExpanded(false);
-                    setSuccessMessage('Password updated');
-                  }}
-                >
-                  <Text style={[styles.pwBtnText, { color: colors.textInverse }]}>Update</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          )}
-        </GlassCard>
-
       </ScrollView>
 
       {/* Edit Profile Modal */}
@@ -298,22 +236,50 @@ export function ProfileScreen() {
         <View style={[styles.modalOverlay, { backgroundColor: colors.glassBlack }]}>
           <View style={[styles.modalContent, { backgroundColor: colors.bgSecondary }]}>
             <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>Edit Profile</Text>
-            {[
-              { value: editName, setter: setEditName, placeholder: 'Name', keyboard: 'default' as const },
-              { value: editEmail, setter: setEditEmail, placeholder: 'Email', keyboard: 'email-address' as const },
-              { value: editPhone, setter: setEditPhone, placeholder: 'Phone', keyboard: 'phone-pad' as const },
-            ].map((f) => (
+
+            {/* Full Name */}
+            <View>
+              <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>Full name</Text>
               <TextInput
-                key={f.placeholder}
                 style={[styles.modalInput, { color: colors.textPrimary, borderColor: colors.border, backgroundColor: colors.glassWhite }]}
-                placeholder={f.placeholder}
+                placeholder="Full name"
                 placeholderTextColor={colors.textTertiary}
-                value={f.value}
-                onChangeText={f.setter}
-                keyboardType={f.keyboard}
-                autoCapitalize={f.keyboard === 'email-address' ? 'none' : 'words'}
+                value={editName}
+                onChangeText={setEditName}
+                autoCapitalize="words"
               />
-            ))}
+            </View>
+
+            {/* Username */}
+            <View>
+              <View style={styles.fieldLabelRow}>
+                <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>Username</Text>
+                <Text style={[styles.fieldHint, { color: editUsername.length >= USERNAME_MAX ? colors.warning : colors.textTertiary }]}>
+                  {editUsername.length}/{USERNAME_MAX}
+                </Text>
+              </View>
+              <TextInput
+                style={[
+                  styles.modalInput,
+                  { color: colors.textPrimary, borderColor: usernameError ? colors.danger : colors.border, backgroundColor: colors.glassWhite },
+                ]}
+                placeholder="e.g. john"
+                placeholderTextColor={colors.textTertiary}
+                value={editUsername}
+                onChangeText={handleUsernameChange}
+                autoCapitalize="none"
+                autoCorrect={false}
+                maxLength={USERNAME_MAX}
+              />
+              {usernameError ? (
+                <Text style={[styles.fieldError, { color: colors.danger }]}>{usernameError}</Text>
+              ) : (
+                <Text style={[styles.fieldHint, { color: colors.textTertiary }]}>
+                  Shown in the app greeting · letters, numbers, _ only
+                </Text>
+              )}
+            </View>
+
             <TouchableOpacity style={[styles.saveButton, { backgroundColor: colors.accentPrimary }]} onPress={handleSaveProfile}>
               <Text style={[styles.saveText, { color: colors.textInverse }]}>Save</Text>
             </TouchableOpacity>
@@ -395,7 +361,7 @@ const styles = StyleSheet.create({
   initials: { fontSize: typography.sizes['2xl'], fontWeight: typography.weights.bold },
   heroInfo: { flex: 1, gap: 4 },
   heroName: { fontSize: typography.sizes.xl, fontWeight: typography.weights.bold },
-  heroWorkspace: { fontSize: typography.sizes.sm },
+  heroUsername: { fontSize: typography.sizes.sm, fontWeight: typography.weights.medium },
   memberBadge: { alignSelf: 'flex-start', paddingHorizontal: spacing.sm, paddingVertical: 4, borderRadius: borderRadius.full },
   memberBadgeText: { fontSize: typography.sizes.xs },
   heroButtons: { flexDirection: 'row', gap: spacing.sm },
@@ -411,21 +377,14 @@ const styles = StyleSheet.create({
   toolCard: { width: '30%', flexGrow: 1, borderRadius: borderRadius.lg, padding: spacing.sm, alignItems: 'center', gap: spacing.sm },
   toolIconBox: { width: 44, height: 44, borderRadius: borderRadius.md, justifyContent: 'center', alignItems: 'center' },
   toolLabel: { fontSize: typography.sizes.xs, fontWeight: typography.weights.medium },
-  // Security
-  securityHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  securityIconBox: { width: 36, height: 36, borderRadius: borderRadius.sm, justifyContent: 'center', alignItems: 'center' },
-  securityTitle: { flex: 1, fontSize: typography.sizes.base, fontWeight: typography.weights.semibold },
-  securityForm: { gap: spacing.sm, marginTop: spacing.sm },
-  formDivider: { height: 1 },
-  formInput: { borderWidth: 1, borderRadius: borderRadius.full, paddingHorizontal: spacing.base, paddingVertical: spacing.sm, fontSize: typography.sizes.base },
-  pwError: { fontSize: typography.sizes.xs },
-  pwButtons: { flexDirection: 'row', gap: spacing.sm },
-  pwBtn: { flex: 1, borderWidth: 1, borderRadius: borderRadius.full, paddingVertical: spacing.sm, alignItems: 'center' },
-  pwBtnText: { fontSize: typography.sizes.base, fontWeight: typography.weights.semibold },
   // Modal
   modalOverlay: { flex: 1, justifyContent: 'flex-end' },
   modalContent: { paddingHorizontal: spacing.screenHorizontal, paddingVertical: spacing.lg, borderTopLeftRadius: borderRadius['2xl'], borderTopRightRadius: borderRadius['2xl'], gap: spacing.base },
   modalTitle: { fontSize: typography.sizes.xl, fontWeight: typography.weights.bold },
+  fieldLabel: { fontSize: typography.sizes.sm, fontWeight: typography.weights.medium, marginBottom: spacing.xs },
+  fieldLabelRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.xs },
+  fieldHint: { fontSize: typography.sizes.xs, marginTop: 4 },
+  fieldError: { fontSize: typography.sizes.xs, marginTop: 4 },
   modalInput: { borderWidth: 1, borderRadius: borderRadius.lg, paddingHorizontal: spacing.base, paddingVertical: spacing.base, fontSize: typography.sizes.base },
   saveButton: { paddingVertical: spacing.base, borderRadius: borderRadius.lg, alignItems: 'center' },
   saveText: { fontSize: typography.sizes.base, fontWeight: typography.weights.semibold },

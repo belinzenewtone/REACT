@@ -11,6 +11,11 @@ import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { useThemeColors } from '../../hooks/useThemeColors';
 import { useAppStore } from '../../store';
+import {
+  requestNotificationPermissions,
+  scheduleDailyDigest,
+  cancelDailyDigest,
+} from '../../services/notificationService';
 import { GlassCard } from '../../components/common/GlassCard';
 import { TopBanner } from '../../components/common/TopBanner';
 import { SettingsRow } from '../../components/settings/SettingsRow';
@@ -66,7 +71,16 @@ export function NotificationsScreen() {
             label="Enable notifications"
             toggle
             toggleValue={settings.notificationsEnabled}
-            onToggleChange={(value) => updateSettings({ notificationsEnabled: value })}
+            onToggleChange={async (value) => {
+              if (value) {
+                const granted = await requestNotificationPermissions();
+                updateSettings({ notificationsEnabled: granted });
+                if (!granted) setInfoMessage('Please allow notifications in device settings');
+              } else {
+                updateSettings({ notificationsEnabled: false });
+                await cancelDailyDigest();
+              }
+            }}
             isLast
           />
         </GlassCard>
@@ -131,9 +145,15 @@ export function NotificationsScreen() {
             subtitle="Morning summary of tasks, spending and upcoming events"
             toggle
             toggleValue={settings.dailyDigestMorningSummary}
-            onToggleChange={(value) => {
+            onToggleChange={async (value) => {
               updateSettings({ dailyDigestMorningSummary: value });
-              setInfoMessage(value ? 'Daily digest enabled' : 'Daily digest disabled');
+              if (value && settings.notificationsEnabled) {
+                await scheduleDailyDigest(settings.dailyDigestDeliveryTime);
+                setInfoMessage('Daily digest enabled');
+              } else {
+                await cancelDailyDigest();
+                setInfoMessage('Daily digest disabled');
+              }
             }}
           />
           <SettingsRow
@@ -152,9 +172,12 @@ export function NotificationsScreen() {
         visible={timePickerVisible}
         value={settings.dailyDigestDeliveryTime}
         onCancel={() => setTimePickerVisible(false)}
-        onConfirm={(time) => {
+        onConfirm={async (time) => {
           updateSettings({ dailyDigestDeliveryTime: time });
           setTimePickerVisible(false);
+          if (settings.dailyDigestMorningSummary && settings.notificationsEnabled) {
+            await scheduleDailyDigest(time);
+          }
           setInfoMessage(`Daily digest rescheduled for ${formatTime(time)}`);
         }}
       />

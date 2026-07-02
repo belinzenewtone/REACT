@@ -10,11 +10,13 @@ import {
   Animated,
   PanResponder,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useSQLiteContext } from 'expo-sqlite';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
+import { useDataVersion } from '../../store/dataVersion';
 import {
   startOfDay,
   endOfDay,
@@ -32,7 +34,8 @@ import { SearchFilterBar } from '../../components/finance/SearchFilterBar';
 import { TransactionListItem } from '../../components/finance/TransactionListItem';
 import { GlassCard } from '../../components/common/GlassCard';
 import { ImportCsvSheet } from '../../components/finance/ImportCsvSheet';
-import { ImportSmsSheet } from '../../components/finance/ImportSmsSheet';
+import { ImportSmsSheet, type SmsScanPeriod } from '../../components/finance/ImportSmsSheet';
+import { importHistoricalSms } from '../../../modules/lifeos-sms';
 import { CATEGORY_COLORS } from '../../constants';
 import { formatCurrency, formatDate, formatRelativeDay } from '../../utils/formatters';
 import { spacing, typography, borderRadius, BOTTOM_NAV_SAFE_AREA } from '../../theme';
@@ -82,10 +85,14 @@ export function FinanceScreen() {
   const { loans, loadAll: loadPlanner } = usePlannerStore();
   const fulizaLimit = useAppStore((state) => state.settings.fulizaLimit);
 
+  const dataVersion = useDataVersion((s) => s.version);
+  const loadedVersion = useRef(-1);
   const [feesTotal, setFeesTotal] = useState(0);
   const [uncategorizedCount, setUncategorizedCount] = useState(0);
   const [csvSheetVisible, setCsvSheetVisible] = useState(false);
   const [smsSheetVisible, setSmsSheetVisible] = useState(false);
+  const [smsImporting, setSmsImporting] = useState(false);
+  const [smsImportBanner, setSmsImportBanner] = useState<string | null>(null);
 
   useEffect(() => {
     loadTransactions(repo, true);
@@ -106,11 +113,48 @@ export function FinanceScreen() {
     repo.getUncategorized().then((rows) => setUncategorizedCount(rows.length));
   }, [db, loadDashboard, loadBudgets, loadPlanner, repo]);
 
+  useFocusEffect(
+    useCallback(() => {
+      if (dataVersion > loadedVersion.current) {
+        loadedVersion.current = dataVersion;
+        loadTransactions(repo, true);
+        loadDashboard(db);
+        loadBudgets(db);
+      }
+    }, [repo, db, loadTransactions, loadDashboard, loadBudgets, dataVersion])
+  );
+
   const handleLoadMore = useCallback(() => {
     if (!isLoading && hasMore) {
       loadTransactions(repo, false);
     }
   }, [isLoading, hasMore, loadTransactions, repo]);
+
+  const handleSmsImport = useCallback(async (period: SmsScanPeriod) => {
+    setSmsSheetVisible(false);
+    const now = Date.now();
+    const periodMs: Record<SmsScanPeriod, number> = {
+      '24h': 24 * 60 * 60 * 1000,
+      '7d':  7  * 24 * 60 * 60 * 1000,
+      '30d': 30 * 24 * 60 * 60 * 1000,
+      '90d': 90 * 24 * 60 * 60 * 1000,
+    };
+    setSmsImporting(true);
+    setSmsImportBanner('Scanning M-Pesa messages…');
+    try {
+      const result = await importHistoricalSms(now - periodMs[period], now);
+      await loadTransactions(repo, true);
+      setSmsImportBanner(
+        `Import complete · ${result.imported} new · ${result.duplicates} dupes · ${result.failed} failed`
+      );
+      setTimeout(() => setSmsImportBanner(null), 5000);
+    } catch (e: any) {
+      setSmsImportBanner(`Import failed: ${e?.message ?? 'unknown error'}`);
+      setTimeout(() => setSmsImportBanner(null), 5000);
+    } finally {
+      setSmsImporting(false);
+    }
+  }, [repo, loadTransactions]);
 
   const monthTotals = useMemo(() => {
     const now = new Date();
@@ -267,6 +311,17 @@ export function FinanceScreen() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.bgPrimary }]} edges={['top']}>
+      {smsImportBanner && (
+        <View style={[
+          styles.smsBanner,
+          { backgroundColor: smsImporting ? colors.accentPrimary : colors.bgSecondary },
+        ]}>
+          {smsImporting && <ActivityIndicator size="small" color="#fff" style={{ marginRight: 8 }} />}
+          <Text style={[styles.smsBannerText, { color: smsImporting ? '#fff' : colors.textPrimary }]} numberOfLines={2}>
+            {smsImportBanner}
+          </Text>
+        </View>
+      )}
       <FlatList
         data={flatData}
         keyExtractor={(item, index) =>
@@ -528,10 +583,8 @@ export function FinanceScreen() {
       <ImportSmsSheet
         visible={smsSheetVisible}
         onClose={() => setSmsSheetVisible(false)}
-        onSelectPeriod={() => {
-          setSmsSheetVisible(false);
-          navigation.navigate('SmsImportHealth');
-        }}
+        onSelectPeriod={handleSmsImport}
+        isImporting={smsImporting}
       />
     </SafeAreaView>
   );
@@ -754,6 +807,17 @@ const styles = StyleSheet.create({
   },
   listContent: {
     paddingBottom: BOTTOM_NAV_SAFE_AREA,
+  },
+  smsBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: spacing.screenHorizontal,
+    paddingVertical: spacing.sm,
+  },
+  smsBannerText: {
+    flex: 1,
+    fontSize: typography.sizes.sm,
+    fontWeight: typography.weights.medium,
   },
   dateHeader: {
     paddingHorizontal: spacing.screenHorizontal,

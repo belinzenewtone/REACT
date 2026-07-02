@@ -273,4 +273,19 @@ CREATE TABLE IF NOT EXISTS assistant_messages (
 
 CREATE INDEX IF NOT EXISTS idx_assistant_messages_conversation ON assistant_messages(conversation_id);
 CREATE INDEX IF NOT EXISTS idx_assistant_messages_created_at ON assistant_messages(created_at);
+
+CREATE TABLE IF NOT EXISTS import_audit (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  mpesa_code    TEXT,
+  raw_message   TEXT NOT NULL,
+  amount        REAL,
+  merchant      TEXT,
+  outcome       TEXT NOT NULL,
+  failure_reason TEXT,
+  confidence    TEXT,
+  created_at    TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_import_audit_outcome    ON import_audit(outcome);
+CREATE INDEX IF NOT EXISTS idx_import_audit_created_at ON import_audit(created_at DESC);
 `;

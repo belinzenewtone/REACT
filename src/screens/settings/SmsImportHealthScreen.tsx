@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -11,25 +11,18 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
-import { useSQLiteContext } from 'expo-sqlite';
 import { useThemeColors } from '../../hooks/useThemeColors';
 import { spacing, typography, borderRadius } from '../../theme';
 import { GlassCard } from '../../components/common/GlassCard';
-
-type AuditEntry = {
-  id: number;
-  outcome: string;
-  merchant: string | null;
-  failure_reason: string | null;
-  mpesa_code: string | null;
-  imported_at: string;
-};
-
-type HealthStats = {
-  totalImported: number;
-  totalSkipped: number;
-  totalErrors: number;
-};
+import {
+  getStats,
+  getAuditLog,
+  getReceiverStatus,
+  importHistoricalSms,
+  retryQuarantined,
+  type SmsStats,
+  type AuditEntry,
+} from '../../../modules/lifeos-sms';
 
 function SectionCard({ title, children, colors }: { title?: string; children: React.ReactNode; colors: any }) {
   return (
@@ -65,71 +58,132 @@ function formatTimestamp(iso: string | null | undefined): string {
   if (!iso) return 'Never';
   try {
     const d = new Date(iso);
-    return d.toLocaleDateString('en-KE', { month: 'short', day: 'numeric' }) +
-      ', ' + d.toLocaleTimeString('en-KE', { hour: '2-digit', minute: '2-digit' });
+    if (isNaN(d.getTime())) return iso;
+    return (
+      d.toLocaleDateString('en-KE', { month: 'short', day: 'numeric' }) +
+      ', ' +
+      d.toLocaleTimeString('en-KE', { hour: '2-digit', minute: '2-digit' })
+    );
   } catch {
-    return iso ?? 'Never';
+    return iso;
   }
+}
+
+function outcomeColor(outcome: string, colors: any): string {
+  if (outcome.includes('imported') || outcome.includes('realtime') || outcome.includes('retry')) return colors.accentPrimary;
+  if (outcome.includes('failed') || outcome.includes('error')) return colors.danger;
+  if (outcome.includes('quarantine')) return colors.warning;
+  if (outcome.includes('duplicate') || outcome.includes('skipped') || outcome.includes('ignored')) return colors.textTertiary;
+  if (outcome.includes('fuliza')) return '#FB923C';
+  return colors.textSecondary;
+}
+
+function outcomeLabelShort(outcome: string): string {
+  if (outcome.includes('imported_realtime')) return 'realtime';
+  if (outcome.includes('imported_review')) return 'review';
+  if (outcome.includes('imported_batch')) return 'batch';
+  if (outcome.includes('retry_imported')) return 'retried';
+  if (outcome.includes('fuliza_balance')) return 'fuliza';
+  if (outcome.includes('duplicate')) return 'duplicate';
+  if (outcome.includes('quarantined')) return 'quarantined';
+  if (outcome.includes('parse_failed')) return outcome.replace('parse_failed:', 'fail:');
+  if (outcome.includes('import_failed')) return 'failed';
+  if (outcome.includes('ignored')) return 'ignored';
+  return outcome.length > 20 ? outcome.slice(0, 20) + '…' : outcome;
 }
 
 export function SmsImportHealthScreen() {
   const colors = useThemeColors();
   const navigation = useNavigation<any>();
-  const db = useSQLiteContext();
-  const [stats, setStats] = useState<HealthStats>({ totalImported: 0, totalSkipped: 0, totalErrors: 0 });
+  const [stats, setStats] = useState<SmsStats | null>(null);
   const [auditEntries, setAuditEntries] = useState<AuditEntry[]>([]);
-  const [isReconciling, setIsReconciling] = useState(false);
-  const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [receiverEnabled, setReceiverEnabled] = useState(true);
+  const [lastFireMs, setLastFireMs] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [reconciling, setReconciling] = useState(false);
+  const [retrying, setRetrying] = useState(false);
 
-  useEffect(() => { load(); }, []);
-
-  async function load() {
+  const load = useCallback(async () => {
+    setLoading(true);
     try {
-      const [importedRow, skippedRow, errorRow] = await Promise.all([
-        db.getFirstAsync<{ count: number }>(`SELECT COUNT(*) as count FROM import_audit WHERE outcome LIKE '%imported%' OR outcome LIKE '%realtime%'`),
-        db.getFirstAsync<{ count: number }>(`SELECT COUNT(*) as count FROM import_audit WHERE outcome LIKE '%duplicate%' OR outcome LIKE '%skipped%'`),
-        db.getFirstAsync<{ count: number }>(`SELECT COUNT(*) as count FROM import_audit WHERE outcome LIKE '%failed%' OR outcome LIKE '%error%'`),
+      const [s, entries, receiverStatus] = await Promise.all([
+        getStats(),
+        getAuditLog(100),
+        getReceiverStatus(),
       ]);
-      setStats({
-        totalImported: importedRow?.count ?? 0,
-        totalSkipped: skippedRow?.count ?? 0,
-        totalErrors: errorRow?.count ?? 0,
-      });
-      const entries = await db.getAllAsync<AuditEntry>(
-        `SELECT id, outcome, merchant, failure_reason, mpesa_code, imported_at
-         FROM import_audit ORDER BY id DESC LIMIT 50`
-      );
+      setStats(s);
       setAuditEntries(entries);
+      setReceiverEnabled(receiverStatus.enabled);
+      setLastFireMs(receiverStatus.lastFireMs);
     } catch (e) {
       console.warn('SmsHealth load error', e);
+    } finally {
+      setLoading(false);
     }
-  }
+  }, []);
 
-  async function handleClearLog() {
+  useEffect(() => { load(); }, [load]);
+
+  const handleReconcile = async () => {
+    setReconciling(true);
     try {
-      await db.runAsync(`DELETE FROM import_audit`);
-      setAuditEntries([]);
-      setStats({ totalImported: 0, totalSkipped: 0, totalErrors: 0 });
-    } catch (e) {
-      console.warn('Clear log error', e);
+      const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+      const result = await importHistoricalSms(sevenDaysAgo, Date.now());
+      await load();
+      Alert.alert(
+        'Reconcile complete',
+        `Scanned ${result.total} messages · ${result.imported} new · ${result.duplicates} duplicates · ${result.failed} failed`
+      );
+    } catch (e: any) {
+      Alert.alert('Reconcile failed', e?.message ?? 'Unknown error');
+    } finally {
+      setReconciling(false);
     }
-  }
+  };
 
-  const total = stats.totalImported + stats.totalSkipped + stats.totalErrors;
-  const successRate = total > 0 ? Math.round((stats.totalImported * 100) / total) : 0;
+  const handleRetryQueue = async () => {
+    setRetrying(true);
+    try {
+      const result = await retryQuarantined();
+      await load();
+      Alert.alert(
+        'Retry complete',
+        `Reprocessed ${result.retried} entries · ${result.imported} recovered`
+      );
+    } catch (e: any) {
+      Alert.alert('Retry failed', e?.message ?? 'Unknown error');
+    } finally {
+      setRetrying(false);
+    }
+  };
+
+  const totalProcessed = (stats?.totalImported ?? 0) + (stats?.totalDuplicates ?? 0) + (stats?.totalFailed ?? 0) + (stats?.totalQuarantined ?? 0);
+  const successRate = totalProcessed > 0 ? Math.round(((stats?.totalImported ?? 0) * 100) / totalProcessed) : 0;
 
   const lastEntry = auditEntries[0];
-  const lastImported = auditEntries.find((e) => e.outcome.includes('imported') || e.outcome.includes('realtime'));
+  const lastImported = auditEntries.find(
+    (e) => e.outcome.includes('imported') || e.outcome.includes('realtime') || e.outcome.includes('retry')
+  );
+  const lastRealtime = auditEntries.find((e) => e.outcome.includes('realtime'));
+  const lastBatch = auditEntries.find((e) => e.outcome.includes('batch') || e.outcome.includes('import'));
 
-  const receiverStatus: 'active' | 'idle' | 'unknown' = (() => {
-    if (!lastEntry) return 'unknown';
-    const hoursSinceLastActivity = (Date.now() - new Date(lastEntry.imported_at).getTime()) / (1000 * 60 * 60);
-    return hoursSinceLastActivity <= 24 ? 'active' : 'idle';
+  const receiverStatus: 'active' | 'idle' | 'disabled' | 'unknown' = (() => {
+    if (!receiverEnabled) return 'disabled';
+    if (lastFireMs === 0) return 'unknown';
+    const hoursAgo = (Date.now() - lastFireMs) / (1000 * 60 * 60);
+    return hoursAgo <= 24 ? 'active' : 'idle';
   })();
   const receiverStatusColor =
-    receiverStatus === 'active' ? colors.accentPrimary : receiverStatus === 'idle' ? colors.textTertiary : colors.warning;
+    receiverStatus === 'active' ? colors.accentPrimary
+    : receiverStatus === 'disabled' ? colors.danger
+    : receiverStatus === 'idle' ? colors.textTertiary
+    : colors.warning;
   const receiverStatusLabel =
-    receiverStatus === 'active' ? 'Active' : receiverStatus === 'idle' ? 'Idle' : 'Unknown';
+    receiverStatus === 'active' ? 'Active'
+    : receiverStatus === 'disabled' ? 'Disabled'
+    : receiverStatus === 'idle' ? 'Idle'
+    : 'Waiting';
+  const lastFireLabel = lastFireMs > 0 ? formatTimestamp(new Date(lastFireMs).toISOString()) : 'Never';
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.bgPrimary }]} edges={['top']}>
@@ -139,13 +193,17 @@ export function SmsImportHealthScreen() {
             <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
           </TouchableOpacity>
           <Text style={[styles.title, { color: colors.textPrimary }]}>SMS Import Health</Text>
-          <View style={{ width: 24 }} />
+          <TouchableOpacity onPress={load} disabled={loading}>
+            <Ionicons name="refresh-outline" size={22} color={loading ? colors.textTertiary : colors.accentPrimary} />
+          </TouchableOpacity>
         </View>
 
         {/* Receiver Status */}
         <SectionCard title="Receiver Status" colors={colors}>
           <View style={styles.statusRow}>
-            <View style={[styles.statusDot, { backgroundColor: receiverStatusColor }]} />
+            <View style={[styles.statusDot, { backgroundColor: `${receiverStatusColor}20` }]}>
+              <View style={[styles.statusDotInner, { backgroundColor: receiverStatusColor }]} />
+            </View>
             <View style={styles.statusInfo}>
               <View style={styles.statusTitleRow}>
                 <Text style={[styles.statusName, { color: colors.textPrimary }]}>Realtime receiver</Text>
@@ -155,10 +213,12 @@ export function SmsImportHealthScreen() {
               </View>
               <Text style={[styles.statusSub, { color: colors.textSecondary }]}>
                 {receiverStatus === 'active'
-                  ? 'SMS broadcast receiver is running'
+                  ? `Last fired: ${lastFireLabel}`
+                  : receiverStatus === 'disabled'
+                  ? 'Turn on background receiver in Settings → SMS Import'
                   : receiverStatus === 'idle'
-                  ? 'No recent import activity in the last 24 hours'
-                  : 'No import activity recorded yet'}
+                  ? `No new SMS in 24 h · last fire: ${lastFireLabel}`
+                  : 'Waiting for first M-Pesa SMS'}
               </Text>
             </View>
           </View>
@@ -166,69 +226,80 @@ export function SmsImportHealthScreen() {
 
         {/* Lifetime Counters */}
         <SectionCard title="Lifetime Counters" colors={colors}>
-          <View style={styles.countersRow}>
-            <CounterCell value={`${stats.totalImported}`} label="Imported" valueColor={colors.accentPrimary} colors={colors} />
-            <CounterCell value={`${stats.totalSkipped}`} label="Skipped" colors={colors} />
-            <CounterCell
-              value={`${stats.totalErrors}`}
-              label="Errors"
-              valueColor={stats.totalErrors > 0 ? colors.danger : colors.textPrimary}
-              colors={colors}
-            />
-          </View>
-          {stats.totalImported > 0 && (
+          {loading && !stats ? (
+            <ActivityIndicator color={colors.accentPrimary} style={{ paddingVertical: spacing.base }} />
+          ) : (
             <>
-              <View style={[styles.divider, { backgroundColor: colors.border }]} />
-              <View style={styles.rateRow}>
-                <Text style={[styles.rateLabel, { color: colors.textSecondary }]}>Parse success rate</Text>
-                <Text style={[styles.rateValue, {
-                  color: successRate >= 90 ? colors.success : successRate >= 70 ? colors.warning : colors.danger,
-                }]}>{successRate}%</Text>
+              <View style={styles.countersRow}>
+                <CounterCell value={`${stats?.totalImported ?? 0}`} label="Imported" valueColor={colors.accentPrimary} colors={colors} />
+                <CounterCell value={`${stats?.totalDuplicates ?? 0}`} label="Duplicates" colors={colors} />
+                <CounterCell value={`${stats?.totalQuarantined ?? 0}`} label="Quarantined" valueColor={colors.warning} colors={colors} />
+                <CounterCell
+                  value={`${stats?.totalFailed ?? 0}`}
+                  label="Failed"
+                  valueColor={(stats?.totalFailed ?? 0) > 0 ? colors.danger : colors.textPrimary}
+                  colors={colors}
+                />
               </View>
+              {(stats?.totalImported ?? 0) > 0 && (
+                <>
+                  <View style={[styles.divider, { backgroundColor: colors.border }]} />
+                  <View style={styles.rateRow}>
+                    <Text style={[styles.rateLabel, { color: colors.textSecondary }]}>Parse success rate</Text>
+                    <Text style={[styles.rateValue, {
+                      color: successRate >= 90 ? colors.accentPrimary : successRate >= 70 ? colors.warning : colors.danger,
+                    }]}>{successRate}%</Text>
+                  </View>
+                </>
+              )}
             </>
           )}
         </SectionCard>
 
         {/* Activity */}
         <SectionCard title="Activity" colors={colors}>
-          <TimestampRow icon="mail-outline" label="Last SMS received" value={formatTimestamp(lastEntry?.imported_at)} colors={colors} />
+          <TimestampRow icon="mail-outline" label="Last SMS activity" value={formatTimestamp(lastEntry?.createdAt)} colors={colors} />
           <View style={[styles.divider, { backgroundColor: colors.border }]} />
-          <TimestampRow icon="sync-outline" label="Last realtime capture" value={formatTimestamp(lastEntry?.imported_at)} colors={colors} />
+          <TimestampRow icon="flash-outline" label="Last realtime capture" value={formatTimestamp(lastRealtime?.createdAt)} colors={colors} />
           <View style={[styles.divider, { backgroundColor: colors.border }]} />
-          <TimestampRow icon="time-outline" label="Last inbox scan" value={formatTimestamp(lastEntry?.imported_at)} colors={colors} />
+          <TimestampRow icon="download-outline" label="Last batch import" value={formatTimestamp(lastBatch?.createdAt ?? stats?.lastImportAt)} colors={colors} />
           <View style={[styles.divider, { backgroundColor: colors.border }]} />
-          <TimestampRow icon="checkmark-circle-outline" label="Last successful import" value={formatTimestamp(lastImported?.imported_at)} colors={colors} />
+          <TimestampRow icon="checkmark-circle-outline" label="Last successful import" value={formatTimestamp(lastImported?.createdAt)} colors={colors} />
         </SectionCard>
 
         {/* Actions */}
         <SectionCard title="Actions" colors={colors}>
           <Text style={[styles.actionsDesc, { color: colors.textSecondary }]}>
-            Reconcile re-scans the last 7 days. Retry reprocesses previously failed messages.
+            Reconcile re-imports the last 7 days, skipping duplicates. Retry Queue re-parses quarantined messages.
           </Text>
           <View style={styles.actionsRow}>
             <TouchableOpacity
-              style={[styles.actionBtn, { borderColor: colors.border, flex: 1 }]}
-              onPress={() => {
-                setIsReconciling(true);
-                setTimeout(() => setIsReconciling(false), 2000);
-              }}
-              disabled={isReconciling}
+              style={[styles.actionBtn, { borderColor: colors.accentPrimary, flex: 1, opacity: reconciling ? 0.6 : 1 }]}
+              onPress={handleReconcile}
+              disabled={reconciling || retrying}
             >
-              {isReconciling ? (
+              {reconciling ? (
                 <ActivityIndicator size="small" color={colors.accentPrimary} />
               ) : (
                 <Ionicons name="sync-outline" size={16} color={colors.accentPrimary} />
               )}
               <Text style={[styles.actionBtnText, { color: colors.accentPrimary }]}>
-                {isReconciling ? 'Running…' : 'Reconcile'}
+                {reconciling ? 'Running…' : 'Reconcile'}
               </Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={[styles.actionBtn, { borderColor: colors.border, flex: 1 }]}
-              disabled={isReconciling}
+              style={[styles.actionBtn, { borderColor: colors.accentPrimary, flex: 1, opacity: retrying ? 0.6 : 1 }]}
+              onPress={handleRetryQueue}
+              disabled={reconciling || retrying}
             >
-              <Ionicons name="refresh-outline" size={16} color={colors.accentPrimary} />
-              <Text style={[styles.actionBtnText, { color: colors.accentPrimary }]}>Retry Queue</Text>
+              {retrying ? (
+                <ActivityIndicator size="small" color={colors.accentPrimary} />
+              ) : (
+                <Ionicons name="refresh-outline" size={16} color={colors.accentPrimary} />
+              )}
+              <Text style={[styles.actionBtnText, { color: colors.accentPrimary }]}>
+                {retrying ? 'Running…' : `Retry Queue${(stats?.totalQuarantined ?? 0) > 0 ? ` (${stats!.totalQuarantined})` : ''}`}
+              </Text>
             </TouchableOpacity>
           </View>
         </SectionCard>
@@ -238,28 +309,18 @@ export function SmsImportHealthScreen() {
           <View style={styles.auditHeader}>
             <View style={styles.auditTitleRow}>
               <Ionicons name="time-outline" size={18} color={colors.textPrimary} />
-              <Text style={[styles.auditTitle, { color: colors.textPrimary }]}>Import Audit Log</Text>
+              <Text style={[styles.auditTitle, { color: colors.textPrimary }]}>Import Log</Text>
               {auditEntries.length > 0 && (
                 <View style={[styles.badge, { backgroundColor: colors.bgTertiary }]}>
                   <Text style={[styles.badgeText, { color: colors.textPrimary }]}>{auditEntries.length}</Text>
                 </View>
               )}
             </View>
-            {auditEntries.length > 0 && (
-              <TouchableOpacity
-                onPress={() =>
-                  Alert.alert('Clear Audit Log?', 'This removes all recorded import activity.', [
-                    { text: 'Cancel', style: 'cancel' },
-                    { text: 'Clear', style: 'destructive', onPress: handleClearLog },
-                  ])
-                }
-              >
-                <Text style={[styles.clearText, { color: colors.danger }]}>Clear</Text>
-              </TouchableOpacity>
-            )}
           </View>
           <View style={[styles.divider, { backgroundColor: colors.border }]} />
-          {auditEntries.length === 0 ? (
+          {loading && auditEntries.length === 0 ? (
+            <ActivityIndicator color={colors.accentPrimary} style={{ paddingVertical: spacing.lg }} />
+          ) : auditEntries.length === 0 ? (
             <View style={styles.auditEmpty}>
               <Text style={[styles.auditEmptyText, { color: colors.textSecondary }]}>
                 No import activity recorded yet.
@@ -267,30 +328,37 @@ export function SmsImportHealthScreen() {
             </View>
           ) : (
             auditEntries.map((entry, i) => {
-              const isSuccess = entry.outcome.includes('imported') || entry.outcome.includes('realtime');
-              const isError = entry.outcome.includes('failed') || entry.outcome.includes('error');
-              const isSkip = entry.outcome.includes('duplicate') || entry.outcome.includes('skipped');
-              const dotColor = isSuccess ? colors.accentPrimary : isError ? colors.danger : colors.textTertiary;
-
+              const dotColor = outcomeColor(entry.outcome, colors);
               return (
                 <View key={entry.id}>
                   <View style={styles.auditRow}>
                     <View style={[styles.auditDot, { backgroundColor: dotColor }]} />
                     <View style={styles.auditInfo}>
                       <View style={styles.auditTopRow}>
-                        <Text style={[styles.auditOutcome, { color: dotColor }]}>{entry.outcome}</Text>
-                        {entry.mpesa_code && (
-                          <Text style={[styles.auditCode, { color: colors.textSecondary }]}>{entry.mpesa_code}</Text>
+                        <Text style={[styles.auditOutcome, { color: dotColor }]}>
+                          {outcomeLabelShort(entry.outcome)}
+                        </Text>
+                        {entry.mpesaCode && (
+                          <Text style={[styles.auditCode, { color: colors.textSecondary }]}>{entry.mpesaCode}</Text>
                         )}
                       </View>
                       {entry.merchant && (
-                        <Text style={[styles.auditMerchant, { color: colors.textPrimary }]}>{entry.merchant}</Text>
+                        <Text style={[styles.auditMerchant, { color: colors.textPrimary }]} numberOfLines={1}>
+                          {entry.merchant}
+                        </Text>
                       )}
-                      {entry.failure_reason && (
-                        <Text style={[styles.auditReason, { color: colors.danger }]}>{entry.failure_reason}</Text>
+                      {entry.amount != null && (
+                        <Text style={[styles.auditAmount, { color: colors.textSecondary }]}>
+                          Ksh {entry.amount.toLocaleString('en-KE', { maximumFractionDigits: 2 })}
+                        </Text>
+                      )}
+                      {entry.failureReason && (
+                        <Text style={[styles.auditReason, { color: colors.danger }]} numberOfLines={2}>
+                          {entry.failureReason}
+                        </Text>
                       )}
                       <Text style={[styles.auditTime, { color: colors.textTertiary }]}>
-                        {formatTimestamp(entry.imported_at)}
+                        {formatTimestamp(entry.createdAt)}
                       </Text>
                     </View>
                   </View>
@@ -316,11 +384,17 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.sm,
   },
   title: { fontSize: typography.sizes.lg, fontWeight: typography.weights.bold },
-  content: { paddingHorizontal: spacing.screenHorizontal, paddingVertical: spacing.lg, paddingBottom: spacing['4xl'], gap: spacing.base },
+  content: {
+    paddingHorizontal: spacing.screenHorizontal,
+    paddingVertical: spacing.lg,
+    paddingBottom: spacing['4xl'],
+    gap: spacing.base,
+  },
   sectionCard: { gap: spacing.sm },
   sectionTitle: { fontSize: typography.sizes.sm, fontWeight: typography.weights.semibold, marginBottom: spacing.xs },
   statusRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.base },
   statusDot: { width: 36, height: 36, borderRadius: 8, justifyContent: 'center', alignItems: 'center' },
+  statusDotInner: { width: 12, height: 12, borderRadius: 6 },
   statusInfo: { flex: 1 },
   statusTitleRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   statusName: { fontSize: typography.sizes.base, fontWeight: typography.weights.semibold },
@@ -355,16 +429,16 @@ const styles = StyleSheet.create({
   auditTitle: { fontSize: typography.sizes.base, fontWeight: typography.weights.semibold },
   badge: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: borderRadius.full },
   badgeText: { fontSize: typography.sizes.xs, fontWeight: typography.weights.semibold },
-  clearText: { fontSize: typography.sizes.sm, fontWeight: typography.weights.medium },
   auditEmpty: { paddingVertical: spacing.xl, alignItems: 'center' },
   auditEmptyText: { fontSize: typography.sizes.sm },
   auditRow: { flexDirection: 'row', paddingVertical: spacing.sm, gap: spacing.sm },
-  auditDot: { width: 8, height: 8, borderRadius: 4, marginTop: 6 },
+  auditDot: { width: 8, height: 8, borderRadius: 4, marginTop: 5 },
   auditInfo: { flex: 1, gap: 2 },
   auditTopRow: { flexDirection: 'row', justifyContent: 'space-between' },
   auditOutcome: { fontSize: typography.sizes.xs, fontWeight: typography.weights.semibold },
   auditCode: { fontSize: typography.sizes.xs },
-  auditMerchant: { fontSize: typography.sizes.sm },
+  auditMerchant: { fontSize: typography.sizes.sm, fontWeight: typography.weights.medium },
+  auditAmount: { fontSize: typography.sizes.xs },
   auditReason: { fontSize: typography.sizes.xs },
   auditTime: { fontSize: typography.sizes.xs },
 });

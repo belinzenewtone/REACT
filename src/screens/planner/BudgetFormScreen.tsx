@@ -1,8 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, Alert } from 'react-native';
+import { Animated, View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, Alert } from 'react-native';
+import { useFormFadeIn } from '../../hooks/useFormFadeIn';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
+import { TopBanner } from '../../components/common/TopBanner';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useThemeColors } from '../../hooks/useThemeColors';
 import { useBudgetStore } from '../../store';
@@ -33,6 +35,9 @@ export function BudgetFormScreen() {
   const budgetId = route.params?.budgetId;
   const isEditing = !!budgetId;
 
+  const [isReady, setIsReady] = useState(!isEditing);
+  const contentOpacity = useFormFadeIn(isReady);
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [category, setCategory] = useState(CATEGORIES[0]);
   const [limit, setLimit] = useState('');
   const [period, setPeriod] = useState<(typeof PERIODS)[number]>('monthly');
@@ -48,6 +53,7 @@ export function BudgetFormScreen() {
         setPeriod(budget.period);
         setThreshold(((budget.alert_threshold ?? 0.8) * 100).toString());
       }
+      setIsReady(true);
     });
   }, [budgetId, db]);
 
@@ -71,10 +77,12 @@ export function BudgetFormScreen() {
     try {
       if (isEditing && budgetId) {
         await updateBudget(db, budgetId, data);
+        setSuccessMsg('Budget updated');
       } else {
         await createBudget(db, data);
+        setSuccessMsg('Budget added');
       }
-      navigation.goBack();
+      setTimeout(() => navigation.goBack(), 900);
     } catch (error) {
       console.error('Failed to save budget:', error);
       Alert.alert('Error', 'Failed to save budget');
@@ -100,6 +108,8 @@ export function BudgetFormScreen() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.bgPrimary }]} edges={['top']}>
+      <TopBanner tone="success" message={successMsg ?? ''} visible={!!successMsg} />
+      <Animated.View style={{ flex: 1, opacity: contentOpacity }}>
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.header}>
           <TouchableOpacity onPress={() => navigation.goBack()}>
@@ -175,6 +185,7 @@ export function BudgetFormScreen() {
           </TouchableOpacity>
         )}
       </ScrollView>
+      </Animated.View>
     </SafeAreaView>
   );
 }

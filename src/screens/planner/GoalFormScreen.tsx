@@ -1,8 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet, Alert } from 'react-native';
+import { Animated, View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet, Alert } from 'react-native';
+import { useFormFadeIn } from '../../hooks/useFormFadeIn';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
+import { TopBanner } from '../../components/common/TopBanner';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useThemeColors } from '../../hooks/useThemeColors';
 import { usePlannerStore } from '../../store';
@@ -24,6 +26,9 @@ export function GoalFormScreen() {
   const goalId = route.params?.goalId;
   const isEditing = !!goalId;
 
+  const [isReady, setIsReady] = useState(!isEditing);
+  const contentOpacity = useFormFadeIn(isReady);
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [targetValue, setTargetValue] = useState('');
@@ -45,6 +50,7 @@ export function GoalFormScreen() {
         setDeadline(goal.deadline ? goal.deadline.split('T')[0] : '');
         setStatus(goal.status);
       }
+      setIsReady(true);
     });
   }, [goalId, db]);
 
@@ -70,10 +76,12 @@ export function GoalFormScreen() {
     try {
       if (isEditing && goalId) {
         await updateGoal(db, goalId, data);
+        setSuccessMsg('Goal updated');
       } else {
         await createGoal(db, data);
+        setSuccessMsg('Goal added');
       }
-      navigation.goBack();
+      setTimeout(() => navigation.goBack(), 900);
     } catch (error) {
       console.error('Failed to save goal:', error);
       Alert.alert('Error', 'Failed to save goal');
@@ -97,6 +105,8 @@ export function GoalFormScreen() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.bgPrimary }]} edges={['top']}>
+      <TopBanner tone="success" message={successMsg ?? ''} visible={!!successMsg} />
+      <Animated.View style={{ flex: 1, opacity: contentOpacity }}>
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.header}>
           <TouchableOpacity onPress={() => navigation.goBack()}>
@@ -145,6 +155,7 @@ export function GoalFormScreen() {
           </Text>
         </TouchableOpacity>
       </ScrollView>
+      </Animated.View>
     </SafeAreaView>
   );
 }

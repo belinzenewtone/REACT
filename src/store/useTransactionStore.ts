@@ -10,6 +10,7 @@ import {
 import type { Transaction, TransactionType, TransactionStatus } from '../types';
 import type { TransactionRecord } from '../database/repositories/TransactionRepository';
 import type { TransactionRepository } from '../database/repositories/TransactionRepository';
+import { useDataVersion } from './dataVersion';
 
 export type TransactionPeriod = 'all' | 'today' | 'week' | 'month';
 
@@ -113,16 +114,19 @@ export const useTransactionStore = create<TransactionState>((set, get) => ({
 
   addTransaction: async (repo, data) => {
     await repo.create(data);
+    useDataVersion.getState().bump();
     await get().loadTransactions(repo, true);
   },
 
   updateTransaction: async (repo, id, data) => {
     await repo.update(id, data);
+    useDataVersion.getState().bump();
     await get().loadTransactions(repo, true);
   },
 
   deleteTransaction: async (repo, id) => {
     await repo.softDelete(id);
+    useDataVersion.getState().bump();
     await get().loadTransactions(repo, true);
   },
 }));

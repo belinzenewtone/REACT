@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type { SQLiteDatabase } from 'expo-sqlite';
+import { useDataVersion } from './dataVersion';
 import { IncomeRepository, type IncomeDbRecord } from '../database/repositories/IncomeRepository';
 import { RecurringRuleRepository, type RecurringRuleDbRecord } from '../database/repositories/RecurringRuleRepository';
 import { BillRepository, type BillDbRecord, type BillCreateInput } from '../database/repositories/BillRepository';
@@ -71,66 +72,81 @@ export const usePlannerStore = create<PlannerState>((set) => ({
 
   createIncome: async (db, data) => {
     await new IncomeRepository(db).create(data);
+    useDataVersion.getState().bump();
     await usePlannerStore.getState().loadAll(db);
   },
   updateIncome: async (db, id, data) => {
     await new IncomeRepository(db).update(id, data);
+    useDataVersion.getState().bump();
     await usePlannerStore.getState().loadAll(db);
   },
   deleteIncome: async (db, id) => {
     await new IncomeRepository(db).softDelete(id);
+    useDataVersion.getState().bump();
     await usePlannerStore.getState().loadAll(db);
   },
 
   createRecurringRule: async (db, data) => {
     await new RecurringRuleRepository(db).create(data);
+    useDataVersion.getState().bump();
     await usePlannerStore.getState().loadAll(db);
   },
   updateRecurringRule: async (db, id, data) => {
     await new RecurringRuleRepository(db).update(id, data);
+    useDataVersion.getState().bump();
     await usePlannerStore.getState().loadAll(db);
   },
   deleteRecurringRule: async (db, id) => {
     await new RecurringRuleRepository(db).softDelete(id);
+    useDataVersion.getState().bump();
     await usePlannerStore.getState().loadAll(db);
   },
 
   createBill: async (db, data) => {
     await new BillRepository(db).create(data);
+    useDataVersion.getState().bump();
     await usePlannerStore.getState().loadAll(db);
   },
   updateBill: async (db, id, data) => {
     await new BillRepository(db).update(id, data);
+    useDataVersion.getState().bump();
     await usePlannerStore.getState().loadAll(db);
   },
   deleteBill: async (db, id) => {
     await new BillRepository(db).softDelete(id);
+    useDataVersion.getState().bump();
     await usePlannerStore.getState().loadAll(db);
   },
 
   createGoal: async (db, data) => {
     await new GoalRepository(db).create(data);
+    useDataVersion.getState().bump();
     await usePlannerStore.getState().loadAll(db);
   },
   updateGoal: async (db, id, data) => {
     await new GoalRepository(db).update(id, data);
+    useDataVersion.getState().bump();
     await usePlannerStore.getState().loadAll(db);
   },
   deleteGoal: async (db, id) => {
     await new GoalRepository(db).softDelete(id);
+    useDataVersion.getState().bump();
     await usePlannerStore.getState().loadAll(db);
   },
 
   createLoan: async (db, data) => {
     await new FulizaLoanRepository(db).create(data);
+    useDataVersion.getState().bump();
     await usePlannerStore.getState().loadAll(db);
   },
   updateLoan: async (db, id, data) => {
     await new FulizaLoanRepository(db).update(id, data);
+    useDataVersion.getState().bump();
     await usePlannerStore.getState().loadAll(db);
   },
   deleteLoan: async (db, id) => {
     await new FulizaLoanRepository(db).hardDelete(id);
+    useDataVersion.getState().bump();
     await usePlannerStore.getState().loadAll(db);
   },
 

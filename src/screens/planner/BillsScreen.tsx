@@ -1,5 +1,6 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, StyleSheet, Alert } from 'react-native';
+import { TopBanner } from '../../components/common/TopBanner';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
@@ -25,6 +26,7 @@ export function BillsScreen() {
   const db = useSQLiteContext();
   const navigation = useNavigation<any>();
   const { bills, loadAll, updateBill, deleteBill } = usePlannerStore();
+  const [banner, setBanner] = useState<string | null>(null);
 
   useEffect(() => {
     loadAll(db);
@@ -33,8 +35,16 @@ export function BillsScreen() {
   const activeBills = bills.filter((b) => b.is_active);
 
   const handleMarkPaid = (id: string) => {
+    const bill = bills.find((b) => b.id === id);
+    if (!bill) return;
     animateLayout();
-    updateBill(db, id, { paidStatus: true, lastPaidAt: new Date().toISOString() });
+    const nextDueDate = bill.cycle !== 'one_time' ? advanceDueDate(bill.next_due_date, bill.cycle) : undefined;
+    updateBill(db, id, {
+      paidStatus: true,
+      lastPaidAt: new Date().toISOString(),
+      ...(nextDueDate ? { nextDueDate } : {}),
+    });
+    setBanner(`${bill.title} marked as paid`);
   };
 
   const handleDelete = (id: string, title: string) => {
@@ -53,6 +63,7 @@ export function BillsScreen() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.bgPrimary }]} edges={['top']}>
+      <TopBanner tone="success" message={banner ?? ''} visible={!!banner} autoDismissMs={2500} onDismiss={() => setBanner(null)} />
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.header}>
           <TouchableOpacity onPress={() => navigation.goBack()}>
@@ -138,6 +149,17 @@ export function BillsScreen() {
       </ScrollView>
     </SafeAreaView>
   );
+}
+
+function advanceDueDate(dateStr: string, cycle: string): string {
+  const d = new Date(dateStr);
+  switch (cycle) {
+    case 'daily': d.setDate(d.getDate() + 1); break;
+    case 'weekly': d.setDate(d.getDate() + 7); break;
+    case 'monthly': d.setMonth(d.getMonth() + 1); break;
+    case 'yearly': d.setFullYear(d.getFullYear() + 1); break;
+  }
+  return d.toISOString();
 }
 
 const styles = StyleSheet.create({

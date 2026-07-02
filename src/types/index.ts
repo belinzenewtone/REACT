@@ -263,6 +263,7 @@ export interface AppSettings {
   dailyDigestMorningSummary: boolean;
   dailyDigestDeliveryTime: string;
   appUpdates: boolean;
+  smsBackgroundReceiver: boolean;
 }
 
 export interface ParsedSmsResult {

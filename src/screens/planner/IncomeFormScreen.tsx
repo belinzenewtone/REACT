@@ -1,12 +1,14 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet, Alert } from 'react-native';
+import { Animated, View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
+import { TopBanner } from '../../components/common/TopBanner';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useThemeColors } from '../../hooks/useThemeColors';
 import { usePlannerStore } from '../../store';
 import { IncomeRepository } from '../../database/repositories/IncomeRepository';
+import { useFormFadeIn } from '../../hooks/useFormFadeIn';
 import { DateField } from '../../components/common/DateField';
 import { spacing, typography, borderRadius } from '../../theme';
 import type { RootStackParamList } from '../../navigation/types';
@@ -25,6 +27,9 @@ export function IncomeFormScreen() {
   const incomeId = route.params?.incomeId;
   const isEditing = !!incomeId;
 
+  const [isReady, setIsReady] = useState(!isEditing);
+  const contentOpacity = useFormFadeIn(isReady);
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [source, setSource] = useState('');
   const [amount, setAmount] = useState('');
   const [date, setDate] = useState('');
@@ -44,6 +49,7 @@ export function IncomeFormScreen() {
         setIsRecurring(income.is_recurring === 1);
         setFrequency(income.frequency ?? 'once');
       }
+      setIsReady(true);
     });
   }, [incomeId, db]);
 
@@ -71,10 +77,12 @@ export function IncomeFormScreen() {
     try {
       if (isEditing && incomeId) {
         await updateIncome(db, incomeId, data);
+        setSuccessMsg('Income updated');
       } else {
         await createIncome(db, data);
+        setSuccessMsg('Income added');
       }
-      navigation.goBack();
+      setTimeout(() => navigation.goBack(), 900);
     } catch (error) {
       console.error('Failed to save income:', error);
       Alert.alert('Error', 'Failed to save income');
@@ -98,6 +106,8 @@ export function IncomeFormScreen() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.bgPrimary }]} edges={['top']}>
+      <TopBanner tone="success" message={successMsg ?? ''} visible={!!successMsg} />
+      <Animated.View style={{ flex: 1, opacity: contentOpacity }}>
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.header}>
           <TouchableOpacity onPress={() => navigation.goBack()}>
@@ -154,6 +164,7 @@ export function IncomeFormScreen() {
           </Text>
         </TouchableOpacity>
       </ScrollView>
+      </Animated.View>
     </SafeAreaView>
   );
 }

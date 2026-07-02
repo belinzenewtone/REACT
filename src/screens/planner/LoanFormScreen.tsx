@@ -1,12 +1,14 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet, Alert } from 'react-native';
+import { Animated, View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
+import { TopBanner } from '../../components/common/TopBanner';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useThemeColors } from '../../hooks/useThemeColors';
 import { usePlannerStore } from '../../store';
 import { FulizaLoanRepository } from '../../database/repositories/FulizaLoanRepository';
+import { useFormFadeIn } from '../../hooks/useFormFadeIn';
 import { DateField } from '../../components/common/DateField';
 import { spacing, typography, borderRadius } from '../../theme';
 import type { RootStackParamList } from '../../navigation/types';
@@ -24,6 +26,9 @@ export function LoanFormScreen() {
   const loanId = route.params?.loanId;
   const isEditing = !!loanId;
 
+  const [isReady, setIsReady] = useState(!isEditing);
+  const contentOpacity = useFormFadeIn(isReady);
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [drawCode, setDrawCode] = useState('');
   const [drawAmount, setDrawAmount] = useState('');
   const [totalRepaid, setTotalRepaid] = useState('');
@@ -43,6 +48,7 @@ export function LoanFormScreen() {
         setDrawDate(loan.draw_date.split('T')[0]);
         setLastRepaymentDate(loan.last_repayment_date ? loan.last_repayment_date.split('T')[0] : '');
       }
+      setIsReady(true);
     });
   }, [loanId, db]);
 
@@ -72,10 +78,12 @@ export function LoanFormScreen() {
     try {
       if (isEditing && loanId) {
         await updateLoan(db, loanId, data);
+        setSuccessMsg('Loan updated');
       } else {
         await createLoan(db, data);
+        setSuccessMsg('Loan added');
       }
-      navigation.goBack();
+      setTimeout(() => navigation.goBack(), 900);
     } catch (error) {
       console.error('Failed to save loan:', error);
       Alert.alert('Error', 'Failed to save loan');
@@ -99,6 +107,8 @@ export function LoanFormScreen() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.bgPrimary }]} edges={['top']}>
+      <TopBanner tone="success" message={successMsg ?? ''} visible={!!successMsg} />
+      <Animated.View style={{ flex: 1, opacity: contentOpacity }}>
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.header}>
           <TouchableOpacity onPress={() => navigation.goBack()}>
@@ -146,6 +156,7 @@ export function LoanFormScreen() {
           </Text>
         </TouchableOpacity>
       </ScrollView>
+      </Animated.View>
     </SafeAreaView>
   );
 }

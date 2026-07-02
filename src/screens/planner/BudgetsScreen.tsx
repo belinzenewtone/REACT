@@ -1,8 +1,9 @@
-import React, { useEffect, useMemo } from 'react';
+import React, { useCallback, useMemo, useRef } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, RefreshControl, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
+import { useDataVersion } from '../../store/dataVersion';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useThemeColors } from '../../hooks/useThemeColors';
 import { useBudgetStore } from '../../store';
@@ -18,10 +19,17 @@ export function BudgetsScreen() {
   const db = useSQLiteContext();
   const navigation = useNavigation<any>();
   const { budgets, isLoading, loadBudgets } = useBudgetStore();
+  const dataVersion = useDataVersion((s) => s.version);
+  const loadedVersion = useRef(-1);
 
-  useEffect(() => {
-    loadBudgets(db);
-  }, [db, loadBudgets]);
+  useFocusEffect(
+    useCallback(() => {
+      if (dataVersion > loadedVersion.current) {
+        loadedVersion.current = dataVersion;
+        loadBudgets(db);
+      }
+    }, [db, loadBudgets, dataVersion])
+  );
 
   const summary = useMemo(() => {
     let totalLimit = 0;

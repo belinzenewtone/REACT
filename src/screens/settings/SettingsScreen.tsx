@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import * as Updates from 'expo-updates';
+import { enableBackgroundReceiver, setFulizaLimit, checkPermissions, requestSmsPermissions } from '../../../modules/lifeos-sms';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
@@ -43,12 +44,33 @@ export function SettingsScreen() {
   const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [downloadingUpdate, setDownloadingUpdate] = useState(false);
   const [updateAvailable, setUpdateAvailable] = useState(false);
+  const [smsPermissionsGranted, setSmsPermissionsGranted] = useState(true);
+  const [requestingPerms, setRequestingPerms] = useState(false);
 
   useEffect(() => {
     if (!infoMessage) return;
     const timer = setTimeout(() => setInfoMessage(null), 3000);
     return () => clearTimeout(timer);
   }, [infoMessage]);
+
+  useEffect(() => {
+    checkPermissions()
+      .then(({ receive, read }) => setSmsPermissionsGranted(receive && read))
+      .catch(() => setSmsPermissionsGranted(false));
+  }, []);
+
+  const handleGrantSmsPermissions = async () => {
+    setRequestingPerms(true);
+    try {
+      const { granted } = await requestSmsPermissions();
+      setSmsPermissionsGranted(granted);
+      setInfoMessage(granted ? 'SMS permissions granted' : 'Permissions denied — grant them in device Settings');
+    } catch {
+      setInfoMessage('Could not request permissions');
+    } finally {
+      setRequestingPerms(false);
+    }
+  };
 
   const screenLockSubtitle = (() => {
     const parts: string[] = [];
@@ -219,7 +241,32 @@ export function SettingsScreen() {
         </GlassCard>
 
         <SectionLabel label="Import SMS" />
+        {!smsPermissionsGranted && (
+          <TouchableOpacity
+            style={[styles.permBanner, { backgroundColor: colors.warning + '20', borderColor: colors.warning }]}
+            onPress={handleGrantSmsPermissions}
+            disabled={requestingPerms}
+          >
+            <Ionicons name="alert-circle-outline" size={18} color={colors.warning} />
+            <Text style={[styles.permBannerText, { color: colors.warning }]}>
+              {requestingPerms ? 'Requesting…' : 'SMS permissions not granted — tap to allow'}
+            </Text>
+            {!requestingPerms && <Ionicons name="chevron-forward" size={16} color={colors.warning} />}
+          </TouchableOpacity>
+        )}
         <GlassCard>
+          <SettingsRow
+            icon="radio-outline"
+            label="Background receiver"
+            subtitle="Automatically capture & analyse M-Pesa messages even when the app is closed."
+            toggle
+            toggleValue={settings.smsBackgroundReceiver}
+            onToggleChange={(value) => {
+              updateSettings({ smsBackgroundReceiver: value });
+              enableBackgroundReceiver(value).catch(() => null);
+              setInfoMessage(value ? 'Background receiver on' : 'Background receiver off');
+            }}
+          />
           <SettingsRow
             icon="medkit-outline"
             label="Import Health"
@@ -304,6 +351,7 @@ export function SettingsScreen() {
         onCancel={() => setFulizaVisible(false)}
         onSave={(limit) => {
           updateSettings({ fulizaLimit: limit });
+          setFulizaLimit(limit).catch(() => null);
           setFulizaVisible(false);
           setInfoMessage(
             limit > 0 ? `Fuliza limit set to ${formatCurrency(limit, { currency: settings.currency })}` : 'Fuliza credit limit cleared'
@@ -345,6 +393,21 @@ const styles = StyleSheet.create({
     fontWeight: typography.weights.medium,
     marginTop: spacing.lg,
     marginBottom: spacing.base,
+  },
+  permBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    borderWidth: 1,
+    borderRadius: borderRadius.lg,
+    paddingHorizontal: spacing.base,
+    paddingVertical: spacing.sm,
+    marginBottom: spacing.sm,
+  },
+  permBannerText: {
+    flex: 1,
+    fontSize: typography.sizes.sm,
+    fontWeight: typography.weights.medium,
   },
   updateActions: {
     flexDirection: 'row',

@@ -1,5 +1,6 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, StyleSheet, Alert } from 'react-native';
+import { TopBanner } from '../../components/common/TopBanner';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
@@ -18,13 +19,16 @@ export function RecurringScreen() {
   const db = useSQLiteContext();
   const navigation = useNavigation<any>();
   const { recurringRules, loadAll, updateRecurringRule, deleteRecurringRule } = usePlannerStore();
+  const [banner, setBanner] = useState<string | null>(null);
 
   useEffect(() => {
     loadAll(db);
   }, [db, loadAll]);
 
   const handleToggle = (id: string, enabled: boolean) => {
+    const rule = recurringRules.find((r) => r.id === id);
     updateRecurringRule(db, id, { enabled });
+    setBanner(`${rule?.title ?? 'Rule'} ${enabled ? 'enabled' : 'paused'}`);
   };
 
   const handleDelete = (id: string, title: string) => {
@@ -43,6 +47,7 @@ export function RecurringScreen() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.bgPrimary }]} edges={['top']}>
+      <TopBanner tone="success" message={banner ?? ''} visible={!!banner} autoDismissMs={2000} onDismiss={() => setBanner(null)} />
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.header}>
           <TouchableOpacity onPress={() => navigation.goBack()}>

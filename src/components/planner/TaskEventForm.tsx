@@ -16,6 +16,13 @@ import { useNavigation } from '@react-navigation/native';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useThemeColors } from '../../hooks/useThemeColors';
 import { useCalendarStore } from '../../store';
+import { useAppStore } from '../../store';
+import {
+  scheduleTaskReminders,
+  cancelTaskReminders,
+  scheduleEventReminders,
+  cancelEventReminders,
+} from '../../services/notificationService';
 import { TaskRepository, type TaskRecord } from '../../database/repositories/TaskRepository';
 import { EventRepository, type EventRecord } from '../../database/repositories/EventRepository';
 import { SearchField } from '../common/SearchField';
@@ -107,6 +114,7 @@ export function TaskEventForm({ editTaskId, editEventId, defaultType = 'task' }:
   const db = useSQLiteContext();
   const navigation = useNavigation<any>();
   const { loadCalendar } = useCalendarStore();
+  const notificationsEnabled = useAppStore((s) => s.settings.notificationsEnabled);
 
   const [type, setType] = useState<FormType>(defaultType);
   const [title, setTitle] = useState('');
@@ -273,8 +281,16 @@ export function TaskEventForm({ editTaskId, editEventId, defaultType = 'task' }:
         };
         if (editTaskId) {
           await repo.update(editTaskId, data);
+          if (notificationsEnabled && deadline && reminderOffsets.length > 0) {
+            await scheduleTaskReminders(editTaskId, title.trim(), deadline, reminderOffsets, alarmEnabled);
+          } else if (editTaskId) {
+            await cancelTaskReminders(editTaskId);
+          }
         } else {
-          await repo.create({ ...data, recordSource: 'manual' });
+          const created = await repo.create({ ...data, recordSource: 'manual' });
+          if (notificationsEnabled && deadline && reminderOffsets.length > 0) {
+            await scheduleTaskReminders(created.id, title.trim(), deadline, reminderOffsets, alarmEnabled);
+          }
         }
       } else {
         let date: string | undefined;
@@ -335,8 +351,22 @@ export function TaskEventForm({ editTaskId, editEventId, defaultType = 'task' }:
 
         if (editEventId) {
           await repo.update(editEventId, data);
+          if (notificationsEnabled && date) {
+            const willFire =
+              effectiveOffsets.length > 0 ||
+              type === 'birthday' ||
+              type === 'anniversary';
+            if (willFire) {
+              await scheduleEventReminders(editEventId, title.trim(), date, effectiveOffsets, alarmEnabled, type, effectiveReminderTimeMinutes);
+            } else {
+              await cancelEventReminders(editEventId);
+            }
+          }
         } else {
-          await repo.create({ ...data, recordSource: 'manual' });
+          const created = await repo.create({ ...data, recordSource: 'manual' });
+          if (notificationsEnabled && date) {
+            await scheduleEventReminders(created.id, title.trim(), date, effectiveOffsets, alarmEnabled, type, effectiveReminderTimeMinutes);
+          }
         }
       }
       await loadCalendar(db);
@@ -357,8 +387,10 @@ export function TaskEventForm({ editTaskId, editEventId, defaultType = 'task' }:
           try {
             if (type === 'task' && editTaskId) {
               await new TaskRepository(db).softDelete(editTaskId);
+              await cancelTaskReminders(editTaskId);
             } else if (editEventId) {
               await new EventRepository(db).softDelete(editEventId);
+              await cancelEventReminders(editEventId);
             }
             await loadCalendar(db);
             navigation.goBack();

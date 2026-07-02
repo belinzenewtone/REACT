@@ -14,6 +14,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useThemeColors } from '../../hooks/useThemeColors';
 import { useAppStore, type OnboardingGoal } from '../../store';
+import { requestNotificationPermissions } from '../../services/notificationService';
 import { generateId, nowIso } from '../../database';
 import { HeroSurface } from '../../components/common/HeroSurface';
 import { InlineBanner } from '../../components/common/InlineBanner';
@@ -155,9 +156,10 @@ export function OnboardingScreen() {
             {onboardingStep === 4 ? (
               <PermissionStep
                 allowed={notificationsAllowed}
-                onAllow={() => {
-                  updateSettings({ notificationsEnabled: true });
-                  setNotificationsAllowed(true);
+                onAllow={async () => {
+                  const granted = await requestNotificationPermissions();
+                  updateSettings({ notificationsEnabled: granted });
+                  setNotificationsAllowed(granted);
                 }}
                 onSkip={() => setNotificationsAllowed(false)}
               />

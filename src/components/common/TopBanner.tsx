@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Animated, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -26,28 +26,44 @@ export function TopBanner({ tone, message, visible, onDismiss, autoDismissMs }: 
   const colors = useThemeColors();
   const insets = useSafeAreaInsets();
   const opacity = useRef(new Animated.Value(0)).current;
+  const translateY = useRef(new Animated.Value(-10)).current;
+  const [mounted, setMounted] = useState(visible);
   const toneColor = colors[tone === 'error' ? 'danger' : tone];
 
+  // Keep mounted while animating in; unmount only after fade-out completes
   useEffect(() => {
-    Animated.timing(opacity, {
-      toValue: visible ? 1 : 0,
-      duration: 200,
-      useNativeDriver: true,
-    }).start();
+    if (visible) setMounted(true);
+  }, [visible]);
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(opacity, {
+        toValue: visible ? 1 : 0,
+        duration: visible ? 220 : 180,
+        useNativeDriver: true,
+      }),
+      Animated.timing(translateY, {
+        toValue: visible ? 0 : -10,
+        duration: visible ? 220 : 180,
+        useNativeDriver: true,
+      }),
+    ]).start(({ finished }) => {
+      if (finished && !visible) setMounted(false);
+    });
 
     if (visible && autoDismissMs && onDismiss) {
       const timer = setTimeout(onDismiss, autoDismissMs);
       return () => clearTimeout(timer);
     }
     return undefined;
-  }, [visible, autoDismissMs, onDismiss, opacity]);
+  }, [visible, autoDismissMs, onDismiss, opacity, translateY]);
 
-  if (!visible) return null;
+  if (!mounted) return null;
 
   return (
     <Animated.View
-      pointerEvents="box-none"
-      style={[styles.wrapper, { top: insets.top + spacing.xs, opacity }]}
+      pointerEvents={visible ? 'box-none' : 'none'}
+      style={[styles.wrapper, { top: insets.top + spacing.xs, opacity, transform: [{ translateY }] }]}
     >
       <Animated.View
         style={[styles.banner, { backgroundColor: `${toneColor}20`, borderColor: toneColor }]}

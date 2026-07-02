@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, Modal, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, Modal, StyleSheet, ActivityIndicator } from 'react-native';
 import { useThemeColors } from '../../hooks/useThemeColors';
 import { spacing, typography, borderRadius } from '../../theme';
 
@@ -16,9 +16,10 @@ interface ImportSmsSheetProps {
   visible: boolean;
   onClose: () => void;
   onSelectPeriod: (period: SmsScanPeriod) => void;
+  isImporting?: boolean;
 }
 
-export function ImportSmsSheet({ visible, onClose, onSelectPeriod }: ImportSmsSheetProps) {
+export function ImportSmsSheet({ visible, onClose, onSelectPeriod, isImporting = false }: ImportSmsSheetProps) {
   const colors = useThemeColors();
 
   return (
@@ -28,18 +29,25 @@ export function ImportSmsSheet({ visible, onClose, onSelectPeriod }: ImportSmsSh
           <View style={styles.grabber} />
           <Text style={[styles.title, { color: colors.textPrimary }]}>Import M-Pesa SMS</Text>
           <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
-            Select the time period to scan
+            {isImporting ? 'Importing — please wait…' : 'Select the time period to scan'}
           </Text>
-          {PERIOD_OPTIONS.map((option) => (
-            <TouchableOpacity
-              key={option.key}
-              style={[styles.optionRow, { backgroundColor: colors.glassWhite }]}
-              onPress={() => onSelectPeriod(option.key)}
-              activeOpacity={0.7}
-            >
-              <Text style={[styles.optionText, { color: colors.textPrimary }]}>{option.label}</Text>
-            </TouchableOpacity>
-          ))}
+          {isImporting ? (
+            <View style={styles.loadingRow}>
+              <ActivityIndicator color={colors.accentPrimary} />
+              <Text style={[styles.loadingText, { color: colors.textSecondary }]}>Processing messages…</Text>
+            </View>
+          ) : (
+            PERIOD_OPTIONS.map((option) => (
+              <TouchableOpacity
+                key={option.key}
+                style={[styles.optionRow, { backgroundColor: colors.glassWhite }]}
+                onPress={() => onSelectPeriod(option.key)}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.optionText, { color: colors.textPrimary }]}>{option.label}</Text>
+              </TouchableOpacity>
+            ))
+          )}
         </View>
       </View>
     </Modal>
@@ -87,5 +95,14 @@ const styles = StyleSheet.create({
   optionText: {
     fontSize: typography.sizes.base,
     fontWeight: typography.weights.medium,
+  },
+  loadingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: spacing.xl,
+    gap: spacing.base,
+  },
+  loadingText: {
+    fontSize: typography.sizes.base,
   },
 });

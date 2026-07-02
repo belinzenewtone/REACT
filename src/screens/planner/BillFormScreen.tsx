@@ -1,8 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet, Alert } from 'react-native';
+import { Animated, View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet, Alert } from 'react-native';
+import { useFormFadeIn } from '../../hooks/useFormFadeIn';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
+import { TopBanner } from '../../components/common/TopBanner';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useThemeColors } from '../../hooks/useThemeColors';
 import { usePlannerStore } from '../../store';
@@ -36,6 +38,9 @@ export function BillFormScreen() {
   const billId = route.params?.billId;
   const isEditing = !!billId;
 
+  const [isReady, setIsReady] = useState(!isEditing);
+  const contentOpacity = useFormFadeIn(isReady);
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [title, setTitle] = useState('');
   const [amount, setAmount] = useState('');
   const [cycle, setCycle] = useState<BillCycle>('monthly');
@@ -57,6 +62,7 @@ export function BillFormScreen() {
         setPaidStatus(bill.paid_status === 1);
         setIsActive(bill.is_active === 1);
       }
+      setIsReady(true);
     });
   }, [billId, db]);
 
@@ -85,10 +91,12 @@ export function BillFormScreen() {
     try {
       if (isEditing && billId) {
         await updateBill(db, billId, data);
+        setSuccessMsg('Bill updated');
       } else {
         await createBill(db, data);
+        setSuccessMsg('Bill added');
       }
-      navigation.goBack();
+      setTimeout(() => navigation.goBack(), 900);
     } catch (error) {
       console.error('Failed to save bill:', error);
       Alert.alert('Error', 'Failed to save bill');
@@ -112,6 +120,8 @@ export function BillFormScreen() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.bgPrimary }]} edges={['top']}>
+      <TopBanner tone="success" message={successMsg ?? ''} visible={!!successMsg} />
+      <Animated.View style={{ flex: 1, opacity: contentOpacity }}>
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.header}>
           <TouchableOpacity onPress={() => navigation.goBack()}>
@@ -160,6 +170,7 @@ export function BillFormScreen() {
           </Text>
         </TouchableOpacity>
       </ScrollView>
+      </Animated.View>
     </SafeAreaView>
   );
 }

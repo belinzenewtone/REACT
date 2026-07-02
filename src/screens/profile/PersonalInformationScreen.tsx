@@ -8,6 +8,7 @@ import {
   Modal,
   ScrollView,
 } from 'react-native';
+import { TopBanner } from '../../components/common/TopBanner';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
@@ -34,6 +35,7 @@ export function PersonalInformationScreen() {
 
   const [editKey, setEditKey] = useState<InfoRow['key'] | null>(null);
   const [editValue, setEditValue] = useState('');
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
   const displayUsername = profile?.username ?? profile?.name.split(' ')[0] ?? '';
 
@@ -75,10 +77,14 @@ export function PersonalInformationScreen() {
     const trimmed = editValue.trim();
     if (editKey === 'name') {
       updateProfile({ name: trimmed || profile?.name });
+      setSuccessMsg('Name updated');
     } else if (editKey === 'email') {
       updateProfile({ email: trimmed || undefined });
+      setSuccessMsg('Email updated');
     } else if (editKey === 'username') {
-      updateProfile({ username: trimmed || undefined });
+      const cleaned = trimmed.toLowerCase().replace(/[^a-z0-9_]/g, '').slice(0, 8);
+      updateProfile({ username: cleaned || undefined });
+      setSuccessMsg('Username updated');
     }
     setEditKey(null);
   };
@@ -87,6 +93,7 @@ export function PersonalInformationScreen() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.bgPrimary }]} edges={['top']}>
+      <TopBanner tone="success" message={successMsg ?? ''} visible={!!successMsg} autoDismissMs={2000} onDismiss={() => setSuccessMsg(null)} />
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.header}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
@@ -147,10 +154,17 @@ export function PersonalInformationScreen() {
               placeholder={editingRow?.placeholder}
               placeholderTextColor={colors.textTertiary}
               value={editValue}
-              onChangeText={setEditValue}
+              onChangeText={(text) => {
+                if (editKey === 'username') {
+                  setEditValue(text.toLowerCase().replace(/[^a-z0-9_]/g, '').slice(0, 8));
+                } else {
+                  setEditValue(text);
+                }
+              }}
               keyboardType={editingRow?.keyboardType ?? 'default'}
               autoCapitalize={editingRow?.autoCapitalize ?? 'none'}
               autoFocus
+              maxLength={editKey === 'username' ? 8 : undefined}
             />
             <TouchableOpacity
               style={[styles.saveButton, { backgroundColor: colors.accentPrimary }]}

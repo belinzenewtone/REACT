@@ -14,7 +14,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useThemeColors } from '../../hooks/useThemeColors';
-import { useAssistantStore } from '../../store';
+import { useAssistantStore, useAppStore } from '../../store';
 import { ChatMessage } from '../../components/assistant/ChatMessage';
 import { ChatInput } from '../../components/assistant/ChatInput';
 import { SuggestedPrompts } from '../../components/assistant/SuggestedPrompts';
@@ -45,6 +45,7 @@ export function AssistantScreen() {
   const db = useSQLiteContext();
   const listRef = useRef<FlatList>(null);
   const { messages, isLoading, loadMessages, sendMessage, clearConversation } = useAssistantStore();
+  const quickSuggestionsEnabled = useAppStore((s) => s.settings.assistantQuickSuggestions);
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
 
   useEffect(() => {
@@ -143,7 +144,7 @@ export function AssistantScreen() {
         </View>
 
         {/* Suggestions */}
-        {showSuggestions && (
+        {showSuggestions && quickSuggestionsEnabled && (
           <SuggestedPrompts
             prompts={SUGGESTED_PROMPTS}
             onPromptPress={(prompt) => handleSend(prompt)}

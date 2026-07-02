@@ -137,10 +137,11 @@ export function CalendarScreen() {
   const doingCount = tasks.filter((t: any) => t.status === 'in_progress').length;
   const doneCount = tasks.filter((t: any) => t.status === 'completed').length;
 
-  // Events tab
-  const events = (allEvents ?? []).filter((e: any) =>
-    eventsQuery ? e.title.toLowerCase().includes(eventsQuery.toLowerCase()) : true
-  );
+  // Events tab — regular events only (not birthday/anniversary/countdown)
+  const events = (allEvents ?? []).filter((e: any) => {
+    if (e.type === 'birthday' || e.type === 'anniversary' || e.type === 'countdown') return false;
+    return eventsQuery ? e.title.toLowerCase().includes(eventsQuery.toLowerCase()) : true;
+  });
 
   async function handleDeleteEvent(eventId: string, title: string) {
     Alert.alert('Delete event?', `Remove "${title}"? This cannot be undone.`, [
@@ -395,6 +396,7 @@ export function CalendarScreen() {
             )}
           </>
         )}
+
       </ScrollView>
 
       {/* Add menu (Calendar tab only — Tasks/Events tabs jump straight to their form) */}

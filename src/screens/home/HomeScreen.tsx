@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -10,7 +10,8 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useSQLiteContext } from 'expo-sqlite';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
+import { useDataVersion } from '../../store/dataVersion';
 import { format } from 'date-fns';
 import { useThemeColors } from '../../hooks/useThemeColors';
 import { useDashboardStore } from '../../store/useDashboardStore';
@@ -37,12 +38,20 @@ export function HomeScreen() {
     loadDashboard,
   } = useDashboardStore();
 
-  useEffect(() => {
-    loadDashboard(db);
-  }, [db, loadDashboard]);
+  const dataVersion = useDataVersion((s) => s.version);
+  const loadedVersion = useRef(-1);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (dataVersion > loadedVersion.current) {
+        loadedVersion.current = dataVersion;
+        loadDashboard(db);
+      }
+    }, [db, loadDashboard, dataVersion])
+  );
 
   const greeting = getGreeting();
-  const name = profile?.name?.split(' ')[0] ?? 'there';
+  const name = profile?.username ?? profile?.name?.split(' ')[0] ?? 'there';
   const todayLabel = format(new Date(), 'EEEE, MMM d');
 
   const navigateToTab = (tabName: string) => {

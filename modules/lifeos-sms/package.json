@@ -1,0 +1,10 @@
+{
+  "name": "lifeos-sms",
+  "version": "1.0.0",
+  "description": "Native background SMS receiver and M-Pesa parser for LifeOS",
+  "main": "index.ts",
+  "peerDependencies": {
+    "expo": "*",
+    "react-native": "*"
+  }
+}

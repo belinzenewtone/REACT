@@ -1,9 +1,11 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { AppState, type AppStateStatus } from 'react-native';
-import { NavigationContainer } from '@react-navigation/native';
+import { NavigationContainer, DarkTheme, DefaultTheme } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { colors as themeColors } from '../theme';
 import { useAppStore } from '../store';
 import { useSQLiteContext } from 'expo-sqlite';
+import type { Theme } from '@react-navigation/native';
 import { migrateDatabaseAsync } from '../database';
 import { MainTabNavigator } from './MainTabNavigator';
 import { OnboardingScreen } from '../screens/onboarding/OnboardingScreen';
@@ -50,6 +52,19 @@ import { NotificationsScreen } from '../screens/settings/NotificationsScreen';
 import type { RootStackParamList } from './types';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
+
+// Prevents Android from flashing a white background between screen transitions.
+// Overrides the Navigation container background to match the app's dark surface.
+const NAV_THEME: Theme = {
+  ...DarkTheme,
+  colors: {
+    ...DarkTheme.colors,
+    background: themeColors.bgPrimary,
+    card: themeColors.bgSecondary,
+    border: 'transparent',
+    text: '#FFFFFF',
+  },
+};
 
 export function AppNavigator() {
   const db = useSQLiteContext();
@@ -130,8 +145,16 @@ export function AppNavigator() {
   }
 
   return (
-    <NavigationContainer>
-      <Stack.Navigator screenOptions={{ headerShown: false }}>
+    <NavigationContainer theme={NAV_THEME}>
+      <Stack.Navigator
+        screenOptions={{
+          headerShown: false,
+          animation: 'slide_from_right',
+          animationDuration: 260,
+          gestureEnabled: true,
+          contentStyle: { backgroundColor: themeColors.bgPrimary },
+        }}
+      >
         {!hasCompletedOnboarding ? (
           <Stack.Screen name="Onboarding" component={OnboardingScreen} />
         ) : !isAuthenticated ? (

@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import {
+  Animated,
   View,
   Text,
   TextInput,
@@ -8,15 +9,19 @@ import {
   ScrollView,
   Alert,
 } from 'react-native';
+import { useFormFadeIn } from '../../hooks/useFormFadeIn';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import { useThemeColors } from '../../hooks/useThemeColors';
-import { useTransactionStore } from '../../store';
+import { useTransactionStore, useAppStore } from '../../store';
 import { TransactionRepository } from '../../database/repositories/TransactionRepository';
+import { BudgetRepository } from '../../database/repositories/BudgetRepository';
+import { fireBudgetAlertLevels } from '../../services/notificationService';
 import { CATEGORY_COLORS, CATEGORY_ICONS } from '../../constants';
 import { Dropdown } from '../../components/common/Dropdown';
+import { TopBanner } from '../../components/common/TopBanner';
 import { spacing, typography, borderRadius } from '../../theme';
 import type { RootStackParamList } from '../../navigation/types';
 import type { TransactionType, TransactionStatus } from '../../types';
@@ -41,10 +46,16 @@ export function TransactionFormScreen() {
   const repo = React.useMemo(() => new TransactionRepository(db), [db]);
 
   const { addTransaction, updateTransaction, loadTransactions } = useTransactionStore();
+  const notificationsEnabled = useAppStore((s) => s.settings.notificationsEnabled);
+  const budgetAlertsEnabled = useAppStore((s) => s.settings.budgetThresholdAlerts);
+  const alertThresholds = useAppStore((s) => s.settings.alertThresholds);
   const transactionId = route.params?.transactionId;
   const isEditing = !!transactionId;
 
+  const [isReady, setIsReady] = useState(!isEditing);
+  const contentOpacity = useFormFadeIn(isReady);
   const [isLoading, setIsLoading] = useState(false);
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [amount, setAmount] = useState('');
   const [merchant, setMerchant] = useState('');
   const [description, setDescription] = useState('');
@@ -66,6 +77,7 @@ export function TransactionFormScreen() {
         setStatus(tx.status);
         setCategory(tx.category);
       }
+      setIsReady(true);
     }
     load();
   }, [transactionId, repo]);
@@ -97,11 +109,17 @@ export function TransactionFormScreen() {
 
       if (isEditing && transactionId) {
         await updateTransaction(repo, transactionId, data);
+        setSuccessMsg('Transaction updated');
       } else {
         await addTransaction(repo, data);
+        setSuccessMsg('Transaction saved');
       }
 
-      navigation.goBack();
+      if (notificationsEnabled && budgetAlertsEnabled && type === 'expense') {
+        await checkBudgetThreshold(db, category, alertThresholds);
+      }
+
+      setTimeout(() => navigation.goBack(), 900);
     } catch (error) {
       console.error('Failed to save transaction:', error);
       Alert.alert('Error', 'Failed to save transaction');
@@ -128,6 +146,8 @@ export function TransactionFormScreen() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.bgPrimary }]} edges={['top']}>
+      <TopBanner tone="success" message={successMsg ?? ''} visible={!!successMsg} />
+      <Animated.View style={{ flex: 1, opacity: contentOpacity }}>
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.header}>
           <TouchableOpacity onPress={() => navigation.goBack()}>
@@ -207,6 +227,7 @@ export function TransactionFormScreen() {
           </Text>
         </TouchableOpacity>
       </ScrollView>
+      </Animated.View>
     </SafeAreaView>
   );
 }
@@ -248,6 +269,29 @@ function SegmentedControl<T extends string>({
       })}
     </View>
   );
+}
+
+async function checkBudgetThreshold(
+  db: any,
+  category: string,
+  alertThresholds: { high: number; medium: number; low: number },
+): Promise<void> {
+  try {
+    const budgetRepo = new BudgetRepository(db);
+    const budgets = await budgetRepo.findAll();
+    const budget = budgets.find((b) => b.category.toLowerCase() === category.toLowerCase());
+    if (!budget) return;
+
+    const now = new Date();
+    const rows = await budgetRepo.getSpentByCategory(now.getFullYear(), now.getMonth() + 1);
+    const row = rows.find((r) => r.category.toLowerCase() === category.toLowerCase());
+    const spent = row?.spent ?? 0;
+
+    const yearMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    await fireBudgetAlertLevels(category, spent, budget.limit_amount, alertThresholds, yearMonth);
+  } catch {
+    // non-critical — silently skip
+  }
 }
 
 const styles = StyleSheet.create({

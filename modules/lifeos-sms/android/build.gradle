@@ -1,0 +1,40 @@
+apply plugin: 'com.android.library'
+apply plugin: 'kotlin-android'
+
+buildFeatures {
+  buildConfig true
+}
+
+android {
+  compileSdkVersion safeExtGet("compileSdkVersion", 35)
+
+  defaultConfig {
+    minSdkVersion safeExtGet("minSdkVersion", 24)
+    targetSdkVersion safeExtGet("targetSdkVersion", 35)
+  }
+
+  compileOptions {
+    coreLibraryDesugaringEnabled true
+    sourceCompatibility JavaVersion.VERSION_17
+    targetCompatibility JavaVersion.VERSION_17
+  }
+
+  kotlinOptions {
+    jvmTarget = "17"
+  }
+
+  namespace "com.lifeos.sms"
+}
+
+repositories {
+  mavenCentral()
+  google()
+}
+
+dependencies {
+  coreLibraryDesugaring "com.android.tools.desugar_jdk_libs:desugar_jdk_libs:2.0.4"
+  implementation project(':expo-modules-core')
+  implementation "androidx.work:work-runtime-ktx:2.9.1"
+  implementation "androidx.core:core-ktx:1.13.1"
+  implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3"
+}
