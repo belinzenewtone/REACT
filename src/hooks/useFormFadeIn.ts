@@ -15,7 +15,7 @@ export function useFormFadeIn(isReady: boolean) {
     if (!isReady) return;
     Animated.timing(opacity, {
       toValue: 1,
-      duration: 180,
+      duration: 120,
       useNativeDriver: true,
     }).start();
   }, [isReady, opacity]);

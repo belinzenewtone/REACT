@@ -150,9 +150,10 @@ export function AppNavigator() {
         screenOptions={{
           headerShown: false,
           animation: 'slide_from_right',
-          animationDuration: 260,
+          animationDuration: 180,
           gestureEnabled: true,
           contentStyle: { backgroundColor: themeColors.bgPrimary },
+          navigationBarColor: themeColors.bgPrimary,
         }}
       >
         {!hasCompletedOnboarding ? (
