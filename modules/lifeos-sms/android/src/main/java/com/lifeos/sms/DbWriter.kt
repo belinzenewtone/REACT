@@ -5,6 +5,7 @@ import android.database.sqlite.SQLiteDatabase
 import android.util.Log
 import java.io.File
 import java.security.MessageDigest
+import java.time.format.DateTimeFormatter
 import java.util.UUID
 
 /**
@@ -264,7 +265,7 @@ internal class DbWriter private constructor(context: Context) {
         return results
     }
 
-    fun getStats(): Map<String, Any> {
+    fun getStats(): Map<String, Any?> {
         var imported = 0L; var skipped = 0L; var errors = 0L; var quarantined = 0L; var lastAt: String? = null
         db.rawQuery(
             """SELECT

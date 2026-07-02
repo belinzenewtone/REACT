@@ -1,12 +1,16 @@
 apply plugin: 'com.android.library'
 apply plugin: 'kotlin-android'
 
-buildFeatures {
-  buildConfig true
+def safeExtGet(prop, fallback) {
+  rootProject.ext.has(prop) ? rootProject.ext.get(prop) : fallback
 }
 
 android {
   compileSdkVersion safeExtGet("compileSdkVersion", 35)
+
+  buildFeatures {
+    buildConfig true
+  }
 
   defaultConfig {
     minSdkVersion safeExtGet("minSdkVersion", 24)
@@ -32,7 +36,7 @@ repositories {
 }
 
 dependencies {
-  coreLibraryDesugaring "com.android.tools.desugar_jdk_libs:desugar_jdk_libs:2.0.4"
+  coreLibraryDesugaring "com.android.tools:desugar_jdk_libs:2.0.4"
   implementation project(':expo-modules-core')
   implementation "androidx.work:work-runtime-ktx:2.9.1"
   implementation "androidx.core:core-ktx:1.13.1"

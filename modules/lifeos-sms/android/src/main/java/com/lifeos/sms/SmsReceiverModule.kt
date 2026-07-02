@@ -273,19 +273,18 @@ class SmsReceiverModule : Module() {
 
     // ── WorkManager await helper ─────────────────────────────────────────────
 
-    private suspend fun awaitWork(ctx: Context, workId: java.util.UUID): WorkInfo? =
-        withContext(Dispatchers.IO) {
-            val wm = WorkManager.getInstance(ctx)
-            val deadline = System.currentTimeMillis() + 5 * 60 * 1000L
-            while (System.currentTimeMillis() < deadline) {
-                val info = wm.getWorkInfoById(workId).get()
-                if (info != null && (info.state == WorkInfo.State.SUCCEEDED || info.state == WorkInfo.State.FAILED || info.state == WorkInfo.State.CANCELLED)) {
-                    return@withContext info
-                }
-                kotlinx.coroutines.delay(400)
+    private fun awaitWork(ctx: Context, workId: java.util.UUID): WorkInfo? {
+        val wm = WorkManager.getInstance(ctx)
+        val deadline = System.currentTimeMillis() + 5 * 60 * 1000L
+        while (System.currentTimeMillis() < deadline) {
+            val info = wm.getWorkInfoById(workId).get()
+            if (info != null && (info.state == WorkInfo.State.SUCCEEDED || info.state == WorkInfo.State.FAILED || info.state == WorkInfo.State.CANCELLED)) {
+                return info
             }
-            null
+            Thread.sleep(400)
         }
+        return null
+    }
 
     companion object {
         const val TAG = "LifeOS/SmsReceiverModule"
