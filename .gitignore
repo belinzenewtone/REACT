@@ -46,3 +46,11 @@ yarn-error.*
 # local-expo-build
 keystore.properties
 credentials.json
+
+# build logs
+expo-err.txt
+expo-out.txt
+expo-output.txt
+
+# Gradle build artifacts
+modules/lifeos-sms/android/build/
