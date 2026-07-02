@@ -47,7 +47,9 @@
         "expo-build-properties",
         {
           "android": {
-            "newArchEnabled": true
+            "newArchEnabled": true,
+            "enableAbiSplits": true,
+            "abiFilters": ["arm64-v8a", "armeabi-v7a"]
           },
           "ios": {
             "newArchEnabled": true
