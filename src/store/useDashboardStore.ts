@@ -5,7 +5,6 @@ import { TransactionRepository } from '../database/repositories/TransactionRepos
 import { BudgetRepository } from '../database/repositories/BudgetRepository';
 import { TaskRepository } from '../database/repositories/TaskRepository';
 import { EventRepository } from '../database/repositories/EventRepository';
-import { seedDatabaseIfEmpty } from '../database/seed';
 import type { BudgetProgressItem, AgendaItem, RecentTransactionItem } from '../components/dashboard';
 
 interface DashboardState {
@@ -47,8 +46,6 @@ export const useDashboardStore = create<DashboardState>((set) => ({
     set({ isLoading: true, error: null });
 
     try {
-      await seedDatabaseIfEmpty(db);
-
       const txRepo = new TransactionRepository(db);
       const budgetRepo = new BudgetRepository(db);
       const taskRepo = new TaskRepository(db);

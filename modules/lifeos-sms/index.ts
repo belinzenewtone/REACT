@@ -68,12 +68,12 @@ export async function checkPermissions(): Promise<{ receive: boolean; read: bool
  * Returns stats when complete (blocks until done, up to 5 min).
  */
 export async function importHistoricalSms(fromMs: number, toMs: number): Promise<SmsImportResult> {
-  return LifeosSmsModule?.importHistoricalSms(fromMs, toMs);
+  return LifeosSmsModule?.importHistoricalSms(fromMs, toMs) ?? { total: 0, imported: 0, duplicates: 0, quarantined: 0, failed: 0, workId: '' };
 }
 
 /** Retrieve import statistics from the audit log. */
 export async function getStats(): Promise<SmsStats> {
-  return LifeosSmsModule?.getStats();
+  return LifeosSmsModule?.getStats() ?? { totalImported: 0, totalDuplicates: 0, totalQuarantined: 0, totalFailed: 0, lastImportAt: null };
 }
 
 /** Retrieve the last N audit log entries (default 100). */

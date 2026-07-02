@@ -23,6 +23,12 @@
         "buildType": "app-bundle",
         "credentialsSource": "remote"
       }
+    },
+    "production-apk": {
+      "android": {
+        "buildType": "apk",
+        "credentialsSource": "remote"
+      }
     }
   },
   "submit": {
