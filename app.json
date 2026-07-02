@@ -34,6 +34,7 @@
     },
     "plugins": [
       "expo-sqlite",
+      "lifeos-sms",
       [
         "expo-notifications",
         {
