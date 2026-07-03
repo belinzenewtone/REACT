@@ -11,6 +11,7 @@ import { FulizaLoanRepository } from '../../database/repositories/FulizaLoanRepo
 import { useFormFadeIn } from '../../hooks/useFormFadeIn';
 import { DateField } from '../../components/common/DateField';
 import { spacing, typography, borderRadius } from '../../theme';
+import { haptic } from '../../services/haptics';
 import type { RootStackParamList } from '../../navigation/types';
 
 type LoanFormRouteProp = RouteProp<RootStackParamList, 'LoanForm'>;
@@ -29,6 +30,7 @@ export function LoanFormScreen() {
   const [isReady, setIsReady] = useState(!isEditing);
   const contentOpacity = useFormFadeIn(isReady);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
   const [drawCode, setDrawCode] = useState('');
   const [drawAmount, setDrawAmount] = useState('');
   const [totalRepaid, setTotalRepaid] = useState('');
@@ -64,6 +66,9 @@ export function LoanFormScreen() {
       return;
     }
 
+    setIsSaving(true);
+    haptic('light');
+
     const data = {
       drawCode: drawCode.trim() || undefined,
       drawAmountKes: amount,
@@ -83,10 +88,11 @@ export function LoanFormScreen() {
         await createLoan(db, data);
         setSuccessMsg('Loan added');
       }
-      setTimeout(() => navigation.goBack(), 900);
+      setTimeout(() => navigation.goBack(), 400);
     } catch (error) {
       console.error('Failed to save loan:', error);
       Alert.alert('Error', 'Failed to save loan');
+      setIsSaving(false);
     }
   };
 
@@ -150,9 +156,13 @@ export function LoanFormScreen() {
           })}
         </View>
 
-        <TouchableOpacity style={[styles.saveButton, { backgroundColor: colors.accentPrimary }]} onPress={handleSave}>
+        <TouchableOpacity
+          style={[styles.saveButton, { backgroundColor: colors.accentPrimary, opacity: isSaving ? 0.6 : 1 }]}
+          onPress={handleSave}
+          disabled={isSaving}
+        >
           <Text style={[styles.saveButtonText, { color: colors.textInverse }]}>
-            {isEditing ? 'Update Loan' : 'Add Loan'}
+            {isSaving ? 'Saving…' : isEditing ? 'Update Loan' : 'Add Loan'}
           </Text>
         </TouchableOpacity>
       </ScrollView>

@@ -10,6 +10,7 @@ import { useThemeColors } from '../../hooks/useThemeColors';
 import { useBudgetStore } from '../../store';
 import { BudgetRepository } from '../../database/repositories/BudgetRepository';
 import { checkBudgetThresholds } from '../../services/budgetAlertService';
+import { haptic } from '../../services/haptics';
 import { CATEGORY_COLORS, CATEGORY_ICONS } from '../../constants';
 import { Dropdown } from '../../components/common/Dropdown';
 import { spacing, typography, borderRadius } from '../../theme';
@@ -39,6 +40,7 @@ export function BudgetFormScreen() {
   const [isReady, setIsReady] = useState(!isEditing);
   const contentOpacity = useFormFadeIn(isReady);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
   const [category, setCategory] = useState(CATEGORIES[0]);
   const [limit, setLimit] = useState('');
   const [period, setPeriod] = useState<(typeof PERIODS)[number]>('monthly');
@@ -67,6 +69,9 @@ export function BudgetFormScreen() {
       return;
     }
 
+    setIsSaving(true);
+    haptic('light');
+
     const thresholdValue = parseFloat(threshold) / 100;
 
     const data = {
@@ -86,11 +91,14 @@ export function BudgetFormScreen() {
         await createBudget(db, data);
         setSuccessMsg('Budget added');
       }
-      await checkBudgetThresholds(db, category);
-      setTimeout(() => navigation.goBack(), 900);
+      // Re-evaluate thresholds in the background — don't block the UI from
+      // navigating away immediately.
+      checkBudgetThresholds(db, category).catch(() => {});
+      setTimeout(() => navigation.goBack(), 400);
     } catch (error) {
       console.error('Failed to save budget:', error);
       Alert.alert('Error', 'Failed to save budget');
+      setIsSaving(false);
     }
   };
 
@@ -123,9 +131,12 @@ export function BudgetFormScreen() {
           <Text style={[styles.title, { color: colors.textPrimary }]} numberOfLines={1}>
             {isEditing ? 'Edit Budget' : 'Add Budget'}
           </Text>
-          <TouchableOpacity onPress={handleSave}>
-            <Text style={[styles.headerAction, { color: colors.accentPrimary, fontWeight: typography.weights.semibold }]}>
-              Save
+          <TouchableOpacity onPress={handleSave} disabled={isSaving} activeOpacity={0.7}>
+            <Text style={[
+              styles.headerAction,
+              { color: colors.accentPrimary, fontWeight: typography.weights.semibold, opacity: isSaving ? 0.5 : 1 },
+            ]}>
+              {isSaving ? 'Saving…' : 'Save'}
             </Text>
           </TouchableOpacity>
         </View>

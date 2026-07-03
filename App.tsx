@@ -10,6 +10,7 @@ import { DATABASE_NAME, migrateDatabaseAsync } from './src/database';
 import { AppNavigator } from './src/navigation/AppNavigator';
 import { TopBanner } from './src/components/common/TopBanner';
 import { useAppStore } from './src/store';
+import { colors } from './src/theme';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -75,13 +76,13 @@ function OtaUpdateBanner() {
 
 export default function App() {
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
+    <GestureHandlerRootView style={{ flex: 1, backgroundColor: colors.bgPrimary }}>
       <SafeAreaProvider>
         <SQLiteProvider databaseName={DATABASE_NAME} onInit={migrateDatabaseAsync}>
           <AppNavigator />
           <SplashHider />
           <OtaUpdateBanner />
-          <StatusBar style="auto" />
+          <StatusBar style="light" />
         </SQLiteProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>

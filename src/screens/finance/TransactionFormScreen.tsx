@@ -18,6 +18,7 @@ import { useThemeColors } from '../../hooks/useThemeColors';
 import { useTransactionStore } from '../../store';
 import { TransactionRepository } from '../../database/repositories/TransactionRepository';
 import { checkBudgetThresholds } from '../../services/budgetAlertService';
+import { haptic } from '../../services/haptics';
 import { CATEGORY_COLORS, CATEGORY_ICONS } from '../../constants';
 import { Dropdown } from '../../components/common/Dropdown';
 import { TopBanner } from '../../components/common/TopBanner';
@@ -98,6 +99,7 @@ export function TransactionFormScreen() {
     }
 
     setIsLoading(true);
+    haptic('light');
     try {
       const feeNum = fee.trim() ? parseFloat(fee) : undefined;
       const balNum = balanceAfter.trim() ? parseFloat(balanceAfter) : undefined;
@@ -126,14 +128,13 @@ export function TransactionFormScreen() {
       }
 
       if (type === 'expense') {
-        await checkBudgetThresholds(db, category);
+        checkBudgetThresholds(db, category).catch(() => {});
       }
 
-      setTimeout(() => navigation.goBack(), 900);
+      setTimeout(() => navigation.goBack(), 400);
     } catch (error) {
       console.error('Failed to save transaction:', error);
       Alert.alert('Error', 'Failed to save transaction');
-    } finally {
       setIsLoading(false);
     }
   };

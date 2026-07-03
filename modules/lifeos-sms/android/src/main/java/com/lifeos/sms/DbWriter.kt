@@ -109,7 +109,7 @@ internal class DbWriter private constructor(context: Context) {
                 outcome       TEXT NOT NULL,
                 failure_reason TEXT,
                 confidence    TEXT,
-                created_at    TEXT NOT NULL DEFAULT (datetime('now'))
+                created_at    TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
             )
             """.trimIndent()
         )
@@ -557,8 +557,8 @@ internal class DbWriter private constructor(context: Context) {
         try {
             db.compileStatement(
                 """INSERT INTO import_audit
-                   (mpesa_code, raw_message, amount, merchant, outcome, failure_reason, confidence)
-                   VALUES (?,?,?,?,?,?,?)"""
+                   (mpesa_code, raw_message, amount, merchant, outcome, failure_reason, confidence, created_at)
+                   VALUES (?,?,?,?,?,?,?,?)"""
             ).use { stmt ->
                 if (mpesaCode != null) stmt.bindString(1, mpesaCode) else stmt.bindNull(1)
                 stmt.bindString(2, rawMessage.take(1000))
@@ -567,6 +567,7 @@ internal class DbWriter private constructor(context: Context) {
                 stmt.bindString(5, outcome)
                 if (failureReason != null) stmt.bindString(6, failureReason) else stmt.bindNull(6)
                 if (confidence != null) stmt.bindString(7, confidence) else stmt.bindNull(7)
+                stmt.bindString(8, isoNow())
                 stmt.executeInsert()
             }
         } catch (e: Exception) {

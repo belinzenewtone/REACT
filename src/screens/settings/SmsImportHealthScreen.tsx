@@ -34,6 +34,7 @@ import {
 } from '../../../modules/lifeos-sms';
 import { useDataVersion } from '../../store/dataVersion';
 import { useLiveQuery } from '../../hooks/useLiveQuery';
+import { parseISO } from 'date-fns';
 
 const LAST_CLEARED_ID_KEY = '@sms_audit_log_last_cleared_id';
 
@@ -80,7 +81,10 @@ function auditDisplayTimestamp(entry?: AuditEntry): string | null | undefined {
 function formatTimestamp(iso: string | null | undefined): string {
   if (!iso) return 'Never';
   try {
-    const d = new Date(iso);
+    // date-fns parses ISO strings without a timezone as *local* wall-clock time,
+    // which matches how native import timestamps are stored. Strings with Z or an
+    // offset are parsed as absolute instants.
+    const d = parseISO(iso);
     if (isNaN(d.getTime())) return iso;
     return (
       d.toLocaleDateString('en-KE', { month: 'short', day: 'numeric' }) +
@@ -95,9 +99,9 @@ function formatTimestamp(iso: string | null | undefined): string {
 /**
  * Resolve the authoritative SMS timestamp for audit entries that resulted in
  * an imported transaction. The audit row's `createdAt` records when the
- * message was processed (UTC), which can be hours behind the real SMS date
- * for historical imports. The transactions table stores the actual SMS date
- * parsed from the message, so use that as the source of truth.
+ * message was processed (local device time), which can be behind the real SMS
+ * date for historical imports. The transactions table stores the actual SMS
+ * date parsed from the message, so use that as the source of truth.
  */
 async function enrichAuditWithSmsDates(
   db: any,

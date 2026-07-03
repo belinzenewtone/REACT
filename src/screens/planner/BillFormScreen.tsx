@@ -15,6 +15,7 @@ import { spacing, typography, borderRadius } from '../../theme';
 import type { RootStackParamList } from '../../navigation/types';
 import type { BillCycle } from '../../types';
 import { applyBillPayment } from '../../utils/billCycle';
+import { haptic } from '../../services/haptics';
 
 type BillFormRouteProp = RouteProp<RootStackParamList, 'BillForm'>;
 const CYCLE_LABELS: Record<BillCycle, string> = {
@@ -42,6 +43,7 @@ export function BillFormScreen() {
   const [isReady, setIsReady] = useState(!isEditing);
   const contentOpacity = useFormFadeIn(isReady);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
   const [title, setTitle] = useState('');
   const [amount, setAmount] = useState('');
   const [cycle, setCycle] = useState<BillCycle>('monthly');
@@ -78,6 +80,9 @@ export function BillFormScreen() {
       return;
     }
 
+    setIsSaving(true);
+    haptic('light');
+
     // For repeating cycles, "Paid" means "done for THIS cycle" — the due date
     // advances one cycle and paid resets so the next reminder arms. Pure math
     // lives in src/utils/billCycle.ts (unit-tested).
@@ -104,10 +109,11 @@ export function BillFormScreen() {
         await createBill(db, data);
         setSuccessMsg(advanced ? 'Bill added — next cycle scheduled' : 'Bill added');
       }
-      setTimeout(() => navigation.goBack(), 900);
+      setTimeout(() => navigation.goBack(), 400);
     } catch (error) {
       console.error('Failed to save bill:', error);
       Alert.alert('Error', 'Failed to save bill');
+      setIsSaving(false);
     }
   };
 
@@ -172,9 +178,13 @@ export function BillFormScreen() {
           </Text>
         </TouchableOpacity>
 
-        <TouchableOpacity style={[styles.saveButton, { backgroundColor: colors.accentPrimary }]} onPress={handleSave}>
+        <TouchableOpacity
+          style={[styles.saveButton, { backgroundColor: colors.accentPrimary, opacity: isSaving ? 0.6 : 1 }]}
+          onPress={handleSave}
+          disabled={isSaving}
+        >
           <Text style={[styles.saveButtonText, { color: colors.textInverse }]}>
-            {isEditing ? 'Update Bill' : 'Add Bill'}
+            {isSaving ? 'Saving…' : isEditing ? 'Update Bill' : 'Add Bill'}
           </Text>
         </TouchableOpacity>
       </ScrollView>

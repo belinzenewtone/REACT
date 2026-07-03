@@ -2,7 +2,7 @@
   "expo": {
     "name": "PersonalOS",
     "slug": "RFINAL",
-    "version": "1.0.48",
+    "version": "1.0.49",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "splash": {
@@ -17,7 +17,14 @@
         "imageWidth": 200
       }
     },
-    "userInterfaceStyle": "automatic",
+    "userInterfaceStyle": "dark",
+    "androidStatusBar": {
+      "backgroundColor": "#0B0E14",
+      "barStyle": "light-content"
+    },
+    "androidNavigationBar": {
+      "backgroundColor": "#0B0E14"
+    },
     "ios": {
       "supportsTablet": true,
       "infoPlist": {

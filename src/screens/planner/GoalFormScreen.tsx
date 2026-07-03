@@ -11,6 +11,7 @@ import { usePlannerStore } from '../../store';
 import { GoalRepository } from '../../database/repositories/GoalRepository';
 import { DateField } from '../../components/common/DateField';
 import { spacing, typography, borderRadius } from '../../theme';
+import { haptic } from '../../services/haptics';
 import type { RootStackParamList } from '../../navigation/types';
 
 type GoalFormRouteProp = RouteProp<RootStackParamList, 'GoalForm'>;
@@ -29,6 +30,7 @@ export function GoalFormScreen() {
   const [isReady, setIsReady] = useState(!isEditing);
   const contentOpacity = useFormFadeIn(isReady);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [targetValue, setTargetValue] = useState('');
@@ -62,6 +64,9 @@ export function GoalFormScreen() {
       return;
     }
 
+    setIsSaving(true);
+    haptic('light');
+
     const data = {
       title: title.trim(),
       description: description.trim() || undefined,
@@ -81,10 +86,11 @@ export function GoalFormScreen() {
         await createGoal(db, data);
         setSuccessMsg('Goal added');
       }
-      setTimeout(() => navigation.goBack(), 900);
+      setTimeout(() => navigation.goBack(), 400);
     } catch (error) {
       console.error('Failed to save goal:', error);
       Alert.alert('Error', 'Failed to save goal');
+      setIsSaving(false);
     }
   };
 
@@ -149,9 +155,13 @@ export function GoalFormScreen() {
           })}
         </View>
 
-        <TouchableOpacity style={[styles.saveButton, { backgroundColor: colors.accentPrimary }]} onPress={handleSave}>
+        <TouchableOpacity
+          style={[styles.saveButton, { backgroundColor: colors.accentPrimary, opacity: isSaving ? 0.6 : 1 }]}
+          onPress={handleSave}
+          disabled={isSaving}
+        >
           <Text style={[styles.saveButtonText, { color: colors.textInverse }]}>
-            {isEditing ? 'Update Goal' : 'Add Goal'}
+            {isSaving ? 'Saving…' : isEditing ? 'Update Goal' : 'Add Goal'}
           </Text>
         </TouchableOpacity>
       </ScrollView>

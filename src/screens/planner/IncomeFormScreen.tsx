@@ -11,6 +11,7 @@ import { IncomeRepository } from '../../database/repositories/IncomeRepository';
 import { useFormFadeIn } from '../../hooks/useFormFadeIn';
 import { DateField } from '../../components/common/DateField';
 import { spacing, typography, borderRadius } from '../../theme';
+import { haptic } from '../../services/haptics';
 import type { RootStackParamList } from '../../navigation/types';
 import type { IncomeFrequency } from '../../types';
 
@@ -30,6 +31,7 @@ export function IncomeFormScreen() {
   const [isReady, setIsReady] = useState(!isEditing);
   const contentOpacity = useFormFadeIn(isReady);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
   const [source, setSource] = useState('');
   const [amount, setAmount] = useState('');
   const [date, setDate] = useState('');
@@ -64,6 +66,9 @@ export function IncomeFormScreen() {
       return;
     }
 
+    setIsSaving(true);
+    haptic('light');
+
     const data = {
       source: source.trim(),
       amount: numAmount,
@@ -82,10 +87,11 @@ export function IncomeFormScreen() {
         await createIncome(db, data);
         setSuccessMsg('Income added');
       }
-      setTimeout(() => navigation.goBack(), 900);
+      setTimeout(() => navigation.goBack(), 400);
     } catch (error) {
       console.error('Failed to save income:', error);
       Alert.alert('Error', 'Failed to save income');
+      setIsSaving(false);
     }
   };
 
@@ -158,9 +164,13 @@ export function IncomeFormScreen() {
           </View>
         )}
 
-        <TouchableOpacity style={[styles.saveButton, { backgroundColor: colors.accentPrimary }]} onPress={handleSave}>
+        <TouchableOpacity
+          style={[styles.saveButton, { backgroundColor: colors.accentPrimary, opacity: isSaving ? 0.6 : 1 }]}
+          onPress={handleSave}
+          disabled={isSaving}
+        >
           <Text style={[styles.saveButtonText, { color: colors.textInverse }]}>
-            {isEditing ? 'Update Income' : 'Add Income'}
+            {isSaving ? 'Saving…' : isEditing ? 'Update Income' : 'Add Income'}
           </Text>
         </TouchableOpacity>
       </ScrollView>

@@ -13,6 +13,7 @@ import { CATEGORY_COLORS, CATEGORY_ICONS } from '../../constants';
 import { Dropdown } from '../../components/common/Dropdown';
 import { DateField } from '../../components/common/DateField';
 import { spacing, typography, borderRadius } from '../../theme';
+import { haptic } from '../../services/haptics';
 import type { RootStackParamList } from '../../navigation/types';
 import type { RecurringCadence } from '../../types';
 
@@ -52,6 +53,7 @@ export function RecurringFormScreen() {
   const [isReady, setIsReady] = useState(!isEditing);
   const contentOpacity = useFormFadeIn(isReady);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
   const [title, setTitle] = useState('');
   const [type, setType] = useState<'expense' | 'income' | 'task'>('expense');
   const [cadence, setCadence] = useState<RecurringCadence>('monthly');
@@ -87,6 +89,9 @@ export function RecurringFormScreen() {
       return;
     }
 
+    setIsSaving(true);
+    haptic('light');
+
     const numAmount = amount.trim() ? parseFloat(amount) : undefined;
     const data = {
       title: title.trim(),
@@ -107,10 +112,11 @@ export function RecurringFormScreen() {
         await createRecurringRule(db, data);
         setSuccessMsg('Rule added');
       }
-      setTimeout(() => navigation.goBack(), 900);
+      setTimeout(() => navigation.goBack(), 400);
     } catch (error) {
       console.error('Failed to save recurring rule:', error);
       Alert.alert('Error', 'Failed to save recurring rule');
+      setIsSaving(false);
     }
   };
 
@@ -192,9 +198,13 @@ export function RecurringFormScreen() {
           </Text>
         </TouchableOpacity>
 
-        <TouchableOpacity style={[styles.saveButton, { backgroundColor: colors.accentPrimary }]} onPress={handleSave}>
+        <TouchableOpacity
+          style={[styles.saveButton, { backgroundColor: colors.accentPrimary, opacity: isSaving ? 0.6 : 1 }]}
+          onPress={handleSave}
+          disabled={isSaving}
+        >
           <Text style={[styles.saveButtonText, { color: colors.textInverse }]}>
-            {isEditing ? 'Update Rule' : 'Add Rule'}
+            {isSaving ? 'Saving…' : isEditing ? 'Update Rule' : 'Add Rule'}
           </Text>
         </TouchableOpacity>
       </ScrollView>
