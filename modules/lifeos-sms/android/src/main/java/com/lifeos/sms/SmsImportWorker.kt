@@ -1,11 +1,14 @@
 package com.lifeos.sms
 
+import android.Manifest
 import android.content.Context
+import android.content.pm.PackageManager
 import android.os.Build
 import android.provider.Telephony
 
 import android.util.Log
 import androidx.core.app.NotificationCompat
+import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
 import androidx.work.CoroutineWorker
 import androidx.work.Data
@@ -46,8 +49,24 @@ class SmsImportWorker(
         setForeground(buildForegroundInfo("Scanning M-Pesa messages…"))
 
         try {
-            val selection = "(address LIKE ? OR address LIKE ?) AND date >= ? AND date <= ?"
-            val selArgs = arrayOf("%MPESA%", "%M-PESA%", fromMs.toString(), toMs.toString())
+            // Require READ_SMS up front — without it the content resolver returns an
+            // empty cursor and the UI reports "No M-Pesa messages found".
+            if (ContextCompat.checkSelfPermission(
+                    applicationContext,
+                    Manifest.permission.READ_SMS
+                ) != PackageManager.PERMISSION_GRANTED
+            ) {
+                return@withContext Result.failure(
+                    Data.Builder().putString("error", "sms_permission_denied").build()
+                )
+            }
+
+            // Scan all SMS in the date window and content-filter for M-Pesa signals.
+            // Address-based filters (e.g. address LIKE "%MPESA%") miss messages sent
+            // from short codes or devices that store the sender differently, so we
+            // rely on the same cheap body signal check the parser uses.
+            val selection = "date >= ? AND date <= ?"
+            val selArgs = arrayOf(fromMs.toString(), toMs.toString())
 
             val bodies = mutableListOf<String>()
             val dedupeCtx = SmsDedupeEngine.Context()

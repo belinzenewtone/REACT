@@ -132,7 +132,7 @@ export function AppNavigator() {
         // sync if the JS side changed while the process was killed.
         try {
           const s = useAppStore.getState().settings;
-          await enableBackgroundReceiver(s.smsBackgroundReceiver ?? true);
+          await enableBackgroundReceiver(s.smsBackgroundReceiver ?? false);
           await setFulizaLimit(s.fulizaLimit ?? 0);
         } catch {}
         if (cancelled) return;

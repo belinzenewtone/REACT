@@ -70,7 +70,7 @@ const defaultSettings: AppSettings = {
   dailyDigestMorningSummary: true,
   dailyDigestDeliveryTime: '06:30',
   appUpdates: true,
-  smsBackgroundReceiver: true,
+  smsBackgroundReceiver: false,
 };
 
 export const useAppStore = create<AppState>()(

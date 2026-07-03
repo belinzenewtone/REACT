@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -12,7 +12,7 @@ import * as Updates from 'expo-updates';
 import { enableBackgroundReceiver, setFulizaLimit, checkPermissions, requestSmsPermissions } from '../../../modules/lifeos-sms';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { useThemeColors } from '../../hooks/useThemeColors';
 import { useAppStore } from '../../store';
 import { GlassCard } from '../../components/common/GlassCard';
@@ -53,17 +53,34 @@ export function SettingsScreen() {
     return () => clearTimeout(timer);
   }, [infoMessage]);
 
-  useEffect(() => {
-    checkPermissions()
-      .then(({ receive, read }) => setSmsPermissionsGranted(receive && read))
-      .catch(() => setSmsPermissionsGranted(false));
+  const refreshPermissionState = useCallback(async () => {
+    try {
+      const { receive, read } = await checkPermissions();
+      setSmsPermissionsGranted(receive && read);
+    } catch {
+      setSmsPermissionsGranted(false);
+    }
   }, []);
+
+  // Check on first mount and every time the user returns to this screen,
+  // so the banner disappears as soon as permissions are granted in Settings.
+  useEffect(() => {
+    refreshPermissionState();
+  }, [refreshPermissionState]);
+
+  useFocusEffect(
+    useCallback(() => {
+      refreshPermissionState();
+    }, [refreshPermissionState])
+  );
 
   const handleGrantSmsPermissions = async () => {
     setRequestingPerms(true);
     try {
       const { granted } = await requestSmsPermissions();
-      setSmsPermissionsGranted(granted);
+      // Re-read native state — requestMultiple returns the dialog result, but
+      // the user may have changed the toggle in system Settings while away.
+      await refreshPermissionState();
       setInfoMessage(granted ? 'SMS permissions granted' : 'Permissions denied — grant them in device Settings');
     } catch {
       setInfoMessage('Could not request permissions');

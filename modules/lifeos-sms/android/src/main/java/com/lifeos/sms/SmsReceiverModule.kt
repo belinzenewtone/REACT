@@ -86,14 +86,20 @@ class SmsReceiverModule : Module() {
 
             // Block until work completes (max 5 minutes) — AsyncFunction is already suspending
             val info = awaitWork(ctx, request.id)
+                ?: throw Error("SMS import worker did not complete in time")
 
-            val output = info?.outputData
+            if (info.state == WorkInfo.State.FAILED) {
+                val error = info.outputData.getString("error") ?: "import_failed"
+                throw Error(error)
+            }
+
+            val output = info.outputData
             mapOf(
-                "total"       to (output?.getInt("total", 0) ?: 0),
-                "imported"    to (output?.getInt("imported", 0) ?: 0),
-                "duplicates"  to (output?.getInt("duplicates", 0) ?: 0),
-                "quarantined" to (output?.getInt("quarantined", 0) ?: 0),
-                "failed"      to (output?.getInt("failed", 0) ?: 0),
+                "total"       to (output.getInt("total", 0)),
+                "imported"    to (output.getInt("imported", 0)),
+                "duplicates"  to (output.getInt("duplicates", 0)),
+                "quarantined" to (output.getInt("quarantined", 0)),
+                "failed"      to (output.getInt("failed", 0)),
                 "workId"      to workId,
             )
         }
@@ -237,12 +243,12 @@ class SmsReceiverModule : Module() {
 
         AsyncFunction("getReceiverStatus") {
             val ctx = appContext.reactContext ?: return@AsyncFunction mapOf(
-                "enabled" to true,
+                "enabled" to false,
                 "lastFireMs" to 0.0,
             )
             val prefs = ctx.getSharedPreferences(SmsReceiver.PREFS_NAME, Context.MODE_PRIVATE)
             mapOf(
-                "enabled"    to prefs.getBoolean(SmsReceiver.KEY_BACKGROUND_RECEIVER, true),
+                "enabled"    to prefs.getBoolean(SmsReceiver.KEY_BACKGROUND_RECEIVER, false),
                 "lastFireMs" to prefs.getLong(SmsReceiver.KEY_LAST_RECEIVER_FIRE_MS, 0L).toDouble(),
             )
         }

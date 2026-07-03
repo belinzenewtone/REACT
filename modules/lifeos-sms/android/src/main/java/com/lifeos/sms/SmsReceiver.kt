@@ -85,7 +85,7 @@ class SmsReceiver : BroadcastReceiver() {
 
     private fun isBackgroundReceiverEnabled(context: Context): Boolean {
         return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .getBoolean(KEY_BACKGROUND_RECEIVER, true) // default: enabled
+            .getBoolean(KEY_BACKGROUND_RECEIVER, false) // default: disabled until user opts in
     }
 
     internal companion object {

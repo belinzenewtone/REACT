@@ -160,7 +160,7 @@ export function addFulizaLimitNeededListener(
 /**
  * Enable or disable the background SMS receiver.
  * Persisted in native SharedPreferences — survives app restarts.
- * Default: true (enabled).
+ * Default: false (disabled) — user must opt in.
  */
 export async function enableBackgroundReceiver(enabled: boolean): Promise<void> {
   return LifeosSmsModule?.enableBackgroundReceiver(enabled);
