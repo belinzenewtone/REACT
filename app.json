@@ -1,10 +1,22 @@
 {
   "expo": {
-    "name": "RFINAL",
+    "name": "PersonalOS",
     "slug": "RFINAL",
     "version": "1.0.48",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "backgroundColor": "#0B0E14",
+      "resizeMode": "contain",
+      "imageWidth": 200,
+      "dark": {
+        "image": "./assets/splash-icon.png",
+        "backgroundColor": "#0B0E14",
+        "resizeMode": "contain",
+        "imageWidth": 200
+      }
+    },
     "userInterfaceStyle": "automatic",
     "ios": {
       "supportsTablet": true,
@@ -16,10 +28,8 @@
       "package": "com.belinze.lifeos",
       "backgroundColor": "#0B0E14",
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
-        "foregroundImage": "./assets/android-icon-foreground.png",
-        "backgroundImage": "./assets/android-icon-background.png",
-        "monochromeImage": "./assets/android-icon-monochrome.png"
+        "backgroundColor": "#0B0E14",
+        "foregroundImage": "./assets/android-icon-foreground.png"
       },
       "predictiveBackGestureEnabled": false,
       "permissions": [

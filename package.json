@@ -21,6 +21,7 @@
     "expo-linear-gradient": "~56.0.4",
     "expo-local-authentication": "~56.0.4",
     "expo-notifications": "~56.0.19",
+    "expo-splash-screen": "^57.0.2",
     "expo-sqlite": "~56.0.5",
     "expo-status-bar": "~56.0.4",
     "expo-updates": "~56.0.20",
