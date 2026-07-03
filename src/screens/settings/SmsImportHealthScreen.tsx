@@ -28,6 +28,7 @@ import {
   requestIgnoreBatteryOptimizations,
   getIngestQueueStatus,
   retryIngestQueue,
+  getNativeDiagnosticInfo,
   type SmsStats,
   type AuditEntry,
   type RejectionEntry,
@@ -191,6 +192,8 @@ export function SmsImportHealthScreen() {
   const [dbIntegrityMessage, setDbIntegrityMessage] = useState<string | null>(null);
   const [txCount, setTxCount] = useState(0);
   const [repairing, setRepairing] = useState(false);
+  const [jsDbPath, setJsDbPath] = useState<string | null>(null);
+  const [nativeDiag, setNativeDiag] = useState<{ nativeDbPath: string; nativeTxCount: number; nativeAuditCount: number } | null>(null);
   const [loading, setLoading] = useState(true);
   const [reconciling, setReconciling] = useState(false);
   const [retrying, setRetrying] = useState(false);
@@ -252,6 +255,17 @@ export function SmsImportHealthScreen() {
         setTxCount(txRow?.c ?? 0);
       } catch {
         setTxCount(0);
+      }
+      try {
+        const dbList = await db.getFirstAsync<{ name: string; file: string }>('PRAGMA database_list');
+        setJsDbPath(dbList?.file ?? null);
+      } catch {
+        setJsDbPath(null);
+      }
+      try {
+        setNativeDiag(await getNativeDiagnosticInfo());
+      } catch {
+        setNativeDiag(null);
       }
     } catch (e) {
       console.warn('SmsHealth load error', e);
@@ -616,6 +630,28 @@ export function SmsImportHealthScreen() {
           </SectionCard>
         )}
 
+        {/* Diagnostic paths */}
+        <SectionCard title="Diagnostics" colors={colors}>
+          <Text style={[styles.actionsDesc, { color: colors.textSecondary }]}>
+            JS transactions count: {txCount} · native transactions count: {nativeDiag?.nativeTxCount ?? '?'}
+          </Text>
+          <Text style={[styles.actionsDesc, { color: colors.textSecondary }]}>
+            JS DB path:
+          </Text>
+          <Text style={[styles.mono, { color: colors.textPrimary }]} selectable>
+            {jsDbPath ?? 'unknown'}
+          </Text>
+          <Text style={[styles.actionsDesc, { color: colors.textSecondary, marginTop: spacing.sm }]}>
+            Native DB path:
+          </Text>
+          <Text style={[styles.mono, { color: colors.textPrimary }]} selectable>
+            {nativeDiag?.nativeDbPath ?? 'unknown'}
+          </Text>
+          <Text style={[styles.actionsDesc, { color: colors.textSecondary, marginTop: spacing.sm }]}>
+            Native audit count: {nativeDiag?.nativeAuditCount ?? '?'}
+          </Text>
+        </SectionCard>
+
         {/* Audit Log */}
         <SectionCard colors={colors}>
           <View style={styles.auditHeader}>
@@ -772,4 +808,5 @@ const styles = StyleSheet.create({
   auditAmount: { fontSize: typography.sizes.xs },
   auditReason: { fontSize: typography.sizes.xs },
   auditTime: { fontSize: typography.sizes.xs },
+  mono: { fontSize: typography.sizes.xs, fontFamily: 'monospace', marginBottom: spacing.sm },
 });

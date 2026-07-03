@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
 import android.util.Log
+import java.io.File
 import androidx.core.content.ContextCompat
 import androidx.work.Data
 import androidx.work.ExistingWorkPolicy
@@ -115,6 +116,20 @@ class SmsReceiverModule : Module() {
         AsyncFunction("getStats") {
             val ctx = appContext.reactContext ?: throw CodedException("no_context")
             DbWriter.getInstance(ctx).getStats()
+        }
+
+        // ── getNativeDiagnosticInfo ─────────────────────────────────────────────
+        // Exposes the native-side DB path and row counts so the JS UI can confirm
+        // both sides are reading/writing the same SQLite file.
+
+        AsyncFunction("getNativeDiagnosticInfo") {
+            val ctx = appContext.reactContext ?: throw CodedException("no_context")
+            val db = DbWriter.getInstance(ctx)
+            mapOf(
+                "nativeDbPath" to ctx.filesDir.canonicalPath + File.separator + "SQLite" + File.separator + "lifeos.db",
+                "nativeTxCount" to db.getTransactionCount(),
+                "nativeAuditCount" to db.getAuditCount(),
+            )
         }
 
         // ── getAuditLog ───────────────────────────────────────────────────────

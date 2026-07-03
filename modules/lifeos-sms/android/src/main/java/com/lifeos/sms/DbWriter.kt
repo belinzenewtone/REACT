@@ -715,6 +715,29 @@ internal class DbWriter private constructor(context: Context) {
         }
     }
 
+    /** Diagnostic counters — used to verify JS and native are looking at the same DB file. */
+    fun getTransactionCount(): Long {
+        return try {
+            db.rawQuery("SELECT COUNT(*) FROM transactions WHERE deleted_at IS NULL", null).use { c ->
+                if (c.moveToFirst()) c.getLong(0) else 0L
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "getTransactionCount failed: ${e.message}")
+            -1L
+        }
+    }
+
+    fun getAuditCount(): Long {
+        return try {
+            db.rawQuery("SELECT COUNT(*) FROM import_audit", null).use { c ->
+                if (c.moveToFirst()) c.getLong(0) else 0L
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "getAuditCount failed: ${e.message}")
+            -1L
+        }
+    }
+
     // ─── Helpers ──────────────────────────────────────────────────────────────
 
     private fun isoNow(): String {

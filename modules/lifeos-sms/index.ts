@@ -147,6 +147,15 @@ export async function getStats(): Promise<SmsStats> {
   return requireModule().getStats();
 }
 
+/** Diagnostic snapshot from the native DB connection (path + row counts). */
+export async function getNativeDiagnosticInfo(): Promise<{
+  nativeDbPath: string;
+  nativeTxCount: number;
+  nativeAuditCount: number;
+}> {
+  return LifeosSmsModule?.getNativeDiagnosticInfo() ?? { nativeDbPath: '', nativeTxCount: -1, nativeAuditCount: -1 };
+}
+
 /** Retrieve the last N audit log entries (default 100). */
 export async function getAuditLog(limit = 100): Promise<AuditEntry[]> {
   return LifeosSmsModule?.getAuditLog(limit) ?? [];
