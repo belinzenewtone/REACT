@@ -55,9 +55,12 @@ internal class DbWriter private constructor(context: Context) {
             null,
             SQLiteDatabase.OPEN_READWRITE or SQLiteDatabase.CREATE_IF_NECESSARY
         )
-        db.execSQL("PRAGMA journal_mode=WAL")
-        db.execSQL("PRAGMA synchronous=NORMAL")
-        db.execSQL("PRAGMA foreign_keys=ON")
+        // PRAGMAs return a result row on Android's SQLite wrapper, so they must be
+        // executed via rawQuery. Using execSQL throws:
+        // "Queries can be performed using SQLiteDatabase query or rawQuery methods only."
+        db.rawQuery("PRAGMA journal_mode=WAL", null).use { it.moveToFirst() }
+        db.rawQuery("PRAGMA synchronous=NORMAL", null).use { it.moveToFirst() }
+        db.rawQuery("PRAGMA foreign_keys=ON", null).use { it.moveToFirst() }
         ensureImportAuditTable()
     }
 
@@ -227,6 +230,7 @@ internal class DbWriter private constructor(context: Context) {
         val now = isoNow()
         val appCategory = lookupMerchantCategory(tx.counterparty)
             ?: SmsParserConfig.refineAppCategory(tx.category, tx.counterparty, tx.amount)
+        Log.d(TAG, "Insert ${tx.mpesaCode} ${tx.category} -> $appCategory amount=${tx.amount} date=${tx.date} cp=${tx.counterparty}")
         val dateIso = epochToIso(tx.date)
         val syncState = when (tx.parseRoute) {
             SmsParser.ParseRoute.DIRECT    -> "pending"
@@ -462,6 +466,19 @@ internal class DbWriter private constructor(context: Context) {
             "UPDATE import_audit SET outcome = 'dismissed' WHERE id IN ($placeholders)",
             ids.map { it.toString() }.toTypedArray()
         )
+    }
+
+    /** Clears all rows from the import audit log. The transactions table is untouched. */
+    fun clearAuditLog(): Int {
+        return try {
+            db.execSQL("DELETE FROM import_audit")
+            db.rawQuery("SELECT changes()", null).use { c ->
+                if (c.moveToFirst()) c.getInt(0) else 0
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "clearAuditLog failed: ${e.message}", e)
+            0
+        }
     }
 
     fun getQuarantinedById(id: Long): Map<String, Any?>? {

@@ -124,6 +124,13 @@ class SmsReceiverModule : Module() {
             DbWriter.getInstance(ctx).getAuditLog(limit.coerceIn(1, 500))
         }
 
+        // ── clearAuditLog ─────────────────────────────────────────────────────
+
+        AsyncFunction("clearAuditLog") {
+            val ctx = appContext.reactContext ?: throw CodedException("no_context")
+            DbWriter.getInstance(ctx).clearAuditLog()
+        }
+
         // ── getRecentRejections ───────────────────────────────────────────────
 
         AsyncFunction("getRecentRejections") { limit: Int ->
@@ -306,6 +313,12 @@ class SmsReceiverModule : Module() {
                 .edit()
                 .putFloat(SmsProcessWorker.KEY_FULIZA_LIMIT, limitKes.toFloat())
                 .apply()
+            // Only re-arm the prompt when the user explicitly clears the limit.
+            // A positive save should keep the session guard engaged so a running
+            // import cannot reopen the modal immediately afterwards.
+            if (limitKes == 0.0) {
+                fulizaLimitNeededEmitted = false
+            }
         }
     }
 
@@ -340,11 +353,19 @@ class SmsReceiverModule : Module() {
     }
 
     internal fun emitFulizaLimitNeeded(outstandingKes: Double, type: String) {
+        // Debounce: the worker can process many Fuliza messages in quick succession
+        // during historical import or a flurry of realtime SMS. Only ask once.
+        if (fulizaLimitNeededEmitted) {
+            Log.d(TAG, "emitFulizaLimitNeeded skipped: already emitted")
+            return
+        }
         try {
             sendEvent(
                 "onFulizaLimitNeeded",
                 mapOf("outstandingKes" to outstandingKes, "category" to type)
             )
+            fulizaLimitNeededEmitted = true
+            Log.d(TAG, "emitFulizaLimitNeeded sent: outstanding=$outstandingKes type=$type")
         } catch (e: Exception) {
             Log.w(TAG, "emitFulizaLimitNeeded failed: ${e.message}")
         }
@@ -360,4 +381,28 @@ class SmsReceiverModule : Module() {
             if (info != null && (info.state == WorkInfo.State.SUCCEEDED || info.state == WorkInfo.State.FAILED || info.state == WorkInfo.State.CANCELLED)) {
                 return info
             }
-            Thread.sleep(400
+            Thread.sleep(400)
+        }
+        return null
+    }
+
+    companion object {
+        const val TAG = "LifeOS/SmsReceiverModule"
+
+        /**
+         * Singleton handle so WorkManager workers can emit events to JS.
+         * Null when no JS context is attached (app killed or not yet started).
+         */
+        @Volatile
+        var instance: SmsReceiverModule? = null
+            internal set
+
+        /**
+         * Process-level guard so onFulizaLimitNeeded is emitted at most once.
+         * Reset when the user saves a positive limit via setFulizaLimit.
+         */
+        @Volatile
+        var fulizaLimitNeededEmitted: Boolean = false
+            internal set
+    }
+}

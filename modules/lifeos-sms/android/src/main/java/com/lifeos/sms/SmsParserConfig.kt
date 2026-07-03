@@ -41,9 +41,9 @@ internal object SmsParserConfig {
     )
 
     /** Date with optional time — e.g. "3/7/25 at 2:30 PM", "3-7-2025 14:30", "2025-07-03",
-     *  "3-JUL-25", "Jul 3, 2025". */
+     *  "3-JUL-25", "Jul 3, 2025", "3 Jul 2025 at 2:30:15 PM". */
     val DATE_RE = Regex(
-        """(\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4}-\d{2}-\d{2}|\d{1,2}-[A-Za-z]{3,9}-\d{2,4}|[A-Za-z]{3,9}\s+\d{1,2},?\s+\d{2,4})(?:\s+(?:at\s+)?(\d{1,2}:\d{2}(?:\s*[AP]M)?))?""",
+        """(\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4}-\d{2}-\d{2}|\d{1,2}-[A-Za-z]{3,9}-\d{2,4}|[A-Za-z]{3,9}\s+\d{1,2},?\s+\d{2,4}|\d{1,2}\s+[A-Za-z]{3,9}\s+\d{2,4})(?:\s+(?:at\s+)?(\d{1,2}:\d{2}(?::\d{2})?(?:\s*[AP]M)?))?""",
         RegexOption.IGNORE_CASE,
     )
 
@@ -86,6 +86,12 @@ internal object SmsParserConfig {
         RegexOption.IGNORE_CASE,
     )
 
+    /** Fuliza limit assignment / increase notice: "your Fuliza M-PESA limit is Ksh X". */
+    val FULIZA_LIMIT_ASSIGNMENT_RE = Regex(
+        """your\s+fuliza\s+m-pesa\s+limit\s+is\s+(?:Ksh|KES)\s?([\d,]+(?:\.\d{1,2})?)""",
+        RegexOption.IGNORE_CASE,
+    )
+
     /** Detects reversal of a received payment (net effect = money leaves balance). */
     val RECEIVED_REVERSED_RE = Regex(
         """(?:your\s+m-pesa\s+transaction\s+)?(?:received|you have received)\s+(?:Ksh|KES)\s?[\d,.]+.+has been reversed""" +
@@ -104,7 +110,9 @@ internal object SmsParserConfig {
         "interest charged", "interest accrued", "maintenance fee",
         "overdraft balance", "overdraft notice", "fuliza service charge",
         "overdue charge", "late payment fee", "rollover fee", "penalty fee",
-        "processing fee charged", "m-pesa statement",
+        "processing fee charged",
+        // Keep generic balance-check responses out of the ledger.
+        "your fuliza m-pesa balance",
     )
 
     // ─── Category → app category mapping ──────────────────────────────
@@ -139,10 +147,13 @@ internal object SmsParserConfig {
 
         val cp = counterparty.lowercase().replace(WS_RE, " ")
 
-        // Always keep income/savings/withdrawal/fuliza/reversal as-is — no merchant override
+        // Always keep unambiguous M-Pesa semantic types as-is — no merchant override
+        // and no amount heuristic. This mirrors CategoryInferenceEngine.infer() in the
+        // Kotlin reference, where SENT -> Transfer and AIRTIME -> Airtime directly.
         if (category == SmsCategory.RECEIVED || category == SmsCategory.DEPOSIT ||
             category == SmsCategory.WITHDRAW  || category == SmsCategory.LOAN   ||
-            category == SmsCategory.FULIZA_CHARGE || category == SmsCategory.REVERSED
+            category == SmsCategory.FULIZA_CHARGE || category == SmsCategory.REVERSED ||
+            category == SmsCategory.SENT || category == SmsCategory.AIRTIME
         ) return base
 
         return when {
@@ -233,24 +244,13 @@ internal object SmsParserConfig {
 
     /**
      * Amount-based fallback categorization for expenses when no merchant match.
-     * Mirrors the Kotlin reference (`CategoryInferenceEngine.amountHeuristic`).
+     *
+     * The previous amount-band heuristic (<=50 -> airtime, <=500 -> food, etc.)
+     * was miscategorising small BUY_GOODS / SENT transactions as airtime. We now
+     * trust the parser's semantic category instead of guessing from the amount.
      */
     private fun amountHeuristicCategory(amount: Double, category: SmsCategory): String {
-        val isExpense = when (category) {
-            SmsCategory.SENT, SmsCategory.AIRTIME, SmsCategory.PAYBILL,
-            SmsCategory.BUY_GOODS, SmsCategory.WITHDRAW -> true
-            else -> false
-        }
-        if (!isExpense) {
-            return if (amount >= 30_000.0) "salary" else APP_CATEGORY[category] ?: "uncategorized"
-        }
-        return when {
-            amount <= 50.0    -> "airtime"
-            amount <= 500.0   -> "food"
-            amount <= 2_000.0 -> "shopping"
-            amount <= 8_000.0 -> "utilities"
-            else              -> "transfer"
-        }
+        return APP_CATEGORY[category] ?: "uncategorized"
     }
 
     // Extension helper — avoids a chain of separate contains() calls

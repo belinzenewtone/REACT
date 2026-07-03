@@ -150,6 +150,11 @@ export async function getAuditLog(limit = 100): Promise<AuditEntry[]> {
   return LifeosSmsModule?.getAuditLog(limit) ?? [];
 }
 
+/** Clear the import audit log. Transactions are not affected. */
+export async function clearAuditLog(): Promise<void> {
+  return LifeosSmsModule?.clearAuditLog();
+}
+
 /** Retrieve recent parse rejections from the in-memory ring buffer (default 20). */
 export async function getRecentRejections(limit = 20): Promise<RejectionEntry[]> {
   return LifeosSmsModule?.getRecentRejections(limit) ?? [];

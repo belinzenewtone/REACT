@@ -59,7 +59,7 @@ const defaultSettings: AppSettings = {
   },
   lockTimeoutMinutes: 5,
   defaultTransactionCategory: 'uncategorized',
-  fulizaLimit: 10000,
+  fulizaLimit: 0,
   hapticFeedback: true,
   screenLockEnabled: false,
   pinCode: '',
@@ -123,6 +123,7 @@ export const useAppStore = create<AppState>()(
     }),
     {
       name: 'app-store',
+      version: 1,
       storage: createJSONStorage(() => fileStorage),
       partialize: (state) => ({
         hasCompletedOnboarding: state.hasCompletedOnboarding,
@@ -133,6 +134,15 @@ export const useAppStore = create<AppState>()(
         onboardingGoal: state.onboardingGoal,
         firedBudgetAlerts: state.firedBudgetAlerts,
       }),
+      migrate: (persistedState: any, version) => {
+        // v0 -> v1: the old hardcoded Fuliza default (10000) was a sentinel for
+        // "not configured". Reset it so the user is prompted for their real limit
+        // when Fuliza activity is detected.
+        if (version < 1 && persistedState?.settings?.fulizaLimit === 10000) {
+          persistedState.settings.fulizaLimit = 0;
+        }
+        return persistedState as AppState;
+      },
       onRehydrateStorage: () => (state) => {
         // Require the PIN immediately on cold start (before first render of app content)
         // if screen lock is on, so there's no flash of unlocked content.

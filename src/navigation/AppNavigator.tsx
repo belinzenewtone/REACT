@@ -104,6 +104,9 @@ export function AppNavigator() {
   } = useAppStore();
   const [dbReady, setDbReady] = useState(false);
   const [fulizaModalVisible, setFulizaModalVisible] = useState(false);
+  // Once the user has seen and acted on the Fuliza prompt in this session,
+  // ignore further native events so a long-running import doesn't reopen it.
+  const hasHandledFulizaPrompt = useRef(false);
   const appState = useRef(AppState.currentState);
   const armedForLock = useRef(false);
   const backgroundedAt = useRef<number | null>(null);
@@ -243,12 +246,15 @@ export function AppNavigator() {
       useDataVersion.getState().bump();
 
       // Heads-up notification for the auto-imported transaction, gated by
-      // the user's notification preferences.
+      // the user's notification preferences. Skip Fuliza fee/charge notices —
+      // they are service debits, not user-initiated transactions, and can fire
+      // every midnight, which feels like "SMS everywhere".
       const s = useAppStore.getState().settings;
       if (
         s.notificationsEnabled &&
         s.notificationTypes?.transactionAlerts !== false &&
-        tx?.mpesaCode
+        tx?.mpesaCode &&
+        tx.transactionType !== 'fuliza'
       ) {
         fireNewTransactionAlert(
           tx.mpesaCode,
@@ -271,14 +277,18 @@ export function AppNavigator() {
   useEffect(() => {
     if (!dbReady || !hasHydrated) return;
     const sub = addFulizaLimitNeededListener(() => {
+      if (hasHandledFulizaPrompt.current) return;
       const s = useAppStore.getState().settings;
       // Only prompt when the user hasn't configured a limit.
-      if (!s.fulizaLimit || s.fulizaLimit <= 0) setFulizaModalVisible(true);
+      if (!s.fulizaLimit || s.fulizaLimit <= 0) {
+        setFulizaModalVisible(true);
+      }
     });
     return () => sub.remove();
   }, [dbReady, hasHydrated]);
 
   const handleFulizaLimitSave = (limit: number) => {
+    hasHandledFulizaPrompt.current = true;
     setFulizaModalVisible(false);
     // Native first — the background worker reads SharedPreferences, not JS state.
     setFulizaLimit(limit)
@@ -289,6 +299,11 @@ export function AppNavigator() {
         // Still persist in JS; bootstrap pushes JS → native on next launch.
         useAppStore.setState((state) => ({ settings: { ...state.settings, fulizaLimit: limit } }));
       });
+  };
+
+  const handleFulizaLimitCancel = () => {
+    hasHandledFulizaPrompt.current = true;
+    setFulizaModalVisible(false);
   };
 
   // Cold start is handled synchronously during store rehydration (see useAppStore).
@@ -340,7 +355,7 @@ export function AppNavigator() {
       visible={fulizaModalVisible}
       currentLimit={settings.fulizaLimit ?? 0}
       onSave={handleFulizaLimitSave}
-      onCancel={() => setFulizaModalVisible(false)}
+      onCancel={handleFulizaLimitCancel}
     />
     <NavigationContainer theme={NAV_THEME}>
       <Stack.Navigator

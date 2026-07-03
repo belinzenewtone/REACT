@@ -53,8 +53,12 @@ internal object SmsDedupeEngine {
             return Result.DUPLICATE_SEMANTIC_HASH
         }
 
-        // Tier 4: Heuristic time-window match
-        if (db.existsPotentialDuplicate(tx.amount, tx.counterparty ?: "", tx.date)) {
+        // Tier 4: Heuristic time-window match.
+        // Skip for categories where multiple identical small purchases in quick
+        // succession are normal (e.g. buying airtime twice within 5 minutes).
+        if (tx.category != SmsParserConfig.SmsCategory.AIRTIME &&
+            db.existsPotentialDuplicate(tx.amount, tx.counterparty ?: "", tx.date)
+        ) {
             return Result.DUPLICATE_HEURISTIC
         }
 

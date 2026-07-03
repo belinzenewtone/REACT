@@ -42,6 +42,19 @@ class SmsProcessWorker(
                 return@withContext Result.success()
             }
 
+            // Stage 0a: Fuliza limit assignment SMS has no transaction code, but
+            // tells us the user's real limit. Capture it before the parser rejects
+            // the message for "no_code".
+            SmsParser.extractFulizaLimit(smsBody)?.let { assignedLimit ->
+                if (getFulizaLimit() <= 0f && assignedLimit > 0.0) {
+                    applicationContext.getSharedPreferences(SmsReceiver.PREFS_NAME, Context.MODE_PRIVATE)
+                        .edit()
+                        .putFloat(KEY_FULIZA_LIMIT, assignedLimit.toFloat())
+                        .apply()
+                    db.insertAudit(null, smsBody, assignedLimit, "Fuliza M-PESA", "fuliza_limit_assigned")
+                }
+            }
+
             val parseResult = SmsParser.parse(smsBody)
 
             if (parseResult is SmsParser.SmsParseResult.Error) {

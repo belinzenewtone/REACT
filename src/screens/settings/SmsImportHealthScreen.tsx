@@ -18,6 +18,7 @@ import { GlassCard } from '../../components/common/GlassCard';
 import {
   getStats,
   getAuditLog,
+  clearAuditLog,
   getRecentRejections,
   getReceiverStatus,
   importHistoricalSms,
@@ -135,7 +136,7 @@ export function SmsImportHealthScreen() {
     try {
       const [s, entries, recentRejections, receiverStatus, exempt] = await Promise.all([
         getStats(),
-        getAuditLog(100),
+        getAuditLog(10),
         getRecentRejections(20),
         getReceiverStatus(),
         isIgnoringBatteryOptimizations(),
@@ -220,6 +221,29 @@ export function SmsImportHealthScreen() {
     } finally {
       setRetrying(false);
     }
+  };
+
+  const handleClearAudit = () => {
+    Alert.alert(
+      'Clear import log?',
+      'This removes the audit history shown here. Your imported transactions are not affected.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Clear',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await clearAuditLog();
+              useDataVersion.getState().bump();
+              await load();
+            } catch (e: any) {
+              Alert.alert('Clear failed', e?.message ?? 'Unknown error');
+            }
+          },
+        },
+      ]
+    );
   };
 
   const totalProcessed = (stats?.totalImported ?? 0) + (stats?.totalDuplicates ?? 0) + (stats?.totalFailed ?? 0) + (stats?.totalQuarantined ?? 0);
@@ -441,6 +465,12 @@ export function SmsImportHealthScreen() {
                 </View>
               )}
             </View>
+            {auditEntries.length > 0 && (
+              <TouchableOpacity onPress={handleClearAudit} style={styles.clearBtn}>
+                <Ionicons name="trash-outline" size={16} color={colors.danger} />
+                <Text style={[styles.clearBtnText, { color: colors.danger }]}>Clear</Text>
+              </TouchableOpacity>
+            )}
           </View>
           <View style={[styles.divider, { backgroundColor: colors.border }]} />
           {loading && auditEntries.length === 0 ? (
@@ -562,6 +592,8 @@ const styles = StyleSheet.create({
   actionBtnText: { fontSize: typography.sizes.sm, fontWeight: typography.weights.medium },
   auditHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   auditTitleRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  clearBtn: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  clearBtnText: { fontSize: typography.sizes.sm, fontWeight: typography.weights.medium },
   auditTitle: { fontSize: typography.sizes.base, fontWeight: typography.weights.semibold },
   badge: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: borderRadius.full },
   badgeText: { fontSize: typography.sizes.xs, fontWeight: typography.weights.semibold },

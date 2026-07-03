@@ -131,7 +131,12 @@ internal object SmsParser {
         DateTimeFormatter.ofPattern("d-M-yyyy hh:mm a", Locale.ENGLISH),
         DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm", Locale.ENGLISH),
         DateTimeFormatter.ofPattern("yyyy-MM-dd H:mm", Locale.ENGLISH),
-        // Month-name variants: "3-JUL-25", "Jul 3, 2025"
+        // With seconds
+        DateTimeFormatter.ofPattern("d/M/yy HH:mm:ss", Locale.ENGLISH),
+        DateTimeFormatter.ofPattern("d/M/yyyy HH:mm:ss", Locale.ENGLISH),
+        DateTimeFormatter.ofPattern("d-M-yy HH:mm:ss", Locale.ENGLISH),
+        DateTimeFormatter.ofPattern("d-M-yyyy HH:mm:ss", Locale.ENGLISH),
+        // Month-name variants: "3-JUL-25", "Jul 3, 2025", "3 Jul 2025"
         DateTimeFormatter.ofPattern("d-MMM-yy h:mm a", Locale.ENGLISH),
         DateTimeFormatter.ofPattern("d-MMM-yyyy h:mm a", Locale.ENGLISH),
         DateTimeFormatter.ofPattern("d-MMM-yy hh:mm a", Locale.ENGLISH),
@@ -140,6 +145,10 @@ internal object SmsParser {
         DateTimeFormatter.ofPattern("MMM d, yyyy hh:mm a", Locale.ENGLISH),
         DateTimeFormatter.ofPattern("MMM dd, yyyy h:mm a", Locale.ENGLISH),
         DateTimeFormatter.ofPattern("MMM dd, yyyy hh:mm a", Locale.ENGLISH),
+        DateTimeFormatter.ofPattern("d MMM yy h:mm a", Locale.ENGLISH),
+        DateTimeFormatter.ofPattern("d MMM yyyy h:mm a", Locale.ENGLISH),
+        DateTimeFormatter.ofPattern("d MMM yy hh:mm a", Locale.ENGLISH),
+        DateTimeFormatter.ofPattern("d MMM yyyy hh:mm a", Locale.ENGLISH),
     )
     private val DATE_ONLY_FORMATTERS = listOf(
         DateTimeFormatter.ofPattern("d/M/yy", Locale.ENGLISH),
@@ -151,6 +160,8 @@ internal object SmsParser {
         DateTimeFormatter.ofPattern("d-MMM-yyyy", Locale.ENGLISH),
         DateTimeFormatter.ofPattern("MMM d, yyyy", Locale.ENGLISH),
         DateTimeFormatter.ofPattern("MMM dd, yyyy", Locale.ENGLISH),
+        DateTimeFormatter.ofPattern("d MMM yy", Locale.ENGLISH),
+        DateTimeFormatter.ofPattern("d MMM yyyy", Locale.ENGLISH),
     )
 
     // ── Pre-compiled regex constants (never allocate Regex inside a parse call) ──
@@ -192,6 +203,16 @@ internal object SmsParser {
         return sms.contains("MPESA", ignoreCase = true) ||
             sms.contains("M-PESA", ignoreCase = true) ||
             (SmsParserConfig.CODE_RE.containsMatchIn(sms.trim()) && SmsParserConfig.AMOUNT_RE.containsMatchIn(sms))
+    }
+
+    /**
+     * Extracts a Fuliza limit assignment from an opt-in or limit-increase SMS.
+     * Returns null if the message is not a limit-assignment notice.
+     */
+    fun extractFulizaLimit(sms: String): Double? {
+        return SmsParserConfig.FULIZA_LIMIT_ASSIGNMENT_RE.find(sms)
+            ?.groupValues?.get(1)?.replace(",", "")?.toDoubleOrNull()
+            ?.takeIf { it >= 0 }
     }
 
     /**
@@ -399,37 +420,49 @@ internal object SmsParser {
         SmsParserConfig.FEE_RE.find(body)
             ?.groupValues?.get(1)?.replace(",", "")?.toDoubleOrNull()
 
-    private fun parseDate(body: String): Long {
+    private fun parseDate(body: String, receivedAtMs: Long): Long {
         return try {
-            val m = SmsParserConfig.DATE_RE.find(body) ?: return System.currentTimeMillis()
-            val datePart = m.groupValues[1]
-            val timePart = m.groupValues.getOrNull(2)?.takeIf { it.isNotBlank() }
-            if (timePart != null) {
-                val combined = "$datePart $timePart"
-                DATE_TIME_FORMATTERS.firstNotNullOfOrNull { fmt ->
-                    runCatching {
-                        LocalDateTime.parse(combined, fmt)
-                            .atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
-                    }.getOrNull()
-                } ?: System.currentTimeMillis()
-            } else {
-                DATE_ONLY_FORMATTERS.firstNotNullOfOrNull { fmt ->
-                    runCatching {
-                        LocalDate.parse(datePart, fmt)
-                            .atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
-                    }.getOrNull()
-                } ?: System.currentTimeMillis()
-            }
+            // Try every date match in the SMS, not just the first one. Some messages contain
+            // multiple dates (e.g. a "due on" date before the transaction date), and the first
+            // match may be in a format we cannot parse. Use the SMS received timestamp as the
+            // final fallback instead of "now" so Fuliza repayment notices without an embedded
+            // date do not all appear to have happened at import time.
+            SmsParserConfig.DATE_RE.findAll(body).firstNotNullOfOrNull { m ->
+                parseDateMatch(m.groupValues[1], m.groupValues.getOrNull(2)?.takeIf { it.isNotBlank() })
+            } ?: receivedAtMs
         } catch (_: Exception) {
-            System.currentTimeMillis()
+            receivedAtMs
+        }
+    }
+
+    private fun parseDateMatch(datePart: String, timePart: String?): Long? {
+        if (timePart != null) {
+            val combined = "$datePart $timePart"
+            DATE_TIME_FORMATTERS.firstNotNullOfOrNull { fmt ->
+                runCatching {
+                    LocalDateTime.parse(combined, fmt)
+                        .atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+                }.getOrNull()
+            }?.let { return it }
+        }
+        return DATE_ONLY_FORMATTERS.firstNotNullOfOrNull { fmt ->
+            runCatching {
+                LocalDate.parse(datePart, fmt)
+                    .atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
+            }.getOrNull()
         }
     }
 
     // ── Stage 5e: Semantic hash ───────────────────────────────────────────────
 
     /**
-     * SHA-256 hash over "category|amount|utc_date|normalized_counterparty".
-     * Stable across device reinstalls and timezones — enables cross-device deduplication.
+     * SHA-256 hash over "category|amount|utc_date_time|normalized_counterparty".
+     * Stable across device reinstalls and identical SMS re-deliveries.
+     *
+     * Previously used UTC date only, which falsely deduplicated legitimate same-day
+     * purchases (e.g. two KES 5 airtime buys). Using the full parsed timestamp
+     * keeps re-delivery detection intact while allowing multiple identical purchases
+     * on the same day.
      */
     internal fun buildSemanticHash(
         category: SmsParserConfig.SmsCategory,
@@ -437,8 +470,8 @@ internal object SmsParser {
         dateMs: Long,
         counterparty: String?,
     ): String {
-        val utcDate = java.time.Instant.ofEpochMilli(dateMs)
-            .atZone(java.time.ZoneId.of("UTC")).toLocalDate()
+        val utcDateTime = java.time.Instant.ofEpochMilli(dateMs)
+            .atZone(java.time.ZoneId.of("UTC")).toLocalDateTime()
         val normalizedCp = counterparty?.lowercase()
             ?.replace(SmsParserConfig.WS_RE, " ")
             ?.replace(COUNTERPARTY_TRAILING_PHONE, "")
@@ -446,7 +479,7 @@ internal object SmsParser {
             ?.replace(COUNTERPARTY_TRAILING_DATE, "")
             ?.trim()
             .orEmpty()
-        val key = "${category.name}|${"%.2f".format(amount)}|$utcDate|$normalizedCp"
+        val key = "${category.name}|${"%.2f".format(amount)}|$utcDateTime|$normalizedCp"
         return "sem_${sha256(key).take(16)}"
     }
 
@@ -485,6 +518,11 @@ internal object SmsParser {
     /**
      * Parse a single M-Pesa SMS body through the 6-stage pipeline.
      *
+     * @param sms           Raw SMS body.
+     * @param receivedAtMs  Timestamp when the SMS was received (from the SMS provider). Used as a
+     *                      fallback when the body does not contain a parseable transaction date so
+     *                      that Fuliza repayments and other notices do not all appear "today".
+     *
      * Rejection reasons:
      *  "not_mpesa"         — no M-Pesa signal
      *  "fuliza_notice"     — Fuliza service/fee notice, not a real transaction
@@ -493,7 +531,7 @@ internal object SmsParser {
      *  "no_amount"         — no positive amount extractable
      *  "parse_exception:…" — unexpected exception
      */
-    fun parse(sms: String): SmsParseResult {
+    fun parse(sms: String, receivedAtMs: Long = System.currentTimeMillis()): SmsParseResult {
         return try {
             val body = sms.replace(SmsParserConfig.WS_RE, " ").trim()
 
@@ -534,7 +572,7 @@ internal object SmsParser {
             val normalizedBody = normalizeForHash(body)
             val sourceHash = sha256(normalizedBody)
             val match = detectRule(body) ?: run {
-                val date = parseDate(body)
+                val date = parseDate(body, receivedAtMs)
                 val balance = parseBalance(body)
                 val fee = parseFee(body)
                 val confidence = scoreConfidence(
@@ -592,7 +630,7 @@ internal object SmsParser {
             }
 
             // Stage 5c: Date + semantic hash (needed for scoring and output)
-            val date = parseDate(body)
+            val date = parseDate(body, receivedAtMs)
             val semanticHash = buildSemanticHash(match.rule.category, finalAmount, date, counterparty)
 
             // Stage 5d: Weighted confidence score

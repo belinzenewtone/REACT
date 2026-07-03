@@ -2,7 +2,7 @@
   "expo": {
     "name": "RFINAL",
     "slug": "RFINAL",
-    "version": "1.0.19",
+    "version": "1.0.41",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
@@ -49,15 +49,16 @@
         "expo-build-properties",
         {
           "android": {
-            "newArchEnabled": true,
-            "enableCoreLibraryDesugaring": true
+            "newArchEnabled": true
           },
           "ios": {
             "newArchEnabled": true
           }
         }
       ],
-      "@react-native-community/datetimepicker"
+      "@react-native-community/datetimepicker",
+      "./plugins/withAllowBackup.js",
+      "./plugins/withDesugaring.js"
     ],
     "extra": {
       "eas": {

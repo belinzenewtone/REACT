@@ -70,7 +70,9 @@ class SmsImportWorker(
                 )
             }
 
-            val bodies = mutableListOf<String>()
+            data class SmsCandidate(val body: String, val receivedAtMs: Long)
+            val candidates = mutableListOf<SmsCandidate>()
+            val seenBodyHashes = mutableSetOf<String>()
             val dedupeCtx = SmsDedupeEngine.Context()
             // Pull existing DB dedup keys into memory ONCE. Cuts ~30k
             // per-row DB round-trips out of a 10k-message import.
@@ -100,19 +102,23 @@ class SmsImportWorker(
             } else {
                 phase1Cursor.use { cursor ->
                     val bodyIdx = cursor.getColumnIndexOrThrow("body")
+                    val dateIdx = cursor.getColumnIndexOrThrow("date")
                     while (cursor.moveToNext()) {
                         val body = cursor.getString(bodyIdx) ?: continue
+                        val receivedAtMs = cursor.getLong(dateIdx)
                         scanned++
 
                         if (!SmsParser.isMpesaSms(body)) continue
 
-                        // Fast within-batch source-hash check before expensive parse
+                        // Fast within-batch source-hash check before expensive parse.
+                        // Use a separate set from the dedupe engine context; the engine
+                        // must only see hashes of transactions that were actually inserted.
                         val preHash = SmsParser.sha256(SmsParser.normalizeForHash(body))
-                        if (preHash in dedupeCtx.seenSourceHashes) {
+                        if (preHash in seenBodyHashes) {
                             duplicates++; continue
                         }
-                        dedupeCtx.seenSourceHashes.add(preHash)
-                        bodies.add(body)
+                        seenBodyHashes.add(preHash)
+                        candidates.add(SmsCandidate(body, receivedAtMs))
                         total++
                     }
                 }
@@ -136,18 +142,20 @@ class SmsImportWorker(
                 } else {
                     phase2Cursor.use { cursor ->
                         val bodyIdx = cursor.getColumnIndexOrThrow("body")
+                        val dateIdx = cursor.getColumnIndexOrThrow("date")
                         while (cursor.moveToNext()) {
                             val body = cursor.getString(bodyIdx) ?: continue
+                            val receivedAtMs = cursor.getLong(dateIdx)
                             scanned++
 
                             if (!SmsParser.isMpesaSms(body)) continue
 
                             val preHash = SmsParser.sha256(SmsParser.normalizeForHash(body))
-                            if (preHash in dedupeCtx.seenSourceHashes) {
+                            if (preHash in seenBodyHashes) {
                                 duplicates++; continue
                             }
-                            dedupeCtx.seenSourceHashes.add(preHash)
-                            bodies.add(body)
+                            seenBodyHashes.add(preHash)
+                            candidates.add(SmsCandidate(body, receivedAtMs))
                             total++
                         }
                     }
@@ -156,16 +164,33 @@ class SmsImportWorker(
 
             Log.i(TAG, "SMS scan candidates: total=$total scanned=$scanned")
 
+            // Pre-scan for Fuliza limit-assignment SMSes. These carry no transaction code
+            // but tell us the user's real limit; capture them before the parser rejects
+            // them as "no_code".
+            candidates.forEach { candidate ->
+                SmsParser.extractFulizaLimit(candidate.body)?.let { assignedLimit ->
+                    if (getFulizaLimit() <= 0f && assignedLimit > 0.0) {
+                        applicationContext.getSharedPreferences(SmsReceiver.PREFS_NAME, Context.MODE_PRIVATE)
+                            .edit()
+                            .putFloat(SmsProcessWorker.KEY_FULIZA_LIMIT, assignedLimit.toFloat())
+                            .apply()
+                        db.insertAudit(null, candidate.body, assignedLimit, "Fuliza M-PESA", "fuliza_limit_assigned")
+                    }
+                }
+            }
+
             // Parse all candidate SMS bodies in parallel (CPU-bound), then insert sequentially.
-            val parsed = bodies.map { body ->
-                async(Dispatchers.Default) { body to SmsParser.parse(body) }
+            val parsed = candidates.map { candidate ->
+                async(Dispatchers.Default) { candidate to SmsParser.parse(candidate.body, candidate.receivedAtMs) }
             }.awaitAll()
 
             // Wrap DB writes in a transaction for bulk performance.
             db.beginTransaction()
             try {
-                for ((body, result) in parsed) {
+                for ((candidate, result) in parsed) {
+                    val body = candidate.body
                     if (result is SmsParser.SmsParseResult.Error) {
+                        Log.w(TAG, "Parse failed: ${result.error.reason}")
                         db.insertAudit(null, body, null, null, "parse_failed:${result.error.reason}", result.error.reason)
                         failed++; continue
                     }
@@ -175,7 +200,10 @@ class SmsImportWorker(
                     // FULIZA_CHARGE: always update outstanding balance. If the message
                     // carries an access/maintenance fee, also record it as a ledger transaction.
                     if (tx.category == SmsParserConfig.SmsCategory.FULIZA_CHARGE) {
-                        tx.fulizaOutstandingKes?.let { db.setFulizaOutstanding(it) }
+                        tx.fulizaOutstandingKes?.let {
+                            db.setFulizaOutstanding(it)
+                            maybeNotifyFulizaLimitNeeded(it, "charge")
+                        }
 
                         val fee = tx.fee
                         if (fee != null && fee > 0.0) {
@@ -208,15 +236,18 @@ class SmsImportWorker(
                             val outstanding = userLimit - tx.fulizaAvailableLimitKes
                             db.setFulizaOutstanding(outstanding.coerceAtLeast(0.0))
                         } else {
-                            // No user limit set: decrement the active outstanding balance by the repayment amount.
+                            // No user limit set: decrement the active outstanding balance by the repayment amount
+                            // and prompt the user to enter their real Fuliza limit.
                             val current = db.getFulizaOutstanding()
                             db.setFulizaOutstanding((current - tx.amount).coerceAtLeast(0.0))
+                            maybeNotifyFulizaLimitNeeded(tx.fulizaAvailableLimitKes, "repayment")
                         }
                     }
 
                     // 4-tier deduplication
                     val dupReason = SmsDedupeEngine.check(dedupeCtx, tx, db)
                     if (dupReason != SmsDedupeEngine.Result.NEW) {
+                        Log.d(TAG, "Duplicate detected: ${dupReason.name.lowercase()} code=${tx.mpesaCode}")
                         db.insertAudit(tx.mpesaCode, body, tx.amount, tx.counterparty, "duplicate_detected:${dupReason.name.lowercase()}")
                         duplicates++; SmsDedupeEngine.markSeen(dedupeCtx, tx)
                         continue
@@ -276,6 +307,13 @@ class SmsImportWorker(
             .getFloat(SmsProcessWorker.KEY_FULIZA_LIMIT, 0f)
     }
 
+    private fun maybeNotifyFulizaLimitNeeded(outstandingKes: Double?, type: String) {
+        val outstanding = outstandingKes ?: return
+        if (getFulizaLimit() <= 0f) {
+            SmsReceiverModule.instance?.emitFulizaLimitNeeded(outstanding, type)
+        }
+    }
+
     override suspend fun getForegroundInfo() = buildForegroundInfo("Importing M-Pesa history…")
 
     private fun buildForegroundInfo(text: String): ForegroundInfo {
@@ -304,4 +342,20 @@ class SmsImportWorker(
                 as android.app.NotificationManager
             if (nm.getNotificationChannel(SmsProcessWorker.NOTIF_CHANNEL_ID) == null) {
                 nm.createNotificationChannel(
-        
+                    android.app.NotificationChannel(
+                        SmsProcessWorker.NOTIF_CHANNEL_ID,
+                        "SMS Import",
+                        android.app.NotificationManager.IMPORTANCE_LOW,
+                    )
+                )
+            }
+        }
+    }
+
+    companion object {
+        const val KEY_FROM_MS  = "from_ms"
+        const val KEY_TO_MS    = "to_ms"
+        const val NOTIF_ID_IMPORT = 9002
+        const val TAG = "LifeOS/SmsImportWorker"
+    }
+}

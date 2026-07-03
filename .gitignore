@@ -39,9 +39,13 @@ yarn-error.*
 # typescript
 *.tsbuildinfo
 
+# logs
+*.log
+
 # generated native folders
 /ios
 /android
+modules/lifeos-sms/android/build/
 
 # local-expo-build
 keystore.properties
