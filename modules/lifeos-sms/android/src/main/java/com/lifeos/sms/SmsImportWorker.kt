@@ -43,7 +43,9 @@ class SmsImportWorker(
         )
 
         val db = DbWriter.getInstance(applicationContext)
-        var total = 0; var imported = 0; var duplicates = 0; var quarantined = 0; var failed = 0
+        var scanned = 0     // all rows examined
+            var total = 0       // M-Pesa candidate bodies (matches reference semantics)
+            var imported = 0; var duplicates = 0; var quarantined = 0; var failed = 0
 
         // Notify foreground immediately (required before long work begins)
         setForeground(buildForegroundInfo("Scanning M-Pesa messages…"))
@@ -61,13 +63,6 @@ class SmsImportWorker(
                 )
             }
 
-            // Scan all SMS in the date window and content-filter for M-Pesa signals.
-            // Address-based filters (e.g. address LIKE "%MPESA%") miss messages sent
-            // from short codes or devices that store the sender differently, so we
-            // rely on the same cheap body signal check the parser uses.
-            val selection = "date >= ? AND date <= ?"
-            val selArgs = arrayOf(fromMs.toString(), toMs.toString())
-
             val bodies = mutableListOf<String>()
             val dedupeCtx = SmsDedupeEngine.Context()
             // Pull existing DB dedup keys into memory ONCE. Cuts ~30k
@@ -78,29 +73,81 @@ class SmsImportWorker(
                 dedupeCtx.seenSemanticHashes,
             )
 
-            applicationContext.contentResolver.query(
+            // Phase 1: use the same query the reference Kotlin app uses —
+            // address LIKE "%MPESA%" plus a date lower bound ONLY. The reference
+            // does not use an upper bound; adding one can exclude valid messages
+            // if the device's SMS clock differs from System.currentTimeMillis().
+            val selection = "address LIKE ? AND date >= ?"
+            val selArgs = arrayOf("%MPESA%", fromMs.coerceAtLeast(0L).toString())
+
+            val phase1Cursor = applicationContext.contentResolver.query(
                 "content://sms/inbox".toUri(),
                 arrayOf("_id", "body", "date", "address"),
                 selection,
                 selArgs,
                 "date DESC",
-            )?.use { cursor ->
-                val bodyIdx = cursor.getColumnIndexOrThrow("body")
-                while (cursor.moveToNext()) {
-                    val body = cursor.getString(bodyIdx) ?: continue
-                    total++
+            )
 
-                    if (!SmsParser.isMpesaSms(body)) continue
+            if (phase1Cursor == null) {
+                Log.w(TAG, "SMS content resolver returned null for address-filtered query (permission likely denied silently)")
+            } else {
+                phase1Cursor.use { cursor ->
+                    val bodyIdx = cursor.getColumnIndexOrThrow("body")
+                    while (cursor.moveToNext()) {
+                        val body = cursor.getString(bodyIdx) ?: continue
+                        scanned++
 
-                    // Fast within-batch source-hash check before expensive parse
-                    val preHash = SmsParser.sha256(SmsParser.normalizeForHash(body))
-                    if (preHash in dedupeCtx.seenSourceHashes) {
-                        duplicates++; continue
+                        if (!SmsParser.isMpesaSms(body)) continue
+
+                        // Fast within-batch source-hash check before expensive parse
+                        val preHash = SmsParser.sha256(SmsParser.normalizeForHash(body))
+                        if (preHash in dedupeCtx.seenSourceHashes) {
+                            duplicates++; continue
+                        }
+                        dedupeCtx.seenSourceHashes.add(preHash)
+                        bodies.add(body)
+                        total++
                     }
-                    dedupeCtx.seenSourceHashes.add(preHash)
-                    bodies.add(body)
                 }
             }
+
+            // Phase 2 fallback: if the address-filtered scan found no M-Pesa bodies,
+            // some devices/OEMs store M-Pesa under a short code or capitalisation that
+            // doesn't match the address filter. Scan the whole inbox by body signal.
+            if (total == 0) {
+                Log.d(TAG, "Address-filtered SMS scan found 0 M-Pesa bodies; falling back to body-signal scan")
+                val phase2Cursor = applicationContext.contentResolver.query(
+                    "content://sms/inbox".toUri(),
+                    arrayOf("_id", "body", "date", "address"),
+                    "date >= ?",
+                    arrayOf(fromMs.coerceAtLeast(0L).toString()),
+                    "date DESC",
+                )
+
+                if (phase2Cursor == null) {
+                    Log.w(TAG, "SMS content resolver returned null for body-signal fallback query")
+                } else {
+                    phase2Cursor.use { cursor ->
+                        val bodyIdx = cursor.getColumnIndexOrThrow("body")
+                        while (cursor.moveToNext()) {
+                            val body = cursor.getString(bodyIdx) ?: continue
+                            scanned++
+
+                            if (!SmsParser.isMpesaSms(body)) continue
+
+                            val preHash = SmsParser.sha256(SmsParser.normalizeForHash(body))
+                            if (preHash in dedupeCtx.seenSourceHashes) {
+                                duplicates++; continue
+                            }
+                            dedupeCtx.seenSourceHashes.add(preHash)
+                            bodies.add(body)
+                            total++
+                        }
+                    }
+                }
+            }
+
+            Log.i(TAG, "SMS scan candidates: total=$total scanned=$scanned")
 
             // Parse all candidate SMS bodies in parallel (CPU-bound), then insert sequentially.
             val parsed = bodies.map { body ->
