@@ -2,7 +2,7 @@
   "expo": {
     "name": "RFINAL",
     "slug": "RFINAL",
-    "version": "1.0.41",
+    "version": "1.0.43",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
