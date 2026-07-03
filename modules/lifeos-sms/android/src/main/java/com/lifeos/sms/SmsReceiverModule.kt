@@ -266,6 +266,33 @@ class SmsReceiverModule : Module() {
             )
         }
 
+        // ── Durable ingest queue ─────────────────────────────────────────────
+
+        // Queue health for Import Health: {pending, failed, oldestPendingAt}.
+        AsyncFunction("getIngestQueueStatus") {
+            val ctx = appContext.reactContext ?: return@AsyncFunction mapOf(
+                "pending" to 0L, "failed" to 0L, "oldestPendingAt" to null,
+            )
+            DbWriter.getInstance(ctx).getIngestQueueStats()
+        }
+
+        // Re-arm permanently-failed rows and drain the queue immediately.
+        AsyncFunction("retryIngestQueue") {
+            val ctx = appContext.reactContext ?: throw CodedException("no_context")
+            val requeued = DbWriter.getInstance(ctx).requeueFailedIngest()
+            IngestSweepWorker.drainNow(ctx)
+            mapOf("requeued" to requeued)
+        }
+
+        // Called from app bootstrap: register the 6-hourly sweep and drain any
+        // rows that accumulated while the app was closed/killed.
+        AsyncFunction("ensureIngestSweep") {
+            val ctx = appContext.reactContext ?: throw CodedException("no_context")
+            IngestSweepWorker.ensureScheduled(ctx)
+            IngestSweepWorker.drainNow(ctx)
+            null
+        }
+
         // ── Battery optimization ──────────────────────────────────────────────
         // The background receiver toggle doubles as the "run reliably in the
         // background" switch. OEM battery optimization (Doze, app standby,

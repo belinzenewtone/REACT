@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation, useFocusEffect } from '@react-navigation/native';
+import { useNavigation } from '@react-navigation/native';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useThemeColors } from '../../hooks/useThemeColors';
 import { spacing, typography, borderRadius } from '../../theme';
@@ -26,11 +26,14 @@ import {
   retryQuarantined,
   isIgnoringBatteryOptimizations,
   requestIgnoreBatteryOptimizations,
+  getIngestQueueStatus,
+  retryIngestQueue,
   type SmsStats,
   type AuditEntry,
   type RejectionEntry,
 } from '../../../modules/lifeos-sms';
 import { useDataVersion } from '../../store/dataVersion';
+import { useLiveQuery } from '../../hooks/useLiveQuery';
 
 function SectionCard({ title, children, colors }: { title?: string; children: React.ReactNode; colors: any }) {
   return (
@@ -173,25 +176,32 @@ export function SmsImportHealthScreen() {
   const [receiverEnabled, setReceiverEnabled] = useState(true);
   const [lastFireMs, setLastFireMs] = useState(0);
   const [batteryExempt, setBatteryExempt] = useState(true);
+  const [ingestQueue, setIngestQueue] = useState<{ pending: number; failed: number; oldestPendingAt: string | null }>({
+    pending: 0,
+    failed: 0,
+    oldestPendingAt: null,
+  });
+  const [dbIntegrityOk, setDbIntegrityOk] = useState(true);
   const [loading, setLoading] = useState(true);
   const [reconciling, setReconciling] = useState(false);
   const [retrying, setRetrying] = useState(false);
   // Subscribe to the global dataVersion so this screen refreshes automatically
   // when another surface (Finance import, real-time SmsReceiver, retry) bumps it.
   const dataVersion = useDataVersion((s) => s.version);
-  const loadedVersion = useRef(-1);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [s, entries, recentRejections, receiverStatus, exempt] = await Promise.all([
+      const [s, entries, recentRejections, receiverStatus, exempt, queueStatus] = await Promise.all([
         getStats(),
         getAuditLog(10),
         getRecentRejections(20),
         getReceiverStatus(),
         isIgnoringBatteryOptimizations(),
+        getIngestQueueStatus(),
       ]);
       setStats(s);
+      setIngestQueue(queueStatus);
       // Enrich imported audit rows with the real SMS date from the transactions
       // table so the health screen shows the message timestamp, not the import
       // processing time.
@@ -200,6 +210,13 @@ export function SmsImportHealthScreen() {
       setReceiverEnabled(receiverStatus.enabled);
       setLastFireMs(receiverStatus.lastFireMs);
       setBatteryExempt(exempt);
+      // Cheap SQLite self-check — surfaces file corruption before it bites.
+      try {
+        const integ = await db.getFirstAsync<{ integrity_check: string }>('PRAGMA integrity_check');
+        setDbIntegrityOk((integ?.integrity_check ?? 'ok') === 'ok');
+      } catch {
+        setDbIntegrityOk(true); // inconclusive — don't alarm
+      }
     } catch (e) {
       console.warn('SmsHealth load error', e);
     } finally {
@@ -207,32 +224,8 @@ export function SmsImportHealthScreen() {
     }
   }, [db]);
 
-  // Reload whenever the screen gains focus AND the global data version has
-  // advanced (avoids redundant reloads on every focus change).
-  useFocusEffect(
-    useCallback(() => {
-      if (dataVersion !== loadedVersion.current) {
-        loadedVersion.current = dataVersion;
-        load();
-      }
-    }, [dataVersion, load])
-  );
-
-  // First mount — always populate.
-  useEffect(() => {
-    if (loadedVersion.current === -1) {
-      loadedVersion.current = dataVersion;
-      load();
-    }
-  }, [dataVersion, load]);
-
-  // Realtime bump while the screen is already focused (e.g. SMS arrives mid-view).
-  useEffect(() => {
-    if (loadedVersion.current !== -1 && dataVersion !== loadedVersion.current) {
-      loadedVersion.current = dataVersion;
-      load();
-    }
-  }, [dataVersion, load]);
+  // Mount, focus-with-new-data, and realtime-bump reloads.
+  useLiveQuery(load);
 
   // Recompute "Active vs Idle" label as time passes even without new data.
   const [nowTick, setNowTick] = useState(Date.now());
@@ -392,6 +385,38 @@ export function SmsImportHealthScreen() {
                 Battery optimization is restricting background capture — tap to allow unrestricted battery
               </Text>
               <Ionicons name="chevron-forward" size={14} color={colors.warning} />
+            </TouchableOpacity>
+          )}
+          {!dbIntegrityOk && (
+            <View style={[styles.batteryWarn, { borderColor: colors.danger }]}>
+              <Ionicons name="warning-outline" size={16} color={colors.danger} />
+              <Text style={[styles.batteryWarnText, { color: colors.danger }]}>
+                Database integrity check failed — export your data now (Finance → Export) and reinstall
+              </Text>
+            </View>
+          )}
+          {(ingestQueue.pending > 0 || ingestQueue.failed > 0) && (
+            <TouchableOpacity
+              style={[styles.batteryWarn, { borderColor: ingestQueue.failed > 0 ? colors.danger : colors.warning }]}
+              onPress={async () => {
+                try {
+                  await retryIngestQueue();
+                  setIngestQueue(await getIngestQueueStatus());
+                } catch {}
+              }}
+            >
+              <Ionicons
+                name="layers-outline"
+                size={16}
+                color={ingestQueue.failed > 0 ? colors.danger : colors.warning}
+              />
+              <Text style={[styles.batteryWarnText, { color: ingestQueue.failed > 0 ? colors.danger : colors.warning }]}>
+                {`${ingestQueue.pending} queued`}
+                {ingestQueue.failed > 0 ? ` · ${ingestQueue.failed} failed` : ''}
+                {ingestQueue.oldestPendingAt ? ` · oldest ${formatTimestamp(ingestQueue.oldestPendingAt)}` : ''}
+                {' — tap to retry now'}
+              </Text>
+              <Ionicons name="chevron-forward" size={14} color={ingestQueue.failed > 0 ? colors.danger : colors.warning} />
             </TouchableOpacity>
           )}
         </SectionCard>

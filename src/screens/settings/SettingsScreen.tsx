@@ -238,7 +238,7 @@ export function SettingsScreen() {
               // so they can feel that it actually works.
               if (value) {
                 setTimeout(() => {
-                  import('../../utils/haptics').then((m) => m.haptic('success'));
+                  import('../../services/haptics').then((m) => m.haptic('success'));
                 }, 30);
               }
               setInfoMessage(value ? 'Haptics enabled' : 'Haptics disabled');

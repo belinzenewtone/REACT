@@ -11,6 +11,9 @@ import androidx.work.ExistingWorkPolicy
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.OutOfQuotaPolicy
 import androidx.work.WorkManager
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 /**
  * Static BroadcastReceiver registered in AndroidManifest — fires even when the
@@ -20,8 +23,13 @@ import androidx.work.WorkManager
  *  1. Extract full SMS from PDU messages
  *  2. Quick M-Pesa signal filter (cheap string check — no regex yet)
  *  3. Check background receiver enabled flag (SharedPreferences)
- *  4. Enqueue [SmsProcessWorker] as an expedited OneTimeWork task
- *     keyed by M-Pesa code so duplicate broadcasts are idempotent
+ *  4. Persist raw body to durable [sms_ingest_queue] on a background thread
+ *  5. Enqueue [SmsProcessWorker] keyed by queue row id so duplicate broadcasts
+ *     and sweep runs are race-free
+ *
+ * IMPORTANT: all DB and WorkManager work is moved off the main thread using
+ * [goAsync] + a coroutine. Opening SQLite inside [onReceive] directly causes
+ * ANRs and BroadcastReceiver timeouts on some devices.
  */
 class SmsReceiver : BroadcastReceiver() {
 
@@ -29,8 +37,7 @@ class SmsReceiver : BroadcastReceiver() {
         if (intent.action != Telephony.Sms.Intents.SMS_RECEIVED_ACTION) return
 
         val fullMessage = buildFullMessage(intent) ?: return
-        // Pre-filter — avoid WorkManager overhead for non-M-Pesa SMS.
-        // Uses the same signal check as the parser (keyword or code+amount).
+        // Pre-filter — avoid queue/WorkManager overhead for non-M-Pesa SMS.
         if (!SmsParser.isMpesaSms(fullMessage)) return
 
         // Respect the user's background receiver toggle
@@ -39,11 +46,57 @@ class SmsReceiver : BroadcastReceiver() {
             return
         }
 
-        // Parse just enough to get the code for the unique work key
-        val code = SmsParserConfig.CODE_RE.find(fullMessage)?.groupValues?.get(1) ?: "UNKNOWN"
+        // Keep the broadcast alive while we do durable IO off the main thread.
+        val pendingResult = goAsync()
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                processRealtimeSms(context, fullMessage)
+            } finally {
+                pendingResult.finish()
+            }
+        }
+    }
 
+    private suspend fun processRealtimeSms(context: Context, fullMessage: String) {
+        val db = DbWriter.getInstance(context)
+
+        // DURABILITY: persist the raw body BEFORE any parsing/worker scheduling.
+        // If the process dies at any later point, the periodic sweep worker
+        // re-drains this row — no message can be lost between receive & insert.
+        val queueId = try {
+            db.enqueueIngest(fullMessage)
+        } catch (e: Exception) {
+            Log.w(TAG, "enqueueIngest failed (processing continues in-flight): ${e.message}")
+            -1L
+        }
+
+        // Make sure the self-healing sweep is scheduled (idempotent — KEEP).
+        IngestSweepWorker.ensureScheduled(context)
+
+        if (queueId >= 0) {
+            // Key by queue row id so realtime and sweep workers are idempotent
+            // and race-free (the worker atomically claims the row).
+            enqueueProcessWorker(context, queueId)
+        } else {
+            // Queue write failed — best-effort in-flight processing.
+            // This should be extremely rare; if it happens repeatedly the user
+            // will see import failures in Import Health.
+            enqueueProcessWorker(context, -1L, fullMessage)
+        }
+
+        // Record the last time this receiver fired so the UI can show accurate status
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit()
+            .putLong(KEY_LAST_RECEIVER_FIRE_MS, System.currentTimeMillis())
+            .apply()
+
+        Log.d(TAG, "Enqueued realtime worker for queue row: $queueId")
+    }
+
+    private fun enqueueProcessWorker(context: Context, queueId: Long, body: String? = null) {
         val workData = Data.Builder()
-            .putString(SmsProcessWorker.KEY_SMS_BODY, fullMessage)
+            .putLong(SmsProcessWorker.KEY_QUEUE_ID, queueId)
+            .apply { body?.let { putString(SmsProcessWorker.KEY_SMS_BODY, it) } }
             .build()
 
         val request = OneTimeWorkRequestBuilder<SmsProcessWorker>()
@@ -57,18 +110,10 @@ class SmsReceiver : BroadcastReceiver() {
             .build()
 
         WorkManager.getInstance(context).enqueueUniqueWork(
-            "lifeos-realtime-$code",
-            ExistingWorkPolicy.KEEP,  // idempotent — ignore second broadcast of same code
+            "lifeos-realtime-$queueId",
+            ExistingWorkPolicy.KEEP, // idempotent — ignore second broadcast of same body
             request,
         )
-
-        // Record the last time this receiver fired so the UI can show accurate status
-        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .edit()
-            .putLong(KEY_LAST_RECEIVER_FIRE_MS, System.currentTimeMillis())
-            .apply()
-
-        Log.d(TAG, "Enqueued realtime worker for M-Pesa code: $code")
     }
 
     private fun buildFullMessage(intent: Intent): String? {

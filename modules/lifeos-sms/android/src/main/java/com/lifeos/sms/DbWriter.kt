@@ -62,6 +62,7 @@ internal class DbWriter private constructor(context: Context) {
         db.rawQuery("PRAGMA synchronous=NORMAL", null).use { it.moveToFirst() }
         db.rawQuery("PRAGMA foreign_keys=ON", null).use { it.moveToFirst() }
         ensureImportAuditTable()
+        ensureIngestQueueTable()
     }
 
     /**
@@ -112,6 +113,212 @@ internal class DbWriter private constructor(context: Context) {
             )
             """.trimIndent()
         )
+    }
+
+    // ─── Durable SMS ingest queue ─────────────────────────────────────────────
+    //
+    // Every incoming SMS is persisted here BEFORE any parsing happens, so a
+    // crash/kill between receive and ledger-insert can never lose a message.
+    // Rows are terminal-marked ('done') after processing — including duplicate/
+    // ignored/quarantined outcomes — and failed rows carry exponential
+    // next_retry_at timestamps drained by the periodic sweep worker.
+
+    private fun ensureIngestQueueTable() {
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS sms_ingest_queue (
+                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                body          TEXT NOT NULL,
+                body_hash     TEXT NOT NULL UNIQUE,
+                status        TEXT NOT NULL DEFAULT 'pending',
+                attempts      INTEGER NOT NULL DEFAULT 0,
+                last_error    TEXT,
+                received_at   TEXT NOT NULL DEFAULT (datetime('now')),
+                next_retry_at TEXT NOT NULL DEFAULT (datetime('now')),
+                claimed_at    TEXT
+            )
+            """.trimIndent()
+        )
+        db.execSQL(
+            "CREATE INDEX IF NOT EXISTS idx_ingest_pending ON sms_ingest_queue (status, next_retry_at)"
+        )
+    }
+
+    /**
+     * Persist an incoming SMS body. Returns the queue row id, or the existing
+     * row id when this exact body was already enqueued (duplicate broadcast),
+     * or -1 on failure. Idempotent on body hash.
+     */
+    fun enqueueIngest(body: String): Long {
+        val hash = sha256(body.trim())
+        try {
+            db.compileStatement(
+                "INSERT OR IGNORE INTO sms_ingest_queue (body, body_hash) VALUES (?, ?)"
+            ).use { stmt ->
+                stmt.bindString(1, body)
+                stmt.bindString(2, hash)
+                val rowId = stmt.executeInsert()
+                if (rowId >= 0) return rowId
+            }
+            // Already enqueued — return the existing id.
+            return db.rawQuery(
+                "SELECT id FROM sms_ingest_queue WHERE body_hash = ? LIMIT 1",
+                arrayOf(hash)
+            ).use { c -> if (c.moveToFirst()) c.getLong(0) else -1L }
+        } catch (e: Exception) {
+            Log.e(TAG, "enqueueIngest failed: ${e.message}", e)
+            return -1L
+        }
+    }
+
+    /** Terminal success — the message reached a final outcome (imported, duplicate, ignored, quarantined). */
+    fun markIngestDone(id: Long) {
+        if (id < 0) return
+        try {
+            db.execSQL(
+                "UPDATE sms_ingest_queue SET status = 'done', last_error = NULL, claimed_at = NULL WHERE id = ?",
+                arrayOf(id.toString())
+            )
+        } catch (e: Exception) {
+            Log.w(TAG, "markIngestDone failed: ${e.message}")
+        }
+    }
+
+    /**
+     * Transient failure — bump attempts and schedule an exponential retry
+     * (5min · 2^attempts, capped at 6h). After [maxAttempts] the row is marked
+     * 'failed' and only a manual Reconcile/Retry will pick it up.
+     */
+    fun markIngestFailed(id: Long, error: String?, maxAttempts: Int = 8) {
+        if (id < 0) return
+        try {
+            val attempts = db.rawQuery(
+                "SELECT attempts FROM sms_ingest_queue WHERE id = ?", arrayOf(id.toString())
+            ).use { c -> if (c.moveToFirst()) c.getInt(0) else 0 } + 1
+            val delayMin = minOf(5L shl (attempts - 1).coerceAtMost(10), 360L)
+            val status = if (attempts >= maxAttempts) "failed" else "pending"
+            db.execSQL(
+                """UPDATE sms_ingest_queue
+                   SET attempts = ?, status = ?, last_error = ?,
+                       next_retry_at = datetime('now', '+' || ? || ' minutes'),
+                       claimed_at = NULL
+                   WHERE id = ?""",
+                arrayOf(attempts.toString(), status, error?.take(200) ?: "", delayMin.toString(), id.toString())
+            )
+        } catch (e: Exception) {
+            Log.w(TAG, "markIngestFailed failed: ${e.message}")
+        }
+    }
+
+    /**
+     * Atomically claim an ingest row for processing. Returns true if this caller
+     * won the race; false if another worker already claimed it.
+     */
+    fun claimIngestRow(id: Long): Boolean {
+        if (id < 0) return false
+        return try {
+            db.execSQL(
+                """UPDATE sms_ingest_queue
+                   SET status = 'processing', claimed_at = datetime('now')
+                   WHERE id = ? AND status IN ('pending', 'failed')""",
+                arrayOf(id.toString())
+            )
+            db.rawQuery("SELECT changes()", null).use { c -> c.moveToFirst() && c.getInt(0) == 1 }
+        } catch (e: Exception) {
+            Log.w(TAG, "claimIngestRow failed: ${e.message}")
+            false
+        }
+    }
+
+    /** Read the authoritative body for a queue row. */
+    fun getIngestBody(id: Long): String? {
+        if (id < 0) return null
+        return try {
+            db.rawQuery("SELECT body FROM sms_ingest_queue WHERE id = ? LIMIT 1", arrayOf(id.toString()))
+                .use { c -> if (c.moveToFirst()) c.getString(0) else null }
+        } catch (e: Exception) {
+            Log.w(TAG, "getIngestBody failed: ${e.message}")
+            null
+        }
+    }
+
+    /**
+     * Pending rows whose retry time has arrived, plus rows stuck in processing
+     * for more than 5 minutes (e.g. a worker process was killed mid-flight).
+     * Drained by the sweep worker.
+     */
+    fun getPendingIngest(limit: Int = 50): List<Pair<Long, String>> {
+        val rows = mutableListOf<Pair<Long, String>>()
+        try {
+            db.rawQuery(
+                """SELECT id, body FROM sms_ingest_queue
+                   WHERE (
+                     status IN ('pending', 'failed') AND next_retry_at <= datetime('now')
+                   ) OR (
+                     status = 'processing' AND claimed_at < datetime('now', '-5 minutes')
+                   )
+                   ORDER BY id ASC LIMIT ?""",
+                arrayOf(limit.toString())
+            ).use { c ->
+                while (c.moveToNext()) rows.add(c.getLong(0) to (c.getString(1) ?: ""))
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "getPendingIngest failed: ${e.message}")
+        }
+        return rows
+    }
+
+    /** Queue health for Import Health: pending count, failed count, oldest pending age. */
+    fun getIngestQueueStats(): Map<String, Any?> {
+        var pending = 0L; var failed = 0L; var oldestPendingAt: String? = null
+        try {
+            db.rawQuery(
+                """SELECT
+                   SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END),
+                   SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END),
+                   MIN(CASE WHEN status = 'pending' THEN received_at END)
+                   FROM sms_ingest_queue""",
+                null
+            ).use { c ->
+                if (c.moveToFirst()) {
+                    pending = if (c.isNull(0)) 0 else c.getLong(0)
+                    failed = if (c.isNull(1)) 0 else c.getLong(1)
+                    oldestPendingAt = c.getString(2)
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "getIngestQueueStats failed: ${e.message}")
+        }
+        return mapOf(
+            "pending" to pending,
+            "failed" to failed,
+            "oldestPendingAt" to oldestPendingAt,
+        )
+    }
+
+    /** Re-arm 'failed' rows for the sweep (manual Retry from Import Health). */
+    fun requeueFailedIngest(): Int {
+        return try {
+            db.execSQL(
+                "UPDATE sms_ingest_queue SET status = 'pending', attempts = 0, next_retry_at = datetime('now') WHERE status = 'failed'"
+            )
+            db.rawQuery("SELECT changes()", null).use { c -> if (c.moveToFirst()) c.getInt(0) else 0 }
+        } catch (e: Exception) {
+            Log.w(TAG, "requeueFailedIngest failed: ${e.message}")
+            0
+        }
+    }
+
+    /** Prune terminal rows older than [days] to keep the queue table small. */
+    fun pruneIngestQueue(days: Int = 30) {
+        try {
+            db.execSQL(
+                "DELETE FROM sms_ingest_queue WHERE status = 'done' AND received_at < datetime('now', '-' || ? || ' days')",
+                arrayOf(days.toString())
+            )
+        } catch (e: Exception) {
+            Log.w(TAG, "pruneIngestQueue failed: ${e.message}")
+        }
     }
 
     // ─── Deduplication checks ─────────────────────────────────────────────────

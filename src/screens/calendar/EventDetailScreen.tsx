@@ -10,7 +10,7 @@ import { EventRepository, type EventRecord } from '../../database/repositories/E
 import { formatDateTime } from '../../utils/formatters';
 import { spacing, typography, borderRadius } from '../../theme';
 import { cancelEventReminders } from '../../services/notificationService';
-import { haptic } from '../../utils/haptics';
+import { haptic } from '../../services/haptics';
 import { useDataVersion } from '../../store/dataVersion';
 import type { RootStackParamList } from '../../navigation/types';
 

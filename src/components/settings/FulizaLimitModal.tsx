@@ -44,7 +44,6 @@ export function FulizaLimitModal({
 
   const handleSave = () => {
     if (isSubmitting) return;
-    console.log('[FulizaLimitModal] Save pressed, value:', value);
     setIsSubmitting(true);
     Keyboard.dismiss();
     const parsed = parseInt(value.replace(/[^0-9]/g, ''), 10);
@@ -53,7 +52,6 @@ export function FulizaLimitModal({
 
   const handleCancel = () => {
     if (isSubmitting) return;
-    console.log('[FulizaLimitModal] Later pressed');
     Keyboard.dismiss();
     onCancel();
   };

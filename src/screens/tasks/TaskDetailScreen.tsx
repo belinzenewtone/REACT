@@ -11,7 +11,7 @@ import { formatDateTime } from '../../utils/formatters';
 import { spacing, typography, borderRadius } from '../../theme';
 import { syncTaskReminders } from '../../services/notificationSyncService';
 import { cancelTaskReminders } from '../../services/notificationService';
-import { haptic } from '../../utils/haptics';
+import { haptic } from '../../services/haptics';
 import { useDataVersion } from '../../store/dataVersion';
 import type { RootStackParamList } from '../../navigation/types';
 

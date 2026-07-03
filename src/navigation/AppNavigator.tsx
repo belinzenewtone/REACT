@@ -70,6 +70,7 @@ import {
   addFulizaLimitNeededListener,
   enableBackgroundReceiver,
   setFulizaLimit,
+  ensureIngestSweep,
 } from '../../modules/lifeos-sms';
 import { FulizaLimitModal } from '../components/settings/FulizaLimitModal';
 import { useDataVersion } from '../store/dataVersion';
@@ -148,6 +149,9 @@ export function AppNavigator() {
           const s = useAppStore.getState().settings;
           await enableBackgroundReceiver(s.smsBackgroundReceiver ?? false);
           await setFulizaLimit(s.fulizaLimit ?? 0);
+          // Register the 6-hourly ingest-queue sweep and drain any SMS rows
+          // that accumulated while the app was closed/killed.
+          await ensureIngestSweep();
         } catch {}
         if (cancelled) return;
         await reconcilePermissionState();

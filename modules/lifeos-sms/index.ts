@@ -183,7 +183,17 @@ export async function retrySingle(id: number): Promise<{ ok: boolean; error?: st
  * Useful for testing and the debug/review queue UI.
  */
 export async function parseSmsPreview(smsBody: string): Promise<SmsPreviewResult> {
-  return LifeosSmsModule?.parseSmsPreview(smsBody) ?? { ok: false, reason: 'module_unavailable' };
+  if (LifeosSmsModule) return LifeosSmsModule.parseSmsPreview(smsBody);
+  // Degraded mode (Expo Go / iOS / broken native build): a lightweight JS
+  // parser mirroring the native semantics keeps preview tooling usable.
+  // Lazy require avoids a static module↔app import cycle.
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { parseSmsPreviewFallback } = require('../../src/services/fallbackSmsParser');
+    return parseSmsPreviewFallback(smsBody);
+  } catch {
+    return { ok: false, reason: 'module_unavailable' };
+  }
 }
 
 /**
@@ -220,6 +230,32 @@ export async function enableBackgroundReceiver(enabled: boolean): Promise<void> 
   // Must throw when the module is missing — otherwise the Settings toggle
   // appears to work while the native SharedPreferences flag never changes.
   return requireModule().enableBackgroundReceiver(enabled);
+}
+
+/**
+ * Health of the durable SMS ingest queue. Every incoming SMS is persisted
+ * before parsing; `pending` > 0 with an old `oldestPendingAt` means messages
+ * are waiting for the sweep (or something is stuck).
+ */
+export async function getIngestQueueStatus(): Promise<{
+  pending: number;
+  failed: number;
+  oldestPendingAt: string | null;
+}> {
+  return LifeosSmsModule?.getIngestQueueStatus() ?? { pending: 0, failed: 0, oldestPendingAt: null };
+}
+
+/** Re-arm permanently-failed ingest rows and drain the queue immediately. */
+export async function retryIngestQueue(): Promise<{ requeued: number }> {
+  return requireModule().retryIngestQueue();
+}
+
+/**
+ * Registers the 6-hourly self-healing sweep and drains any rows that
+ * accumulated while the app was closed. Call once on app bootstrap.
+ */
+export async function ensureIngestSweep(): Promise<void> {
+  return LifeosSmsModule?.ensureIngestSweep();
 }
 
 /**

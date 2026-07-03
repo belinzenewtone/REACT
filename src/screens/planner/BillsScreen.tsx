@@ -12,7 +12,7 @@ import { EmptyState } from '../../components/common/EmptyState';
 import { formatCurrency, formatDate } from '../../utils/formatters';
 import { spacing, typography, borderRadius } from '../../theme';
 import { animateLayout } from '../../utils/animation';
-import { haptic } from '../../utils/haptics';
+import { haptic } from '../../services/haptics';
 
 const CYCLE_LABELS: Record<string, string> = {
   daily: 'Daily',

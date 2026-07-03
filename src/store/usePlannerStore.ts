@@ -10,7 +10,7 @@ import { ExportRepository, type ExportDbRecord, type ExportCreateInput } from '.
 import type { IncomeRecord, RecurringRule, Bill, Goal, FulizaLoan } from '../types';
 import { syncRecurringReminders, syncBillReminders } from '../services/notificationSyncService';
 import { cancelRecurringReminder, cancelBillReminder } from '../services/notificationService';
-import { haptic } from '../utils/haptics';
+import { haptic } from '../services/haptics';
 
 interface PlannerState {
   isLoading: boolean;

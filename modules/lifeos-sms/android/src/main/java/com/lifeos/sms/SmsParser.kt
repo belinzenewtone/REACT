@@ -167,13 +167,18 @@ internal object SmsParser {
     // ── Pre-compiled regex constants (never allocate Regex inside a parse call) ──
 
     private val COUNTERPARTY_TRAILING_PHONE  = Regex("""\s+(?:\+?254|0)\d[\d\s-]{7,14}$""")
-    private val COUNTERPARTY_TRAILING_CODE   = Regex("""\s+[A-Za-z0-9]{9,10}$""")
+    // Trailing transaction codes are 9-10 alphanumerics with at least one digit
+    // (matches CODE_RE). Without the digit requirement, multi-word merchant names
+    // like "CHandarana FOODMPLUS" get truncated.
+    private val COUNTERPARTY_TRAILING_CODE   = Regex("""\s+(?=[A-Za-z0-9]*\d)[A-Za-z0-9]{9,10}$""")
     private val COUNTERPARTY_TRAILING_DATE   = Regex("""\s+on\s+\d{1,2}[/-]\d{1,2}[/-]\d{2,4}.*$""", RegexOption.IGNORE_CASE)
     private val COUNTERPARTY_TRAILING_DATE_WORD = Regex("""\s+on\s+\d{1,2}[-/\s][A-Za-z]{3,9}[-/\s]\d{2,4}.*$""", RegexOption.IGNORE_CASE)
     private val COUNTERPARTY_VIA_KOPO        = Regex("""\s+via\s+(?:kopo[\s-]+kopo|kopokopo)(?:\s+ltd|\s+limited)?.*$""", RegexOption.IGNORE_CASE)
     private val COUNTERPARTY_NEW_MPESA       = Regex("""\s+New M-PESA.*$""", RegexOption.IGNORE_CASE)
     private val COUNTERPARTY_TRAILING_TILL   = Regex("""\s+(?:till\s*(?:number)?\s*[:#]?\s*)?\d{5,6}$""", RegexOption.IGNORE_CASE)
-    private val COUNTERPARTY_TRAILING_ACCOUNT = Regex("""\s+(?:for\s+)?(?:account|acc\.?|acct\.?|account\s+number|meter|ref\.?|reference|policy|token|bill)\s*[:#]?\s*[\w-]+.*$""", RegexOption.IGNORE_CASE)
+    // Require "ref." (with a period) rather than bare "ref" so merchant names
+    // like "KPLC REFUND" are not treated as account-reference trailers.
+    private val COUNTERPARTY_TRAILING_ACCOUNT = Regex("""\s+(?:for\s+)?(?:account|acc\.?|acct\.?|account\s+number|meter|ref\.|reference|policy|token|bill)\s*[:#]?\s*[\w-]+.*$""", RegexOption.IGNORE_CASE)
     private val COUNTERPARTY_TRAILING_AGENT  = Regex("""\s+agent\s+\d+.*$""", RegexOption.IGNORE_CASE)
     private val COUNTERPARTY_TRAILING_TIME   = Regex("""\s+at\s+\d{1,2}:\d{2}.*$""", RegexOption.IGNORE_CASE)
     private val PHONE_ONLY_RE                = Regex("""^(?:\+?254|0)\d[\d\s-]{7,14}$""")
@@ -256,7 +261,8 @@ internal object SmsParser {
         val ruleId: String? = when {
             text.contains("has been reversed")                                           -> "reversal"
             text.contains(" deposited") || text.contains("cash deposit")                -> "deposit"
-            text.contains("for airtime") || (text.contains("bought") && text.contains("airtime")) -> "airtime"
+            text.contains("for airtime") || text.contains("airtime for") ||
+                (text.contains("bought") && text.contains("airtime")) -> "airtime"
             (text.contains("sent to") || text.contains("paid to")) &&
                 (text.contains(" account ") || text.contains("for account"))            -> "paybill"
             text.contains("paid to")                                                    -> "buy_goods"

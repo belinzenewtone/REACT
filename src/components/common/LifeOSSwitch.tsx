@@ -1,7 +1,7 @@
 import React from 'react';
 import { Switch, type SwitchProps } from 'react-native';
 import { useThemeColors } from '../../hooks/useThemeColors';
-import { haptic } from '../../utils/haptics';
+import { haptic } from '../../services/haptics';
 
 interface LifeOSSwitchProps extends Omit<SwitchProps, 'trackColor' | 'thumbColor'> {
   value: boolean;

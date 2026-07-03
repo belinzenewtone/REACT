@@ -39,6 +39,10 @@ yarn-error.*
 # typescript
 *.tsbuildinfo
 
+# test output
+coverage/
+.sync_probe.txt
+
 # logs
 *.log
 

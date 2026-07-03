@@ -13,7 +13,7 @@ import type { TransactionRepository } from '../database/repositories/Transaction
 import { useDataVersion } from './dataVersion';
 import { checkBudgetThresholds } from '../services/budgetAlertService';
 import { toLocalIso } from '../utils/formatters';
-import { haptic } from '../utils/haptics';
+import { haptic } from '../services/haptics';
 
 export type TransactionPeriod = 'all' | 'today' | 'week' | 'month';
 

@@ -30,16 +30,48 @@ class SmsProcessWorker(
 ) : CoroutineWorker(appContext, params) {
 
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
-        val smsBody = inputData.getString(KEY_SMS_BODY).orEmpty()
-        if (smsBody.isBlank()) return@withContext Result.failure()
+        val queueId = inputData.getLong(KEY_QUEUE_ID, -1L)
+        val fallbackBody = inputData.getString(KEY_SMS_BODY)
 
         val db = DbWriter.getInstance(applicationContext)
 
+        // Race-free claim: if another realtime or sweep worker already claimed
+        // this row, we exit successfully and let that worker do the processing.
+        val body = if (queueId >= 0) {
+            if (!db.claimIngestRow(queueId)) {
+                Log.d(TAG, "Queue row $queueId already claimed by another worker")
+                return@withContext Result.success()
+            }
+            db.getIngestBody(queueId) ?: fallbackBody
+        } else {
+            fallbackBody
+        }
+
+        if (body.isNullOrBlank()) {
+            if (queueId >= 0) db.markIngestDone(queueId)
+            return@withContext Result.failure()
+        }
+
+        // Every exit marks the durable ingest-queue row (written by SmsReceiver
+        // BEFORE this worker was scheduled): terminal outcomes → done; retry
+        // outcomes → failed-with-backoff so the periodic sweep re-drains them.
+        val result = processSms(db, body)
+        if (queueId >= 0) {
+            if (result is Result.Retry) {
+                db.markIngestFailed(queueId, "worker_retry")
+            } else {
+                db.markIngestDone(queueId)
+            }
+        }
+        result
+    }
+
+    private fun processSms(db: DbWriter, smsBody: String): Result {
         try {
             // Stage 0: Quick filter
             if (!SmsParser.isMpesaSms(smsBody)) {
                 db.insertAudit(null, smsBody, null, null, "ignored_not_mpesa")
-                return@withContext Result.success()
+                return Result.success()
             }
 
             // Stage 0a: Fuliza limit assignment SMS has no transaction code, but
@@ -64,7 +96,7 @@ class SmsProcessWorker(
                     outcome = "parse_failed:${parseResult.error.reason}",
                     failureReason = parseResult.error.reason,
                 )
-                return@withContext Result.success()
+                return Result.success()
             }
 
             val tx = (parseResult as SmsParser.SmsParseResult.Success).transaction
@@ -88,7 +120,7 @@ class SmsProcessWorker(
                             SmsReceiverModule.instance?.emitNewTransaction(tx)
                         } else {
                             db.insertAudit(tx.mpesaCode, smsBody, tx.amount, tx.counterparty, "import_failed", "DB insert returned -1")
-                            return@withContext Result.retry()
+                            return Result.retry()
                         }
                     } else {
                         db.insertAudit(tx.mpesaCode, smsBody, tx.amount, tx.counterparty, "duplicate_detected:${dupReason.name.lowercase()}")
@@ -97,14 +129,14 @@ class SmsProcessWorker(
                     db.insertAudit(tx.mpesaCode, smsBody, outstanding, "Fuliza M-PESA", "fuliza_balance_updated")
                     maybeNotifyFulizaLimitNeeded(outstanding, "charge")
                 }
-                return@withContext Result.success()
+                return Result.success()
             }
 
             // 4-tier deduplication
             val dupReason = SmsDedupeEngine.check(SmsDedupeEngine.Context(), tx, db)
             if (dupReason != SmsDedupeEngine.Result.NEW) {
                 db.insertAudit(tx.mpesaCode, smsBody, tx.amount, tx.counterparty, "duplicate_detected:${dupReason.name.lowercase()}")
-                return@withContext Result.success()
+                return Result.success()
             }
 
             // Quarantine — hold, do not auto-insert
@@ -114,14 +146,14 @@ class SmsProcessWorker(
                     "quarantined", "Low confidence — awaiting review",
                     tx.confidence.name.lowercase()
                 )
-                return@withContext Result.success()
+                return Result.success()
             }
 
             // Insert transaction
             val rowId = db.insertTransaction(tx)
             if (rowId < 0) {
                 db.insertAudit(tx.mpesaCode, smsBody, tx.amount, tx.counterparty, "import_failed", "DB insert returned -1")
-                return@withContext Result.retry()
+                return Result.retry()
             }
 
             val outcomeLabel = if (tx.parseRoute == SmsParser.ParseRoute.REVIEW) "imported_review" else "imported_realtime"
@@ -147,11 +179,11 @@ class SmsProcessWorker(
             SmsReceiverModule.instance?.emitNewTransaction(tx)
 
             Log.d(TAG, "Imported realtime: ${tx.mpesaCode} ${tx.category} ${tx.amount}")
-            Result.success()
+            return Result.success()
         } catch (e: Exception) {
             Log.e(TAG, "SmsProcessWorker failed: ${e.message}", e)
             db.insertAudit(null, smsBody, null, null, "import_failed", e.message?.take(200))
-            Result.retry()
+            return Result.retry()
         }
     }
 
@@ -197,6 +229,7 @@ class SmsProcessWorker(
 
     companion object {
         const val KEY_SMS_BODY = "sms_body"
+        const val KEY_QUEUE_ID = "queue_id"
         const val KEY_FULIZA_LIMIT = "fuliza_limit_kes"
         const val NOTIF_CHANNEL_ID = "lifeos_sms_channel"
         const val NOTIF_ID_PROCESS = 9001

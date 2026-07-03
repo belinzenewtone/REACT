@@ -21,7 +21,7 @@ import { spacing, typography, borderRadius } from '../../theme';
 import { animateLayout } from '../../utils/animation';
 import { syncTaskReminders } from '../../services/notificationSyncService';
 import { cancelTaskReminders } from '../../services/notificationService';
-import { haptic } from '../../utils/haptics';
+import { haptic } from '../../services/haptics';
 import { useDataVersion } from '../../store/dataVersion';
 
 const COMPLETED_LIMIT = 20;

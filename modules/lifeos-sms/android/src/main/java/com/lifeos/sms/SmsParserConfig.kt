@@ -22,8 +22,13 @@ internal object SmsParserConfig {
 
     // ─── Core extraction regexes ───────────────────────────────────────
 
-    /** M-Pesa transaction confirmation code — 9-10 alphanum chars (case-insensitive). */
-    val CODE_RE = Regex("""\b([A-Za-z0-9]{9,10})\b""")
+    /**
+     * M-Pesa transaction confirmation code — 9-10 alphanum chars, case-insensitive,
+     * with AT LEAST ONE DIGIT required. Real M-Pesa codes always encode digits;
+     * the digit lookahead stops ordinary 9-10 letter words ("Confirmed", names,
+     * "Withdrawal") from being grabbed as a transaction code.
+     */
+    val CODE_RE = Regex("""\b(?=[A-Za-z]*\d)([A-Za-z0-9]{9,10})\b""")
 
     /** Primary amount — first Ksh/KES figure in the message. */
     val AMOUNT_RE = Regex("""(?:Ksh|KES)\s?([\d,]+(?:\.\d{1,2})?)""", RegexOption.IGNORE_CASE)
@@ -391,12 +396,14 @@ internal object SmsParserConfig {
             patterns = listOf(
                 Regex("""(?:you\s+)?bought\s+(?:Ksh|KES)\s?[\d,.]+\s+of airtime""", RegexOption.IGNORE_CASE),
                 Regex("""(?:Ksh|KES)\s?[\d,.]+\s+sent to\s+\d{9,12}\s+for airtime""", RegexOption.IGNORE_CASE),
+                Regex("""(?:Ksh|KES)\s?[\d,.]+\s+airtime\s+for\s+\d+""", RegexOption.IGNORE_CASE),
                 Regex("""for airtime(?:\s+on|\s+purchase|\s+of|\s*\.)""", RegexOption.IGNORE_CASE),
                 Regex("""airtime\s+(?:purchase|of\s+(?:Ksh|KES))""", RegexOption.IGNORE_CASE),
                 Regex("""of airtime purchased""", RegexOption.IGNORE_CASE),
             ),
             fallbackPatterns = listOf(
                 Regex("""for airtime""", RegexOption.IGNORE_CASE),
+                Regex("""airtime\s+for\s+\d+""", RegexOption.IGNORE_CASE),
                 Regex("""airtime purchase""", RegexOption.IGNORE_CASE),
                 Regex("""bought\s+(?:Ksh|KES)\s?[\d,.]+\s+of airtime""", RegexOption.IGNORE_CASE),
             ),
@@ -411,20 +418,25 @@ internal object SmsParserConfig {
             category = SmsCategory.PAYBILL,
             description = "Paybill payment — utility, subscription or bill with reference",
             patterns = listOf(
-                Regex("""(?:Ksh|KES)\s?[\d,.]+\s+sent to\s+.+?\s+(?:for\s+)?(?:account|acc\.?|acct\.?|account\s+number|meter|ref\.?|reference|policy|postpay|token|bill|invoice)\s*[\w-]+""", RegexOption.IGNORE_CASE),
-                Regex("""paid to\s+.+?\s+(?:for\s+)?(?:account|acc\.?|acct\.?|account\s+number|meter|ref\.?|reference|policy|postpay|token|bill|invoice)\s*[\w-]+""", RegexOption.IGNORE_CASE),
+                Regex("""(?:Ksh|KES)\s?[\d,.]+\s+sent to\s+.+?\s+(?:for\s+)?(?:account|acc\.?|acct\.?|account\s+number|meter|ref\.|reference|policy|postpay|token|bill|invoice)\s*[\w-]+""", RegexOption.IGNORE_CASE),
+                Regex("""paid to\s+.+?\s+(?:for\s+)?(?:account|acc\.?|acct\.?|account\s+number|meter|ref\.|reference|policy|postpay|token|bill|invoice)\s*[\w-]+""", RegexOption.IGNORE_CASE),
+                Regex("""(?:Ksh|KES)\s?[\d,.]+\s+paybill(?:\s+payment)?\s+to\s+.+?(?:\s+for\s+account|\s+on\s|\s+New\s|\.)""", RegexOption.IGNORE_CASE),
                 Regex("""paybill to\s+\d+""", RegexOption.IGNORE_CASE),
                 Regex("""paybill\s+\d+\s+account\s*[:#]?\s*[\w-]+""", RegexOption.IGNORE_CASE),
             ),
             fallbackPatterns = listOf(
-                Regex("""(?:sent to|paid to)\s+.+?\s+(?:for\s+)?(?:account|acc\.?|acct\.|account\s+number|meter|ref\.?|reference|policy|postpay|token|bill|invoice)\s*[\w-]+""", RegexOption.IGNORE_CASE),
+                Regex("""(?:sent to|paid to)\s+.+?\s+(?:for\s+)?(?:account|acc\.?|acct\.|account\s+number|meter|ref\.|reference|policy|postpay|token|bill|invoice)\s*[\w-]+""", RegexOption.IGNORE_CASE),
+                Regex("""(?:Ksh|KES)\s?[\d,.]+\s+paybill(?:\s+payment)?\s+to\s+.+?""", RegexOption.IGNORE_CASE),
+                Regex("""paybill(?:\s+payment)?\s+to\s+\S+""", RegexOption.IGNORE_CASE),
                 Regex("""account\s*(?:number|no\.?)?\s*[:#]?\s*[\w-]+""", RegexOption.IGNORE_CASE),
                 Regex("""paybill\b""", RegexOption.IGNORE_CASE),
             ),
             counterpartyPatterns = listOf(
-                Regex("""(?:Ksh|KES)\s?[\d,.]+\s+sent to\s+(.+?)\s+(?:for\s+)?(?:account|acc\.?|acct\.?|account\s+number|meter|ref\.?|reference|policy|postpay|token|bill|invoice)\s*[\w-]+""", RegexOption.IGNORE_CASE),
-                Regex("""paid to\s+(.+?)\s+(?:for\s+)?(?:account|acc\.?|acct\.?|account\s+number|meter|ref\.?|reference|policy|postpay|token|bill|invoice)\s*[\w-]+""", RegexOption.IGNORE_CASE),
-                Regex("""sent to\s+(.+?)\s+(?:for\s+)?(?:account|acc\.?|acct\.?|account\s+number|meter|ref\.?|reference|policy|postpay|token|bill|invoice)\s*[\w-]+""", RegexOption.IGNORE_CASE),
+                Regex("""(?:Ksh|KES)\s?[\d,.]+\s+sent to\s+(.+?)\s+(?:for\s+)?(?:account|acc\.?|acct\.?|account\s+number|meter|ref\.|reference|policy|postpay|token|bill|invoice)\s*[\w-]+""", RegexOption.IGNORE_CASE),
+                Regex("""paid to\s+(.+?)\s+(?:for\s+)?(?:account|acc\.?|acct\.?|account\s+number|meter|ref\.|reference|policy|postpay|token|bill|invoice)\s*[\w-]+""", RegexOption.IGNORE_CASE),
+                Regex("""sent to\s+(.+?)\s+(?:for\s+)?(?:account|acc\.?|acct\.?|account\s+number|meter|ref\.|reference|policy|postpay|token|bill|invoice)\s*[\w-]+""", RegexOption.IGNORE_CASE),
+                Regex("""(?:Ksh|KES)\s?[\d,.]+\s+paybill(?:\s+payment)?\s+to\s+(.+?)(?:\s+for\s+account|\s+on\s|\s+New\s|\.|$)""", RegexOption.IGNORE_CASE),
+                Regex("""paybill(?:\s+payment)?\s+to\s+(.+?)(?:\s+for\s+account|\s+on\s|\s+New\s|\.|$)""", RegexOption.IGNORE_CASE),
                 Regex("""paybill to\s+\d+\s+(.+?)(?:\s+on\s|\s+New\s|\.|$)""", RegexOption.IGNORE_CASE),
             ),
         ),
