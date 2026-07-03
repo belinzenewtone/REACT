@@ -1,14 +1,16 @@
-import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { useSQLiteContext } from 'expo-sqlite';
 import { format, startOfWeek, endOfWeek } from 'date-fns';
 import { useThemeColors } from '../../hooks/useThemeColors';
 import { spacing, typography, borderRadius } from '../../theme';
 import { formatCurrency } from '../../utils/formatters';
 import { GlassCard } from '../../components/common/GlassCard';
+import { useDataVersion } from '../../store/dataVersion';
+import { useAppStore } from '../../store';
 
 type ReviewData = {
   totalSpend: number;
@@ -56,36 +58,60 @@ export function WeekReviewScreen() {
     topCategory: null, weekDelta: 0, previousWeekSpend: 0,
   });
 
+  const dataVersion = useDataVersion((s) => s.version);
+  const loadedVersion = useRef(-1);
+  const profileName = useAppStore((s) => s.profile?.name);
+
+  // Recomputed once per render — updates naturally when data reloads.
   const now = new Date();
   const weekStart = startOfWeek(now, { weekStartsOn: 1 });
   const weekEnd = endOfWeek(now, { weekStartsOn: 1 });
   const weekLabel = `${format(weekStart, 'MMM d')} – ${format(weekEnd, 'MMM d, yyyy')}`;
 
   const hour = now.getHours();
-  const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
+  const timeOfDay = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
+  const firstName = profileName?.trim().split(/\s+/)[0];
+  const greeting = firstName ? `${timeOfDay}, ${firstName}` : timeOfDay;
 
-  useEffect(() => { load(); }, []);
-
-  async function load() {
+  const load = useCallback(async () => {
+    setIsLoading(true);
     try {
       const weekStartISO = weekStart.toISOString();
       const weekEndISO = weekEnd.toISOString();
 
+      // `transaction_type` is one of: 'expense' | 'income' | 'transfer' | 'fuliza'.
+      // We only sum EXPENSES for the "spend" figure — the prior filter
+      // ("NOT IN ('RECEIVED','DEPOSIT')") never matched anything since those
+      // are M-Pesa category values, not transaction_type values, so income
+      // was being counted as spend.
       const [spendRow, topCatRow, completedRow, pendingRow] = await Promise.all([
         db.getFirstAsync<{ total: number }>(
-          `SELECT SUM(amount) as total FROM transactions WHERE date >= ? AND date <= ? AND transaction_type NOT IN ('RECEIVED','DEPOSIT') AND deleted_at IS NULL`,
+          `SELECT SUM(amount) as total FROM transactions
+             WHERE date >= ? AND date <= ?
+               AND transaction_type = 'expense'
+               AND status = 'completed'
+               AND deleted_at IS NULL`,
           [weekStartISO, weekEndISO]
         ),
         db.getFirstAsync<{ category: string }>(
-          `SELECT category, SUM(amount) as total FROM transactions WHERE date >= ? AND date <= ? AND transaction_type NOT IN ('RECEIVED','DEPOSIT') AND deleted_at IS NULL GROUP BY category ORDER BY total DESC LIMIT 1`,
+          `SELECT category, SUM(amount) as total FROM transactions
+             WHERE date >= ? AND date <= ?
+               AND transaction_type = 'expense'
+               AND status = 'completed'
+               AND deleted_at IS NULL
+             GROUP BY category ORDER BY total DESC LIMIT 1`,
           [weekStartISO, weekEndISO]
         ),
         db.getFirstAsync<{ count: number }>(
-          `SELECT COUNT(*) as count FROM tasks WHERE status = 'completed' AND updated_at >= ? AND deleted_at IS NULL`,
-          [weekStartISO]
+          `SELECT COUNT(*) as count FROM tasks
+             WHERE status = 'completed'
+               AND (completed_at >= ? OR (completed_at IS NULL AND updated_at >= ?))
+               AND deleted_at IS NULL`,
+          [weekStartISO, weekStartISO]
         ),
         db.getFirstAsync<{ count: number }>(
-          `SELECT COUNT(*) as count FROM tasks WHERE status != 'completed' AND deleted_at IS NULL`,
+          `SELECT COUNT(*) as count FROM tasks
+             WHERE status != 'completed' AND deleted_at IS NULL`,
           []
         ),
       ]);
@@ -96,7 +122,11 @@ export function WeekReviewScreen() {
       prevEnd.setDate(prevEnd.getDate() - 7);
 
       const prevSpendRow = await db.getFirstAsync<{ total: number }>(
-        `SELECT SUM(amount) as total FROM transactions WHERE date >= ? AND date <= ? AND transaction_type NOT IN ('RECEIVED','DEPOSIT') AND deleted_at IS NULL`,
+        `SELECT SUM(amount) as total FROM transactions
+           WHERE date >= ? AND date <= ?
+             AND transaction_type = 'expense'
+             AND status = 'completed'
+             AND deleted_at IS NULL`,
         [prevStart.toISOString(), prevEnd.toISOString()]
       );
 
@@ -116,7 +146,32 @@ export function WeekReviewScreen() {
     } finally {
       setIsLoading(false);
     }
-  }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [db]);
+
+  // Load on first mount, on focus (if data has changed), and on dataVersion bump.
+  useFocusEffect(
+    useCallback(() => {
+      if (dataVersion !== loadedVersion.current) {
+        loadedVersion.current = dataVersion;
+        load();
+      }
+    }, [dataVersion, load])
+  );
+
+  useEffect(() => {
+    if (loadedVersion.current === -1) {
+      loadedVersion.current = dataVersion;
+      load();
+    }
+  }, [dataVersion, load]);
+
+  useEffect(() => {
+    if (loadedVersion.current !== -1 && dataVersion !== loadedVersion.current) {
+      loadedVersion.current = dataVersion;
+      load();
+    }
+  }, [dataVersion, load]);
 
   const deltaLabel = data.weekDelta === 0
     ? 'Same as last week'
@@ -144,13 +199,23 @@ export function WeekReviewScreen() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.bgPrimary }]} edges={['top']}>
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView
+        contentContainerStyle={styles.content}
+        refreshControl={
+          <RefreshControl
+            refreshing={isLoading}
+            onRefresh={load}
+            tintColor={colors.accentPrimary}
+            colors={[colors.accentPrimary]}
+          />
+        }
+      >
         <View style={styles.header}>
           <TouchableOpacity onPress={() => navigation.goBack()}>
             <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
           </TouchableOpacity>
           <View style={styles.headerCenter}>
-            <Text style={[styles.title, { color: colors.textPrimary }]}>Weekly Review</Text>
+            <Text style={[styles.title, { color: colors.textPrimary }]} numberOfLines={1}>Weekly Review</Text>
           </View>
           <View style={{ width: 24 }} />
         </View>

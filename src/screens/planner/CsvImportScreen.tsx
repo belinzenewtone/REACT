@@ -18,6 +18,7 @@ import { useThemeColors } from '../../hooks/useThemeColors';
 import type { RootStackParamList } from '../../navigation/types';
 import { useTransactionStore } from '../../store';
 import { TransactionRepository } from '../../database/repositories/TransactionRepository';
+import { checkBudgetThresholds } from '../../services/budgetAlertService';
 import { GlassCard } from '../../components/common/GlassCard';
 import {
   parseCsvContent,
@@ -123,6 +124,7 @@ export function CsvImportScreen() {
     setIsLoading(true);
     try {
       const repo = new TransactionRepository(db);
+      const expenseCategories = new Set<string>();
       for (const row of validRows) {
         await repo.create({
           amount: row.amount,
@@ -135,8 +137,14 @@ export function CsvImportScreen() {
           description: row.description,
           recordSource: 'csv',
         });
+        if (row.transactionType === 'expense') {
+          expenseCategories.add(CATEGORY_COLORS[row.category] ? row.category : 'uncategorized');
+        }
       }
       await loadTransactions(repo, true);
+      for (const category of expenseCategories) {
+        await checkBudgetThresholds(db, category);
+      }
       Alert.alert('Import complete', `${validRows.length} transactions imported.`);
       navigation.goBack();
     } catch (error) {
@@ -154,7 +162,7 @@ export function CsvImportScreen() {
           <TouchableOpacity onPress={() => navigation.goBack()}>
             <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
           </TouchableOpacity>
-          <Text style={[styles.title, { color: colors.textPrimary }]}>Import CSV</Text>
+          <Text style={[styles.title, { color: colors.textPrimary }]} numberOfLines={1}>Import CSV</Text>
           <View style={{ width: 24 }} />
         </View>
 

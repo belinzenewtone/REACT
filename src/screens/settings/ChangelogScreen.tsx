@@ -75,7 +75,7 @@ export function ChangelogScreen() {
           </TouchableOpacity>
           <View style={styles.headerCenter}>
             <Text style={[styles.eyebrow, { color: colors.textSecondary }]}>PersonalOS</Text>
-            <Text style={[styles.title, { color: colors.textPrimary }]}>What's new</Text>
+            <Text style={[styles.title, { color: colors.textPrimary }]} numberOfLines={1}>What's new</Text>
           </View>
           <View style={{ width: 24 }} />
         </View>

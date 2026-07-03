@@ -29,10 +29,9 @@ class SmsReceiver : BroadcastReceiver() {
         if (intent.action != Telephony.Sms.Intents.SMS_RECEIVED_ACTION) return
 
         val fullMessage = buildFullMessage(intent) ?: return
-        val upperMsg = fullMessage.uppercase()
-
-        // Cheap pre-filter — avoid WorkManager overhead for non-M-Pesa SMS
-        if (!upperMsg.contains("MPESA") && !upperMsg.contains("M-PESA")) return
+        // Pre-filter — avoid WorkManager overhead for non-M-Pesa SMS.
+        // Uses the same signal check as the parser (keyword or code+amount).
+        if (!SmsParser.isMpesaSms(fullMessage)) return
 
         // Respect the user's background receiver toggle
         if (!isBackgroundReceiverEnabled(context)) {

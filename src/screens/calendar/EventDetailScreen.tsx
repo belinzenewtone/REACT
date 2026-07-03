@@ -9,6 +9,9 @@ import { useCalendarStore } from '../../store';
 import { EventRepository, type EventRecord } from '../../database/repositories/EventRepository';
 import { formatDateTime } from '../../utils/formatters';
 import { spacing, typography, borderRadius } from '../../theme';
+import { cancelEventReminders } from '../../services/notificationService';
+import { haptic } from '../../utils/haptics';
+import { useDataVersion } from '../../store/dataVersion';
 import type { RootStackParamList } from '../../navigation/types';
 
 type EventDetailRouteProp = RouteProp<RootStackParamList, 'EventDetail'>;
@@ -37,7 +40,10 @@ export function EventDetailScreen() {
         onPress: async () => {
           const repo = new EventRepository(db);
           await repo.softDelete(eventId);
+          await cancelEventReminders(eventId);
+          useDataVersion.getState().bump();
           await loadCalendar(db);
+          haptic('warning');
           navigation.goBack();
         },
       },
@@ -65,7 +71,7 @@ export function EventDetailScreen() {
           <TouchableOpacity onPress={() => navigation.goBack()}>
             <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
           </TouchableOpacity>
-          <Text style={[styles.title, { color: colors.textPrimary }]}>Event</Text>
+          <Text style={[styles.title, { color: colors.textPrimary }]} numberOfLines={1}>Event</Text>
           <TouchableOpacity onPress={handleDelete}>
             <Ionicons name="trash-outline" size={22} color={colors.danger} />
           </TouchableOpacity>
@@ -77,7 +83,7 @@ export function EventDetailScreen() {
               {event.importance.toUpperCase()}
             </Text>
           </View>
-          <Text style={[styles.eventTitle, { color: colors.textPrimary }]}>{event.title}</Text>
+          <Text style={[styles.eventTitle, { color: colors.textPrimary }]} numberOfLines={3}>{event.title}</Text>
           <Text style={[styles.typeText, { color: colors.textSecondary }]}>
             {event.type} · {event.kind}
           </Text>
@@ -97,7 +103,7 @@ export function EventDetailScreen() {
           style={[styles.editButton, { backgroundColor: colors.accentPrimary }]}
           onPress={() => navigation.navigate('EventForm', { eventId })}
         >
-          <Text style={[styles.editButtonText, { color: colors.textInverse }]}>Edit Event</Text>
+          <Text style={[styles.editButtonText, { color: colors.textInverse }]} numberOfLines={1}>Edit Event</Text>
         </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>

@@ -171,7 +171,7 @@ export function ScreenLockScreen() {
           <TouchableOpacity onPress={() => navigation.goBack()}>
             <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
           </TouchableOpacity>
-          <Text style={[styles.title, { color: colors.textPrimary }]}>Screen Lock</Text>
+          <Text style={[styles.title, { color: colors.textPrimary }]} numberOfLines={1}>Screen Lock</Text>
           <View style={{ width: 24 }} />
         </View>
 

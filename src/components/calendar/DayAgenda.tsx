@@ -13,6 +13,11 @@ export interface DayEvent {
   priority?: 'low' | 'medium' | 'high';
   completed?: boolean;
   location?: string | null;
+  allDay?: boolean;
+  /** Non-zero when this is a synthetic occurrence of a repeating series. */
+  occurrenceIndex?: number;
+  /** Number of days between selected date and the event's actual date (countdown ordinal). */
+  daysToGo?: number;
 }
 
 interface DayAgendaProps {

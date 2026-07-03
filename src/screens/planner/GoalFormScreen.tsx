@@ -112,7 +112,7 @@ export function GoalFormScreen() {
           <TouchableOpacity onPress={() => navigation.goBack()}>
             <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
           </TouchableOpacity>
-          <Text style={[styles.title, { color: colors.textPrimary }]}>
+          <Text style={[styles.title, { color: colors.textPrimary }]} numberOfLines={1}>
             {isEditing ? 'Edit Goal' : 'Add Goal'}
           </Text>
           {isEditing ? (

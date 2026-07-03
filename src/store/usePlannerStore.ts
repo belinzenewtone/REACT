@@ -8,6 +8,9 @@ import { GoalRepository, type GoalDbRecord, type GoalCreateInput } from '../data
 import { FulizaLoanRepository, type FulizaLoanDbRecord } from '../database/repositories/FulizaLoanRepository';
 import { ExportRepository, type ExportDbRecord, type ExportCreateInput } from '../database/repositories/ExportRepository';
 import type { IncomeRecord, RecurringRule, Bill, Goal, FulizaLoan } from '../types';
+import { syncRecurringReminders, syncBillReminders } from '../services/notificationSyncService';
+import { cancelRecurringReminder, cancelBillReminder } from '../services/notificationService';
+import { haptic } from '../utils/haptics';
 
 interface PlannerState {
   isLoading: boolean;
@@ -74,80 +77,96 @@ export const usePlannerStore = create<PlannerState>((set) => ({
     await new IncomeRepository(db).create(data);
     useDataVersion.getState().bump();
     await usePlannerStore.getState().loadAll(db);
+    haptic('success');
   },
   updateIncome: async (db, id, data) => {
     await new IncomeRepository(db).update(id, data);
     useDataVersion.getState().bump();
     await usePlannerStore.getState().loadAll(db);
+    haptic('success');
   },
   deleteIncome: async (db, id) => {
     await new IncomeRepository(db).softDelete(id);
     useDataVersion.getState().bump();
     await usePlannerStore.getState().loadAll(db);
+    haptic('success');
   },
 
   createRecurringRule: async (db, data) => {
     await new RecurringRuleRepository(db).create(data);
     useDataVersion.getState().bump();
     await usePlannerStore.getState().loadAll(db);
+    // Reconcile all rules — cheaper than fetching the new id and simpler.
+    await syncRecurringReminders(db).catch(() => {});
   },
   updateRecurringRule: async (db, id, data) => {
     await new RecurringRuleRepository(db).update(id, data);
     useDataVersion.getState().bump();
     await usePlannerStore.getState().loadAll(db);
+    await syncRecurringReminders(db, id).catch(() => {});
   },
   deleteRecurringRule: async (db, id) => {
     await new RecurringRuleRepository(db).softDelete(id);
     useDataVersion.getState().bump();
     await usePlannerStore.getState().loadAll(db);
+    await cancelRecurringReminder(id).catch(() => {});
   },
 
   createBill: async (db, data) => {
     await new BillRepository(db).create(data);
     useDataVersion.getState().bump();
     await usePlannerStore.getState().loadAll(db);
+    await syncBillReminders(db).catch(() => {});
   },
   updateBill: async (db, id, data) => {
     await new BillRepository(db).update(id, data);
     useDataVersion.getState().bump();
     await usePlannerStore.getState().loadAll(db);
+    await syncBillReminders(db, id).catch(() => {});
   },
   deleteBill: async (db, id) => {
     await new BillRepository(db).softDelete(id);
     useDataVersion.getState().bump();
     await usePlannerStore.getState().loadAll(db);
+    await cancelBillReminder(id).catch(() => {});
   },
 
   createGoal: async (db, data) => {
     await new GoalRepository(db).create(data);
     useDataVersion.getState().bump();
     await usePlannerStore.getState().loadAll(db);
+    haptic('success');
   },
   updateGoal: async (db, id, data) => {
     await new GoalRepository(db).update(id, data);
     useDataVersion.getState().bump();
     await usePlannerStore.getState().loadAll(db);
+    haptic('success');
   },
   deleteGoal: async (db, id) => {
     await new GoalRepository(db).softDelete(id);
     useDataVersion.getState().bump();
     await usePlannerStore.getState().loadAll(db);
+    haptic('success');
   },
 
   createLoan: async (db, data) => {
     await new FulizaLoanRepository(db).create(data);
     useDataVersion.getState().bump();
     await usePlannerStore.getState().loadAll(db);
+    haptic('success');
   },
   updateLoan: async (db, id, data) => {
     await new FulizaLoanRepository(db).update(id, data);
     useDataVersion.getState().bump();
     await usePlannerStore.getState().loadAll(db);
+    haptic('success');
   },
   deleteLoan: async (db, id) => {
     await new FulizaLoanRepository(db).hardDelete(id);
     useDataVersion.getState().bump();
     await usePlannerStore.getState().loadAll(db);
+    haptic('success');
   },
 
   createExport: async (db, data) => {

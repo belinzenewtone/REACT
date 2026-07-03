@@ -15,10 +15,9 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import { useThemeColors } from '../../hooks/useThemeColors';
-import { useTransactionStore, useAppStore } from '../../store';
+import { useTransactionStore } from '../../store';
 import { TransactionRepository } from '../../database/repositories/TransactionRepository';
-import { BudgetRepository } from '../../database/repositories/BudgetRepository';
-import { fireBudgetAlertLevels } from '../../services/notificationService';
+import { checkBudgetThresholds } from '../../services/budgetAlertService';
 import { CATEGORY_COLORS, CATEGORY_ICONS } from '../../constants';
 import { Dropdown } from '../../components/common/Dropdown';
 import { TopBanner } from '../../components/common/TopBanner';
@@ -46,9 +45,6 @@ export function TransactionFormScreen() {
   const repo = React.useMemo(() => new TransactionRepository(db), [db]);
 
   const { addTransaction, updateTransaction, loadTransactions } = useTransactionStore();
-  const notificationsEnabled = useAppStore((s) => s.settings.notificationsEnabled);
-  const budgetAlertsEnabled = useAppStore((s) => s.settings.budgetThresholdAlerts);
-  const alertThresholds = useAppStore((s) => s.settings.alertThresholds);
   const transactionId = route.params?.transactionId;
   const isEditing = !!transactionId;
 
@@ -59,6 +55,10 @@ export function TransactionFormScreen() {
   const [amount, setAmount] = useState('');
   const [merchant, setMerchant] = useState('');
   const [description, setDescription] = useState('');
+  const [notes, setNotes] = useState('');
+  const [fee, setFee] = useState('');
+  const [balanceAfter, setBalanceAfter] = useState('');
+  const [mpesaCode, setMpesaCode] = useState('');
   const [type, setType] = useState<TransactionType>('expense');
   const [status, setStatus] = useState<TransactionStatus>('completed');
   const [category, setCategory] = useState('food');
@@ -73,6 +73,10 @@ export function TransactionFormScreen() {
         setAmount(tx.amount.toString());
         setMerchant(tx.merchant);
         setDescription(tx.description ?? '');
+        setNotes(tx.notes ?? '');
+        setFee(tx.fee != null ? String(tx.fee) : '');
+        setBalanceAfter(tx.balance_after != null ? String(tx.balance_after) : '');
+        setMpesaCode(tx.mpesa_code ?? '');
         setType(tx.transaction_type);
         setStatus(tx.status);
         setCategory(tx.category);
@@ -95,6 +99,8 @@ export function TransactionFormScreen() {
 
     setIsLoading(true);
     try {
+      const feeNum = fee.trim() ? parseFloat(fee) : undefined;
+      const balNum = balanceAfter.trim() ? parseFloat(balanceAfter) : undefined;
       const data = {
         amount: numAmount,
         merchant: merchant.trim(),
@@ -104,6 +110,10 @@ export function TransactionFormScreen() {
         transactionType: type,
         status,
         description: description.trim() || undefined,
+        notes: notes.trim() || undefined,
+        fee: Number.isFinite(feeNum) ? feeNum : undefined,
+        balanceAfter: Number.isFinite(balNum) ? balNum : undefined,
+        mpesaCode: mpesaCode.trim() || undefined,
         recordSource: 'manual' as const,
       };
 
@@ -115,8 +125,8 @@ export function TransactionFormScreen() {
         setSuccessMsg('Transaction saved');
       }
 
-      if (notificationsEnabled && budgetAlertsEnabled && type === 'expense') {
-        await checkBudgetThreshold(db, category, alertThresholds);
+      if (type === 'expense') {
+        await checkBudgetThresholds(db, category);
       }
 
       setTimeout(() => navigation.goBack(), 900);
@@ -153,7 +163,7 @@ export function TransactionFormScreen() {
           <TouchableOpacity onPress={() => navigation.goBack()}>
             <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
           </TouchableOpacity>
-          <Text style={[styles.title, { color: colors.textPrimary }]}>
+          <Text style={[styles.title, { color: colors.textPrimary }]} numberOfLines={1}>
             {isEditing ? 'Edit Transaction' : 'Add Transaction'}
           </Text>
           {isEditing ? (
@@ -198,10 +208,59 @@ export function TransactionFormScreen() {
           <Text style={[styles.label, { color: colors.textSecondary }]}>Description (optional)</Text>
           <TextInput
             style={[styles.input, { color: colors.textPrimary }]}
-            placeholder="Notes..."
+            placeholder="Short summary of the transaction"
             placeholderTextColor={colors.textTertiary}
             value={description}
             onChangeText={setDescription}
+          />
+        </View>
+
+        <View style={[styles.inputGroup, { backgroundColor: colors.glassWhite, borderColor: colors.border }]}>
+          <Text style={[styles.label, { color: colors.textSecondary }]}>Notes (optional)</Text>
+          <TextInput
+            style={[styles.input, { color: colors.textPrimary }]}
+            placeholder="Longer note, ref numbers, receipt info…"
+            placeholderTextColor={colors.textTertiary}
+            value={notes}
+            onChangeText={setNotes}
+            multiline
+          />
+        </View>
+
+        <View style={[styles.inputGroup, { backgroundColor: colors.glassWhite, borderColor: colors.border }]}>
+          <Text style={[styles.label, { color: colors.textSecondary }]}>Fee (optional)</Text>
+          <TextInput
+            style={[styles.input, { color: colors.textPrimary }]}
+            placeholder="e.g. 33"
+            placeholderTextColor={colors.textTertiary}
+            value={fee}
+            onChangeText={setFee}
+            keyboardType="decimal-pad"
+          />
+        </View>
+
+        <View style={[styles.inputGroup, { backgroundColor: colors.glassWhite, borderColor: colors.border }]}>
+          <Text style={[styles.label, { color: colors.textSecondary }]}>Balance after (optional)</Text>
+          <TextInput
+            style={[styles.input, { color: colors.textPrimary }]}
+            placeholder="Account balance after this transaction"
+            placeholderTextColor={colors.textTertiary}
+            value={balanceAfter}
+            onChangeText={setBalanceAfter}
+            keyboardType="decimal-pad"
+          />
+        </View>
+
+        <View style={[styles.inputGroup, { backgroundColor: colors.glassWhite, borderColor: colors.border }]}>
+          <Text style={[styles.label, { color: colors.textSecondary }]}>M-Pesa code (optional)</Text>
+          <TextInput
+            style={[styles.input, { color: colors.textPrimary }]}
+            placeholder="e.g. TAB5CDE12F"
+            placeholderTextColor={colors.textTertiary}
+            value={mpesaCode}
+            onChangeText={(v) => setMpesaCode(v.toUpperCase())}
+            autoCapitalize="characters"
+            maxLength={12}
           />
         </View>
 
@@ -269,29 +328,6 @@ function SegmentedControl<T extends string>({
       })}
     </View>
   );
-}
-
-async function checkBudgetThreshold(
-  db: any,
-  category: string,
-  alertThresholds: { high: number; medium: number; low: number },
-): Promise<void> {
-  try {
-    const budgetRepo = new BudgetRepository(db);
-    const budgets = await budgetRepo.findAll();
-    const budget = budgets.find((b) => b.category.toLowerCase() === category.toLowerCase());
-    if (!budget) return;
-
-    const now = new Date();
-    const rows = await budgetRepo.getSpentByCategory(now.getFullYear(), now.getMonth() + 1);
-    const row = rows.find((r) => r.category.toLowerCase() === category.toLowerCase());
-    const spent = row?.spent ?? 0;
-
-    const yearMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-    await fireBudgetAlertLevels(category, spent, budget.limit_amount, alertThresholds, yearMonth);
-  } catch {
-    // non-critical — silently skip
-  }
 }
 
 const styles = StyleSheet.create({

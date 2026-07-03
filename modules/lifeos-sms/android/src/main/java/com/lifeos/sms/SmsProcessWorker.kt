@@ -18,7 +18,7 @@ import kotlinx.coroutines.withContext
  * Pipeline:
  *  1. Parse via SmsParser (in-memory, fast)
  *  2. Deduplicate via DbWriter (3 checks)
- *  3. FULIZA_CHARGE short-circuit → update outstanding balance, skip ledger insert
+ *  3. FULIZA_CHARGE → update outstanding balance, insert fee if present
  *  4. Insert into transactions table
  *  5. Insert audit entry
  *  6. Emit onNewTransaction event to JS (if SmsReceiverModule is alive)
@@ -56,25 +56,41 @@ class SmsProcessWorker(
 
             val tx = (parseResult as SmsParser.SmsParseResult.Success).transaction
 
-            // FULIZA_CHARGE short-circuit: update balance, do NOT insert as transaction
+            // FULIZA_CHARGE: update outstanding balance. If the message carries
+            // an access/maintenance fee, also record it as a ledger transaction.
             if (tx.category == SmsParserConfig.SmsCategory.FULIZA_CHARGE) {
                 val outstanding = tx.fulizaOutstandingKes
                 if (outstanding != null) {
                     db.setFulizaOutstanding(outstanding)
-                    db.insertAudit(tx.mpesaCode, smsBody, outstanding, "Fuliza M-PESA", "fuliza_balance_updated")
-                    // Notify JS if user has no Fuliza limit set
-                    maybeNotifyFulizaLimitNeeded(outstanding, "charge")
-                    return@withContext Result.success()
                 }
+
+                val fee = tx.fee
+                if (fee != null && fee > 0.0) {
+                    val dupReason = SmsDedupeEngine.check(SmsDedupeEngine.Context(), tx, db)
+                    if (dupReason == SmsDedupeEngine.Result.NEW) {
+                        val rowId = db.insertTransaction(tx)
+                        if (rowId >= 0) {
+                            val label = if (tx.parseRoute == SmsParser.ParseRoute.REVIEW) "imported_review" else "imported_realtime"
+                            db.insertAudit(tx.mpesaCode, smsBody, tx.amount, tx.counterparty, label, null, tx.confidence.name.lowercase())
+                            SmsReceiverModule.instance?.emitNewTransaction(tx)
+                        } else {
+                            db.insertAudit(tx.mpesaCode, smsBody, tx.amount, tx.counterparty, "import_failed", "DB insert returned -1")
+                            return@withContext Result.retry()
+                        }
+                    } else {
+                        db.insertAudit(tx.mpesaCode, smsBody, tx.amount, tx.counterparty, "duplicate_detected:${dupReason.name.lowercase()}")
+                    }
+                } else {
+                    db.insertAudit(tx.mpesaCode, smsBody, outstanding, "Fuliza M-PESA", "fuliza_balance_updated")
+                    maybeNotifyFulizaLimitNeeded(outstanding, "charge")
+                }
+                return@withContext Result.success()
             }
 
-            // Deduplication (3-tier)
-            if (db.existsByMpesaCode(tx.mpesaCode) ||
-                db.existsBySourceHash(db.sha256(smsBody)) ||
-                db.existsBySemanticHash(tx.semanticHash) ||
-                db.existsPotentialDuplicate(tx.amount, tx.counterparty ?: "", tx.date)
-            ) {
-                db.insertAudit(tx.mpesaCode, smsBody, tx.amount, tx.counterparty, "duplicate_detected")
+            // 4-tier deduplication
+            val dupReason = SmsDedupeEngine.check(SmsDedupeEngine.Context(), tx, db)
+            if (dupReason != SmsDedupeEngine.Result.NEW) {
+                db.insertAudit(tx.mpesaCode, smsBody, tx.amount, tx.counterparty, "duplicate_detected:${dupReason.name.lowercase()}")
                 return@withContext Result.success()
             }
 
@@ -98,10 +114,21 @@ class SmsProcessWorker(
             val outcomeLabel = if (tx.parseRoute == SmsParser.ParseRoute.REVIEW) "imported_review" else "imported_realtime"
             db.insertAudit(tx.mpesaCode, smsBody, tx.amount, tx.counterparty, outcomeLabel, null, tx.confidence.name.lowercase())
 
-            // Fuliza repayment: update outstanding if available limit is in the SMS
-            if (tx.category == SmsParserConfig.SmsCategory.LOAN) {
-                maybeNotifyFulizaLimitNeeded(tx.fulizaAvailableLimitKes, "repayment")
+            // Fuliza repayment: update outstanding balance from available limit
+            if (tx.category == SmsParserConfig.SmsCategory.LOAN && tx.fulizaAvailableLimitKes != null) {
+                val userLimit = getFulizaLimit().toDouble()
+                if (userLimit > 0.0) {
+                    val outstanding = userLimit - tx.fulizaAvailableLimitKes
+                    db.setFulizaOutstanding(outstanding.coerceAtLeast(0.0))
+                } else {
+                    val current = db.getFulizaOutstanding()
+                    db.setFulizaOutstanding((current - tx.amount).coerceAtLeast(0.0))
+                    maybeNotifyFulizaLimitNeeded(tx.fulizaAvailableLimitKes, "repayment")
+                }
             }
+
+            // Flush WAL so expo-sqlite's separate JS connection sees the new row.
+            db.checkpoint()
 
             // Emit realtime event to JS
             SmsReceiverModule.instance?.emitNewTransaction(tx)
@@ -115,11 +142,14 @@ class SmsProcessWorker(
         }
     }
 
+    private fun getFulizaLimit(): Float {
+        return applicationContext.getSharedPreferences(SmsReceiver.PREFS_NAME, Context.MODE_PRIVATE)
+            .getFloat(KEY_FULIZA_LIMIT, 0f)
+    }
+
     private fun maybeNotifyFulizaLimitNeeded(outstandingKes: Double?, type: String) {
         val outstanding = outstandingKes ?: return
-        val prefs = applicationContext.getSharedPreferences(SmsReceiver.PREFS_NAME, Context.MODE_PRIVATE)
-        val userLimit = prefs.getFloat(KEY_FULIZA_LIMIT, 0f).toDouble()
-        if (userLimit <= 0.0) {
+        if (getFulizaLimit() <= 0f) {
             SmsReceiverModule.instance?.emitFulizaLimitNeeded(outstanding, type)
         }
     }

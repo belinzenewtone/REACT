@@ -112,6 +112,18 @@ class SmsReceiverModule : Module() {
             DbWriter.getInstance(ctx).getAuditLog(limit.coerceIn(1, 500))
         }
 
+        // ── getRecentRejections ───────────────────────────────────────────────
+
+        AsyncFunction("getRecentRejections") { limit: Int ->
+            SmsParser.RejectionLog.recent(limit.coerceIn(1, 50)).map {
+                mapOf(
+                    "reason" to it.reason,
+                    "rawSms" to it.rawSms.take(200),
+                    "timestampMs" to it.timestampMs.toDouble(),
+                )
+            }
+        }
+
         // ── retryQuarantined ─────────────────────────────────────────────────
 
         AsyncFunction("retryQuarantined") {
@@ -130,7 +142,9 @@ class SmsReceiverModule : Module() {
                 if (result !is SmsParser.SmsParseResult.Success) continue
                 val tx = result.transaction
                 if (tx.parseRoute == SmsParser.ParseRoute.QUARANTINE) continue
-                if (db.existsByMpesaCode(tx.mpesaCode) || db.existsBySemanticHash(tx.semanticHash)) continue
+
+                val dupReason = SmsDedupeEngine.check(SmsDedupeEngine.Context(), tx, db)
+                if (dupReason != SmsDedupeEngine.Result.NEW) continue
 
                 val rowId = db.insertTransaction(tx)
                 if (rowId >= 0) {
@@ -139,6 +153,7 @@ class SmsReceiverModule : Module() {
                 }
             }
             if (ids.isNotEmpty()) db.markAuditRetried(ids)
+            db.checkpoint()
 
             mapOf("retried" to quarantined.size, "imported" to importedCount)
         }
@@ -162,14 +177,16 @@ class SmsReceiverModule : Module() {
             if (tx.parseRoute == SmsParser.ParseRoute.QUARANTINE) {
                 return@AsyncFunction mapOf("ok" to false, "error" to "still_quarantined")
             }
-            if (db.existsByMpesaCode(tx.mpesaCode) || db.existsBySemanticHash(tx.semanticHash)) {
+            val dupReason = SmsDedupeEngine.check(SmsDedupeEngine.Context(), tx, db)
+            if (dupReason != SmsDedupeEngine.Result.NEW) {
                 db.markAuditRetried(listOf(id.toLong()))
-                return@AsyncFunction mapOf("ok" to true, "note" to "already_exists")
+                return@AsyncFunction mapOf("ok" to true, "note" to "already_exists:${dupReason.name.lowercase()}")
             }
             val rowId = db.insertTransaction(tx)
             if (rowId < 0) return@AsyncFunction mapOf("ok" to false, "error" to "insert_failed")
             db.insertAudit(tx.mpesaCode, rawMsg, tx.amount, tx.counterparty, "retry_imported")
             db.markAuditRetried(listOf(id.toLong()))
+            db.checkpoint()
             mapOf("ok" to true)
         }
 
@@ -191,9 +208,13 @@ class SmsReceiverModule : Module() {
                         "description"  to tx.description,
                         "dateMs"       to tx.date.toDouble(),
                         "balanceAfter" to tx.balanceAfter,
+                        "fee"          to tx.fee,
+                        "rawSms"       to tx.rawSms,
                         "parseRoute"   to tx.parseRoute.name.lowercase(),
                         "semanticHash" to tx.semanticHash,
                         "matchPhase"   to tx.matchedRulePhase,
+                        "ruleId"       to tx.ruleId,
+                        "sourceHash"   to tx.sourceHash,
                     )
                 }
             }
@@ -253,6 +274,13 @@ class SmsReceiverModule : Module() {
                     "description"    to tx.description,
                     "dateMs"         to tx.date.toDouble(),
                     "balanceAfter"   to tx.balanceAfter,
+                    "fee"            to tx.fee,
+                    "rawSms"         to tx.rawSms,
+                    "parseRoute"     to tx.parseRoute.name.lowercase(),
+                    "semanticHash"   to tx.semanticHash,
+                    "matchPhase"     to tx.matchedRulePhase,
+                    "ruleId"         to tx.ruleId,
+                    "sourceHash"     to tx.sourceHash,
                 )
             )
         } catch (e: Exception) {

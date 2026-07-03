@@ -6,6 +6,7 @@ import { useNavigation } from '@react-navigation/native';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useThemeColors } from '../../hooks/useThemeColors';
 import { TransactionRepository, type TransactionRecord } from '../../database/repositories/TransactionRepository';
+import { MerchantCategoryRepository } from '../../repositories/MerchantCategoryRepository';
 import { useTransactionStore } from '../../store';
 import { GlassCard } from '../../components/common/GlassCard';
 import { EmptyState } from '../../components/common/EmptyState';
@@ -14,6 +15,7 @@ import { CATEGORIZE_CATEGORIES } from '../../constants';
 import { formatCurrency, formatDateTime } from '../../utils/formatters';
 import { spacing, typography, borderRadius } from '../../theme';
 import { animateLayout } from '../../utils/animation';
+import { checkBudgetThresholds } from '../../services/budgetAlertService';
 
 interface MerchantGroup {
   merchant: string;
@@ -74,7 +76,10 @@ export function CategorizeScreen() {
     setGroups((prev) => prev.filter((g) => g.merchant !== merchant));
     try {
       await repo.updateCategoryForMerchant(merchant, category);
+      const merchantRepo = new MerchantCategoryRepository(db);
+      await merchantRepo.setCategory(merchant, category);
       await loadTransactions(repo, true);
+      await checkBudgetThresholds(db, category);
       setMessage({ tone: 'success', text: `Saved for ${merchant}` });
     } catch (error) {
       setMessage({ tone: 'error', text: 'Failed to save category' });
@@ -95,7 +100,7 @@ export function CategorizeScreen() {
           </TouchableOpacity>
           <View style={styles.headerText}>
             <Text style={[styles.eyebrow, { color: colors.textSecondary }]}>Finance</Text>
-            <Text style={[styles.title, { color: colors.textPrimary }]}>Categorize</Text>
+            <Text style={[styles.title, { color: colors.textPrimary }]} numberOfLines={1}>Categorize</Text>
           </View>
           <View style={styles.backButton} />
         </View>

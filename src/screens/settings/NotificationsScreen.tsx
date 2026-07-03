@@ -11,11 +11,14 @@ import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { useThemeColors } from '../../hooks/useThemeColors';
 import { useAppStore } from '../../store';
+import { useSQLiteContext } from 'expo-sqlite';
 import {
-  requestNotificationPermissions,
-  scheduleDailyDigest,
-  cancelDailyDigest,
-} from '../../services/notificationService';
+  syncNotificationPermissions,
+  syncDailyDigest,
+  syncAllNotifications,
+  cancelAllNotifications,
+} from '../../services/notificationSyncService';
+import { checkAllBudgetThresholds } from '../../services/budgetAlertService';
 import { GlassCard } from '../../components/common/GlassCard';
 import { TopBanner } from '../../components/common/TopBanner';
 import { SettingsRow } from '../../components/settings/SettingsRow';
@@ -27,8 +30,10 @@ import { spacing, typography } from '../../theme';
 export function NotificationsScreen() {
   const colors = useThemeColors();
   const navigation = useNavigation<any>();
+  const db = useSQLiteContext();
   const settings = useAppStore((state) => state.settings);
   const updateSettings = useAppStore((state) => state.updateSettings);
+  const clearFiredBudgetAlerts = useAppStore((state) => state.clearFiredBudgetAlerts);
 
   const [timePickerVisible, setTimePickerVisible] = useState(false);
   const [infoMessage, setInfoMessage] = useState<string | null>(null);
@@ -43,6 +48,13 @@ export function NotificationsScreen() {
     updateSettings({
       alertThresholds: { ...settings.alertThresholds, [key]: value },
     });
+    // Allow re-evaluation at the new threshold level for the current month.
+    const now = new Date();
+    const yearMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    clearFiredBudgetAlerts(yearMonth);
+    // Re-check thresholds with the new value so an alert can fire immediately
+    // if the user just lowered a level below current spend.
+    checkAllBudgetThresholds(db).catch(() => {});
   };
 
   const formatTime = (time: string) => {
@@ -61,7 +73,7 @@ export function NotificationsScreen() {
           <TouchableOpacity onPress={() => navigation.goBack()}>
             <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
           </TouchableOpacity>
-          <Text style={[styles.title, { color: colors.textPrimary }]}>Notifications</Text>
+          <Text style={[styles.title, { color: colors.textPrimary }]} numberOfLines={1}>Notifications</Text>
           <View style={{ width: 24 }} />
         </View>
 
@@ -73,12 +85,17 @@ export function NotificationsScreen() {
             toggleValue={settings.notificationsEnabled}
             onToggleChange={async (value) => {
               if (value) {
-                const granted = await requestNotificationPermissions();
-                updateSettings({ notificationsEnabled: granted });
-                if (!granted) setInfoMessage('Please allow notifications in device settings');
+                const granted = await syncNotificationPermissions();
+                if (granted) {
+                  await syncAllNotifications(db);
+                  setInfoMessage('Notifications enabled');
+                } else {
+                  setInfoMessage('Please allow notifications in device settings');
+                }
               } else {
                 updateSettings({ notificationsEnabled: false });
-                await cancelDailyDigest();
+                await cancelAllNotifications();
+                setInfoMessage('Notifications disabled');
               }
             }}
             isLast
@@ -93,9 +110,12 @@ export function NotificationsScreen() {
             subtitle="Notify when spending exceeds a budget category"
             toggle
             toggleValue={settings.budgetThresholdAlerts}
-            onToggleChange={(value) => {
+            onToggleChange={async (value) => {
               animateLayout();
               updateSettings({ budgetThresholdAlerts: value });
+              if (value) {
+                await checkAllBudgetThresholds(db);
+              }
               setInfoMessage(value ? 'Budget alerts enabled' : 'Budget alerts disabled');
             }}
             isLast
@@ -147,13 +167,8 @@ export function NotificationsScreen() {
             toggleValue={settings.dailyDigestMorningSummary}
             onToggleChange={async (value) => {
               updateSettings({ dailyDigestMorningSummary: value });
-              if (value && settings.notificationsEnabled) {
-                await scheduleDailyDigest(settings.dailyDigestDeliveryTime);
-                setInfoMessage('Daily digest enabled');
-              } else {
-                await cancelDailyDigest();
-                setInfoMessage('Daily digest disabled');
-              }
+              await syncDailyDigest();
+              setInfoMessage(value ? 'Daily digest enabled' : 'Daily digest disabled');
             }}
           />
           <SettingsRow
@@ -175,9 +190,7 @@ export function NotificationsScreen() {
         onConfirm={async (time) => {
           updateSettings({ dailyDigestDeliveryTime: time });
           setTimePickerVisible(false);
-          if (settings.dailyDigestMorningSummary && settings.notificationsEnabled) {
-            await scheduleDailyDigest(time);
-          }
+          await syncDailyDigest();
           setInfoMessage(`Daily digest rescheduled for ${formatTime(time)}`);
         }}
       />

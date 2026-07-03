@@ -17,10 +17,15 @@ import { useNavigation } from '@react-navigation/native';
 import { format } from 'date-fns';
 import { useThemeColors } from '../../hooks/useThemeColors';
 import { useCalendarStore } from '../../store';
+import { useDataVersion } from '../../store/dataVersion';
 import { CalendarMonthView } from '../../components/calendar/CalendarMonthView';
 import { spacing, typography, borderRadius, BOTTOM_NAV_SAFE_AREA } from '../../theme';
 import { GlassCard } from '../../components/common/GlassCard';
 import { animateLayout } from '../../utils/animation';
+import { syncTaskReminders } from '../../services/notificationSyncService';
+import { cancelEventReminders } from '../../services/notificationService';
+import { EventRepository } from '../../database/repositories/EventRepository';
+import { TaskRepository } from '../../database/repositories/TaskRepository';
 
 type Tab = 'Calendar' | 'Tasks' | 'Events';
 
@@ -108,9 +113,10 @@ export function CalendarScreen() {
     loadCalendar,
   } = useCalendarStore();
 
+  const dataVersion = useDataVersion((s) => s.version);
   useEffect(() => {
     loadCalendar(db);
-  }, [db, currentYear, currentMonth, selectedDate]);
+  }, [db, currentYear, currentMonth, selectedDate, dataVersion]);
 
   const selectedDateObj = new Date(selectedDate);
   const selectedDateLabel = format(selectedDateObj, 'EEEE, MMM dd');
@@ -133,8 +139,8 @@ export function CalendarScreen() {
   const tasks = (allTasks ?? []).filter((t: any) =>
     tasksQuery ? t.title.toLowerCase().includes(tasksQuery.toLowerCase()) : true
   );
-  const pendingCount = tasks.filter((t: any) => t.status === 'pending').length;
-  const doingCount = tasks.filter((t: any) => t.status === 'in_progress').length;
+  const pendingCount = tasks.filter((t: any) => t.status === 'active').length;
+  const doingCount = 0;
   const doneCount = tasks.filter((t: any) => t.status === 'completed').length;
 
   // Events tab — regular events only (not birthday/anniversary/countdown)
@@ -151,7 +157,8 @@ export function CalendarScreen() {
         style: 'destructive',
         onPress: async () => {
           try {
-            await db.runAsync(`UPDATE events SET deleted_at = ? WHERE id = ?`, [new Date().toISOString(), eventId]);
+            await new EventRepository(db).softDelete(eventId);
+            await cancelEventReminders(eventId);
             await loadCalendar(db);
           } catch (e) {
             console.warn('delete event error', e);
@@ -163,7 +170,8 @@ export function CalendarScreen() {
 
   async function handleCompleteTask(taskId: string) {
     try {
-      await db.runAsync(`UPDATE tasks SET status = 'completed', updated_at = ? WHERE id = ?`, [new Date().toISOString(), taskId]);
+      await new TaskRepository(db).toggleComplete(taskId);
+      await syncTaskReminders(db, taskId);
       await loadCalendar(db);
     } catch (e) {
       console.warn('complete task error', e);
@@ -207,7 +215,7 @@ export function CalendarScreen() {
         {/* Header */}
         <View style={styles.header}>
           <View>
-            <Text style={[styles.title, { color: colors.textPrimary }]}>Calendar</Text>
+            <Text style={[styles.title, { color: colors.textPrimary }]} numberOfLines={1}>Calendar</Text>
             <Text style={[styles.subtitle, { color: colors.textSecondary }]}>{headerSubtitle}</Text>
           </View>
           <TouchableOpacity onPress={handleAddPress}>
@@ -271,9 +279,9 @@ export function CalendarScreen() {
                     >
                       <View style={[styles.dayItemDot, { backgroundColor: group.color }]} />
                       <View style={styles.dayItemInfo}>
-                        <Text style={[styles.dayItemTitle, { color: colors.textPrimary }]}>{item.title}</Text>
+                        <Text style={[styles.dayItemTitle, { color: colors.textPrimary }]} numberOfLines={1}>{item.title}</Text>
                         {item.time && (
-                          <Text style={[styles.dayItemMeta, { color: colors.textSecondary }]}>{item.time}</Text>
+                          <Text style={[styles.dayItemMeta, { color: colors.textSecondary }]} numberOfLines={1}>{item.time}</Text>
                         )}
                       </View>
                     </TouchableOpacity>
@@ -320,16 +328,16 @@ export function CalendarScreen() {
                           borderColor: isDone ? colors.success : colors.border,
                           backgroundColor: isDone ? colors.success : 'transparent',
                         }]}
-                        onPress={() => !isDone && handleCompleteTask(task.id)}
+                        onPress={() => handleCompleteTask(task.id)}
                       >
                         {isDone && <Ionicons name="checkmark" size={12} color={colors.textInverse} />}
                       </TouchableOpacity>
                       <View style={styles.taskInfo}>
-                        <Text style={[styles.taskTitle, { color: colors.textPrimary, textDecorationLine: isDone ? 'line-through' : 'none' }]}>
+                        <Text style={[styles.taskTitle, { color: colors.textPrimary, textDecorationLine: isDone ? 'line-through' : 'none' }]} numberOfLines={1}>
                           {task.title}
                         </Text>
                         {task.deadline && (
-                          <Text style={[styles.taskMeta, { color: colors.textSecondary }]}>
+                          <Text style={[styles.taskMeta, { color: colors.textSecondary }]} numberOfLines={1}>
                             {format(new Date(task.deadline), 'MMM dd, yyyy')}
                           </Text>
                         )}
@@ -378,8 +386,8 @@ export function CalendarScreen() {
                   >
                     <View style={[styles.eventBar, { backgroundColor: colors.accentPrimary }]} />
                     <View style={styles.eventInfo}>
-                      <Text style={[styles.eventTitle, { color: colors.textPrimary }]}>{event.title}</Text>
-                      <Text style={[styles.eventDate, { color: colors.textSecondary }]}>
+                      <Text style={[styles.eventTitle, { color: colors.textPrimary }]} numberOfLines={1}>{event.title}</Text>
+                      <Text style={[styles.eventDate, { color: colors.textSecondary }]} numberOfLines={1}>
                         {event.date ? format(new Date(event.date), 'MMM dd, yyyy') : ''}
                         {event.event_type ? ` · ${event.event_type}` : ''}
                       </Text>
@@ -490,13 +498,14 @@ const styles = StyleSheet.create({
   taskCard: { marginBottom: 0 },
   taskRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.base },
   taskCheck: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
     borderWidth: 2,
     justifyContent: 'center',
     alignItems: 'center',
     flexShrink: 0,
+    overflow: 'hidden',
   },
   taskInfo: { flex: 1 },
   taskTitle: { fontSize: typography.sizes.base },

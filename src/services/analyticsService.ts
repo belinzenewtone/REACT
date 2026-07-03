@@ -3,12 +3,6 @@ import { TransactionRepository } from '../database/repositories/TransactionRepos
 import { BudgetRepository } from '../database/repositories/BudgetRepository';
 import { TaskRepository } from '../database/repositories/TaskRepository';
 
-export interface CategoryBreakdownItem {
-  category: string;
-  amount: number;
-  color: string;
-}
-
 export interface WeeklyTrendItem {
   week: string;
   amount: number;
@@ -56,7 +50,6 @@ export interface AnalyticsData {
   totalIncome: number;
   net: number;
   averageTransaction: number;
-  categoryBreakdown: CategoryBreakdownItem[];
   weeklyTrend: WeeklyTrendItem[];
   weeklyCategorySpend: WeeklyCategorySpendItem[];
   monthlyTrend: MonthlyTrendItem[];
@@ -69,7 +62,8 @@ export interface AnalyticsData {
 export async function computeAnalytics(
   db: SQLiteDatabase,
   startDate: string,
-  endDate: string
+  endDate: string,
+  rangeLabel: 'this_week' | 'this_month' | 'custom' = 'this_month'
 ): Promise<AnalyticsData> {
   const txRepo = new TransactionRepository(db);
   const budgetRepo = new BudgetRepository(db);
@@ -113,7 +107,7 @@ export async function computeAnalytics(
     uncategorized: '#6B7280',
   };
 
-  const categoryBreakdown: CategoryBreakdownItem[] = Array.from(categoryMap.entries())
+  const categorySpendSorted = Array.from(categoryMap.entries())
     .map(([category, amount]) => ({
       category,
       amount,
@@ -162,13 +156,17 @@ export async function computeAnalytics(
   const completionRate = totalTasks > 0 ? (tasksCompleted / totalTasks) * 100 : 0;
 
   // Generate insights
+  const rangeTitle =
+    rangeLabel === 'this_week' ? 'This week' :
+    rangeLabel === 'this_month' ? 'This month' :
+    'This period';
   const insights: InsightItem[] = [];
   if (totalSpend > 0) {
     insights.push({
       icon: 'cash-outline',
-      title: `Month so far: KSh ${totalSpend.toLocaleString()}`,
-      description: `Across ${categoryBreakdown.length} categories`,
-      color: categoryBreakdown[0]?.color ?? '#4DB8FF',
+      title: `${rangeTitle}: KSh ${totalSpend.toLocaleString()}`,
+      description: `Across ${categorySpendSorted.length} categor${categorySpendSorted.length === 1 ? 'y' : 'ies'}`,
+      color: categorySpendSorted[0]?.color ?? '#4DB8FF',
     });
   }
   if (tasksPending > 0) {
@@ -188,11 +186,11 @@ export async function computeAnalytics(
       color: '#34D399',
     });
   }
-  if (categoryBreakdown.length > 0) {
+  if (categorySpendSorted.length > 0) {
     insights.push({
-      icon: 'pie-chart-outline',
-      title: `Top category: ${categoryBreakdown[0].category}`,
-      description: `KSh ${categoryBreakdown[0].amount.toLocaleString()} spent`,
+      icon: 'bar-chart-outline',
+      title: `Top category: ${categorySpendSorted[0].category}`,
+      description: `KSh ${categorySpendSorted[0].amount.toLocaleString()} spent`,
       color: '#8B5CF6',
     });
   }
@@ -206,7 +204,6 @@ export async function computeAnalytics(
     totalIncome,
     net: totalIncome - totalSpend,
     averageTransaction,
-    categoryBreakdown,
     weeklyTrend,
     weeklyCategorySpend,
     monthlyTrend,

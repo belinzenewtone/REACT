@@ -226,6 +226,18 @@ export function ExportScreen() {
   const [counts, setCounts] = useState<DomainCounts | null>(null);
   const [isExporting, setIsExporting] = useState(false);
   const [isLoadingCounts, setIsLoadingCounts] = useState(false);
+  // Data-type toggles — user picks which domains land in the JSON/PDF export.
+  // Default to all selected so behavior matches the pre-toggle version.
+  const [selectedDomains, setSelectedDomains] = useState<Set<string>>(
+    () => new Set(PREVIEW_DOMAINS.map((d) => d.key))
+  );
+  const toggleDomain = (key: string) => {
+    setSelectedDomains((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  };
 
   useEffect(() => {
     loadAll(db);
@@ -278,8 +290,12 @@ export function ExportScreen() {
   };
 
   const buildCsv = async () => {
-    const { start } = getDateRange(dateWindow, customFrom ?? undefined, customTo ?? undefined);
-    const rows = await new TransactionRepository(db).findAll({ limit: 50000, startDate: start });
+    const { start, end } = getDateRange(dateWindow, customFrom ?? undefined, customTo ?? undefined);
+    const rows = await new TransactionRepository(db).findAll({
+      limit: 50000,
+      startDate: start,
+      endDate: end,
+    });
     const header = ['date', 'merchant', 'category', 'amount', 'type', 'status', 'description', 'mpesa_code'].join(',');
     const lines = rows.map((r) =>
       [
@@ -297,26 +313,50 @@ export function ExportScreen() {
   };
 
   const buildJson = async () => {
-    const { start } = getDateRange(dateWindow, customFrom ?? undefined, customTo ?? undefined);
-    const [transactions, tasks, events, budgets] = await Promise.all([
-      new TransactionRepository(db).findAll({ limit: 50000, startDate: start }),
-      new TaskRepository(db).findAll({ limit: 50000 }),
-      new EventRepository(db).findAll(),
-      new BudgetRepository(db).findAll(),
+    const { start, end } = getDateRange(dateWindow, customFrom ?? undefined, customTo ?? undefined);
+    // Only fetch domains the user asked for; leave others as empty arrays so
+    // the export shape stays stable for downstream tooling.
+    const want = (k: string) => selectedDomains.has(k);
+    const [transactions, tasks, events, budgets, incomes, recurring, goals] = await Promise.all([
+      want('transactions') ? new TransactionRepository(db).findAll({ limit: 50000, startDate: start, endDate: end }) : Promise.resolve([]),
+      want('tasks') ? new TaskRepository(db).findAll({ limit: 50000 }) : Promise.resolve([]),
+      want('events') ? new EventRepository(db).findAll() : Promise.resolve([]),
+      want('budgets') ? new BudgetRepository(db).findAll() : Promise.resolve([]),
+      want('incomes') ? new IncomeRepository(db).findAll() : Promise.resolve([]),
+      want('recurring') ? new RecurringRuleRepository(db).findAll() : Promise.resolve([]),
+      want('goals') ? new (require('../../database/repositories/GoalRepository').GoalRepository)(db).findAll() : Promise.resolve([]),
     ]);
     return {
-      content: JSON.stringify({ transactions, tasks, events, budgets, exportedAt: new Date().toISOString() }, null, 2),
-      count: transactions.length + tasks.length + events.length + budgets.length,
+      content: JSON.stringify(
+        {
+          transactions,
+          tasks,
+          events,
+          budgets,
+          incomes,
+          recurring,
+          goals,
+          exportedAt: new Date().toISOString(),
+          window: { start, end },
+          selectedDomains: Array.from(selectedDomains),
+        },
+        null,
+        2,
+      ),
+      count:
+        transactions.length + tasks.length + events.length + budgets.length +
+        incomes.length + recurring.length + (goals as any[]).length,
     };
   };
 
   const buildPdfText = async () => {
-    const { start } = getDateRange(dateWindow, customFrom ?? undefined, customTo ?? undefined);
+    const { start, end } = getDateRange(dateWindow, customFrom ?? undefined, customTo ?? undefined);
+    const want = (k: string) => selectedDomains.has(k);
     const [transactions, tasks, events, budgets] = await Promise.all([
-      new TransactionRepository(db).findAll({ limit: 50000, startDate: start }),
-      new TaskRepository(db).findAll({ limit: 50000 }),
-      new EventRepository(db).findAll(),
-      new BudgetRepository(db).findAll(),
+      want('transactions') ? new TransactionRepository(db).findAll({ limit: 50000, startDate: start, endDate: end }) : Promise.resolve([]),
+      want('tasks') ? new TaskRepository(db).findAll({ limit: 50000 }) : Promise.resolve([]),
+      want('events') ? new EventRepository(db).findAll() : Promise.resolve([]),
+      want('budgets') ? new BudgetRepository(db).findAll() : Promise.resolve([]),
     ]);
 
     const lines: string[] = [];
@@ -364,8 +404,20 @@ export function ExportScreen() {
     encryptEnabled ? CryptoJS.AES.encrypt(content, passphrase).toString() : content;
 
   const handleExport = async () => {
-    if (encryptEnabled && !passphrase.trim()) {
-      Alert.alert('Passphrase required', 'Enter a passphrase to encrypt this export, or turn off encryption.');
+    if (encryptEnabled) {
+      const trimmed = passphrase.trim();
+      if (!trimmed) {
+        Alert.alert('Passphrase required', 'Enter a passphrase to encrypt this export, or turn off encryption.');
+        return;
+      }
+      if (trimmed.length < 6) {
+        Alert.alert('Passphrase too short', 'Use a passphrase of at least 6 characters for meaningful encryption.');
+        return;
+      }
+    }
+    // At least one domain must be selected for multi-domain formats.
+    if ((format_ === 'json' || format_ === 'pdf') && selectedDomains.size === 0) {
+      Alert.alert('Nothing to export', 'Pick at least one data type to include in the export.');
       return;
     }
 
@@ -407,7 +459,7 @@ export function ExportScreen() {
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
             <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
           </TouchableOpacity>
-          <Text style={[styles.title, { color: colors.textPrimary }]}>Export</Text>
+          <Text style={[styles.title, { color: colors.textPrimary }]} numberOfLines={1}>Export</Text>
           <View style={styles.backBtn} />
         </View>
 
@@ -437,7 +489,7 @@ export function ExportScreen() {
               );
             })}
           </View>
-          <Text style={[styles.formatHint, { color: colors.textTertiary }]}>
+          <Text style={[styles.formatHint, { color: colors.textTertiary }]} numberOfLines={2}>
             {format_ === 'csv'
               ? 'Transactions only — opens in Excel / Google Sheets'
               : format_ === 'json'
@@ -526,19 +578,48 @@ export function ExportScreen() {
               )}
             </View>
           </View>
+          <Text style={[styles.previewHint, { color: colors.textTertiary }]}>
+            {format_ === 'csv'
+              ? 'CSV exports transactions only.'
+              : 'Tap a card to include or exclude that data type.'}
+          </Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false}>
             <View style={styles.previewGrid}>
-              {PREVIEW_DOMAINS.map((d) => (
-                <View key={d.key} style={[styles.previewItem, { backgroundColor: colors.bgTertiary }]}>
-                  <View style={[styles.previewIcon, { backgroundColor: `${d.color}20` }]}>
-                    <Ionicons name={d.icon} size={18} color={d.color} />
-                  </View>
-                  <Text style={[styles.previewCount, { color: colors.textPrimary }]}>
-                    {counts?.[d.key] ?? '—'}
-                  </Text>
-                  <Text style={[styles.previewLabel, { color: colors.textTertiary }]}>{d.label}</Text>
-                </View>
-              ))}
+              {PREVIEW_DOMAINS.map((d) => {
+                const csvLocked = format_ === 'csv' && d.key !== 'transactions';
+                const active = format_ === 'csv'
+                  ? d.key === 'transactions'
+                  : selectedDomains.has(d.key);
+                return (
+                  <TouchableOpacity
+                    key={d.key}
+                    activeOpacity={csvLocked ? 1 : 0.75}
+                    disabled={csvLocked}
+                    onPress={() => toggleDomain(d.key)}
+                    style={[
+                      styles.previewItem,
+                      {
+                        backgroundColor: active ? `${d.color}22` : colors.bgTertiary,
+                        borderColor: active ? d.color : colors.border,
+                        opacity: csvLocked ? 0.35 : 1,
+                      },
+                    ]}
+                  >
+                    <View style={[styles.previewIcon, { backgroundColor: `${d.color}20` }]}>
+                      <Ionicons name={d.icon} size={18} color={d.color} />
+                    </View>
+                    <Text style={[styles.previewCount, { color: colors.textPrimary }]} numberOfLines={1}>
+                      {counts?.[d.key] ?? '—'}
+                    </Text>
+                    <Text style={[styles.previewLabel, { color: colors.textTertiary }]} numberOfLines={1}>{d.label}</Text>
+                    {active && !csvLocked ? (
+                      <View style={[styles.previewCheck, { backgroundColor: d.color }]}>
+                        <Ionicons name="checkmark" size={11} color="#FFF" />
+                      </View>
+                    ) : null}
+                  </TouchableOpacity>
+                );
+              })}
             </View>
           </ScrollView>
         </GlassCard>
@@ -554,7 +635,7 @@ export function ExportScreen() {
           ) : (
             <>
               <Ionicons name="share-outline" size={20} color={colors.textInverse} />
-              <Text style={[styles.exportBtnText, { color: colors.textInverse }]}>
+              <Text style={[styles.exportBtnText, { color: colors.textInverse }]} numberOfLines={1}>
                 Export {format_.toUpperCase()}
               </Text>
             </>
@@ -657,11 +738,17 @@ const styles = StyleSheet.create({
   previewTotal: { fontSize: typography.sizes.xs, fontWeight: typography.weights.medium },
   previewGrid: { flexDirection: 'row', gap: spacing.sm, paddingVertical: spacing.sm },
   previewItem: {
-    width: 90, alignItems: 'center', padding: spacing.sm, borderRadius: borderRadius.lg, gap: 4,
+    width: 92, alignItems: 'center', padding: spacing.sm, borderRadius: borderRadius.lg, gap: 4,
+    borderWidth: 1, position: 'relative',
   },
   previewIcon: { width: 36, height: 36, borderRadius: 18, justifyContent: 'center', alignItems: 'center' },
   previewCount: { fontSize: typography.sizes.lg, fontWeight: typography.weights.bold },
   previewLabel: { fontSize: typography.sizes.xs },
+  previewHint: { fontSize: typography.sizes.xs, marginTop: 2, marginBottom: spacing.xs },
+  previewCheck: {
+    position: 'absolute', top: 4, right: 4, width: 16, height: 16, borderRadius: 8,
+    justifyContent: 'center', alignItems: 'center',
+  },
   exportBtn: {
     flexDirection: 'row',
     alignItems: 'center',

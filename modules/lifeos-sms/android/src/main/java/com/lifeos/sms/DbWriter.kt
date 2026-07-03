@@ -21,8 +21,35 @@ internal class DbWriter private constructor(context: Context) {
     private val db: SQLiteDatabase
 
     init {
-        val path = context.applicationContext.getDatabasePath("lifeos.db").absolutePath
-        File(path).parentFile?.mkdirs()
+        // IMPORTANT: expo-sqlite (JS layer) stores DBs under `filesDir/SQLite/<name>`,
+        // NOT the Android-default `databases/` directory. If we open the wrong path
+        // we write to a separate file — the JS layer never sees our rows, so imports
+        // appear successful but the UI stays empty. Match expo-sqlite's location.
+        val app = context.applicationContext
+        val sqliteDir = File(app.filesDir, "SQLite")
+        sqliteDir.mkdirs()
+        val target = File(sqliteDir, "lifeos.db")
+
+        // One-time migration: earlier builds wrote to `databases/lifeos.db`.
+        // Copy that file (and its WAL/SHM sidecars) into the correct location
+        // ONLY if the target does not yet exist, so we do not overwrite the
+        // authoritative JS-managed DB.
+        try {
+            val legacy = app.getDatabasePath("lifeos.db")
+            if (legacy.exists() && !target.exists()) {
+                Log.w(TAG, "Migrating legacy DB from ${legacy.absolutePath} → ${target.absolutePath}")
+                legacy.copyTo(target, overwrite = false)
+                File(legacy.absolutePath + "-wal").takeIf { it.exists() }
+                    ?.copyTo(File(target.absolutePath + "-wal"), overwrite = false)
+                File(legacy.absolutePath + "-shm").takeIf { it.exists() }
+                    ?.copyTo(File(target.absolutePath + "-shm"), overwrite = false)
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Legacy DB migration skipped: ${e.message}")
+        }
+
+        val path = target.absolutePath
+        Log.i(TAG, "Opening SQLite at $path (matching expo-sqlite location)")
         db = SQLiteDatabase.openDatabase(
             path,
             null,
@@ -32,6 +59,19 @@ internal class DbWriter private constructor(context: Context) {
         db.execSQL("PRAGMA synchronous=NORMAL")
         db.execSQL("PRAGMA foreign_keys=ON")
         ensureImportAuditTable()
+    }
+
+    /**
+     * Force a WAL checkpoint so any writes done through this connection become
+     * immediately visible to other connections opened on the same DB file
+     * (specifically expo-sqlite on the JS side). Called after every batch import.
+     */
+    fun checkpoint() {
+        try {
+            db.rawQuery("PRAGMA wal_checkpoint(RESTART)", null).use { it.moveToFirst() }
+        } catch (e: Exception) {
+            Log.w(TAG, "wal_checkpoint failed: ${e.message}")
+        }
     }
 
     companion object {
@@ -44,6 +84,12 @@ internal class DbWriter private constructor(context: Context) {
                 INSTANCE ?: DbWriter(context.applicationContext).also { INSTANCE = it }
             }
     }
+
+    // ─── Transaction helpers ─────────────────────────────────────────────────
+
+    fun beginTransaction() = db.beginTransaction()
+    fun setTransactionSuccessful() = db.setTransactionSuccessful()
+    fun endTransaction() = db.endTransaction()
 
     // ─── Auto-migrate import_audit if absent ──────────────────────────────────
 
@@ -66,6 +112,41 @@ internal class DbWriter private constructor(context: Context) {
     }
 
     // ─── Deduplication checks ─────────────────────────────────────────────────
+
+    /**
+     * Preload existing transaction dedup keys (mpesa_code, source_hash, semantic_hash)
+     * from the DB into three sets in ONE query. Turns 30k dedup round-trips
+     * (3 queries × 10k rows) into a single sequential scan for bulk imports.
+     *
+     * We restrict to non-deleted rows and cap to the most recent [limit] rows
+     * (default 50k) to keep memory bounded on huge inboxes. Older rows still
+     * fall through to the per-row `existsBy*` DB checks.
+     */
+    fun preloadDedupeHashes(
+        seenCodes: MutableSet<String>,
+        seenSourceHashes: MutableSet<String>,
+        seenSemanticHashes: MutableSet<String>,
+        limit: Int = 50_000,
+    ) {
+        try {
+            db.rawQuery(
+                """SELECT mpesa_code, source_hash, semantic_hash
+                   FROM transactions
+                   WHERE deleted_at IS NULL
+                   ORDER BY date DESC
+                   LIMIT ?""",
+                arrayOf(limit.toString())
+            ).use { c ->
+                while (c.moveToNext()) {
+                    c.getString(0)?.let { seenCodes.add(it) }
+                    c.getString(1)?.let { seenSourceHashes.add(it) }
+                    c.getString(2)?.let { seenSemanticHashes.add(it) }
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "preloadDedupeHashes failed: ${e.message}")
+        }
+    }
 
     fun existsByMpesaCode(code: String): Boolean {
         return db.rawQuery(
@@ -111,6 +192,30 @@ internal class DbWriter private constructor(context: Context) {
         input.hashCode().toString()
     }
 
+    // ─── Merchant category learning ───────────────────────────────────────────
+
+    private fun normalizeMerchant(merchant: String?): String {
+        if (merchant.isNullOrBlank()) return ""
+        return merchant.lowercase()
+            .replace(Regex("""[^a-z0-9]+"""), " ")
+            .replace(Regex("""\s+"""), " ")
+            .trim()
+    }
+
+    private fun lookupMerchantCategory(merchant: String?): String? {
+        val normalized = normalizeMerchant(merchant)
+        if (normalized.isBlank()) return null
+        return db.rawQuery(
+            """SELECT category FROM merchant_categories
+               WHERE merchant = ? AND deleted_at IS NULL
+               ORDER BY user_corrected DESC, confidence DESC, updated_at DESC
+               LIMIT 1""",
+            arrayOf(normalized)
+        ).use { c ->
+            if (c.moveToFirst()) c.getString(0) else null
+        }
+    }
+
     // ─── Transaction insert ───────────────────────────────────────────────────
 
     /**
@@ -120,8 +225,8 @@ internal class DbWriter private constructor(context: Context) {
     fun insertTransaction(tx: SmsParser.ParsedTransaction): Long {
         val id = UUID.randomUUID().toString()
         val now = isoNow()
-        val sourceHash = sha256(tx.rawSms)
-        val appCategory = SmsParserConfig.refineAppCategory(tx.category, tx.counterparty)
+        val appCategory = lookupMerchantCategory(tx.counterparty)
+            ?: SmsParserConfig.refineAppCategory(tx.category, tx.counterparty, tx.amount)
         val dateIso = epochToIso(tx.date)
         val syncState = when (tx.parseRoute) {
             SmsParser.ParseRoute.DIRECT    -> "pending"
@@ -146,7 +251,7 @@ internal class DbWriter private constructor(context: Context) {
                 stmt.bindString(6, "mpesa")
                 stmt.bindString(7, tx.transactionType)
                 stmt.bindString(8, tx.mpesaCode)
-                stmt.bindString(9, sourceHash)
+                stmt.bindString(9, tx.sourceHash)
                 stmt.bindString(10, tx.rawSms)
                 stmt.bindString(11, tx.description)
                 if (tx.balanceAfter != null) stmt.bindDouble(12, tx.balanceAfter) else stmt.bindNull(12)
@@ -209,6 +314,24 @@ internal class DbWriter private constructor(context: Context) {
         }
     }
 
+    // ─── Fuliza outstanding balance ───────────────────────────────────────────
+
+    /**
+     * Returns the current active Fuliza outstanding balance, or 0.0 if no active loan row exists.
+     */
+    fun getFulizaOutstanding(): Double {
+        return try {
+            db.rawQuery(
+                "SELECT draw_amount_kes - total_repaid_kes FROM fuliza_loans WHERE status = 'active' ORDER BY updated_at DESC LIMIT 1",
+                null
+            ).use { c ->
+                if (c.moveToFirst()) c.getDouble(0) else 0.0
+            }
+        } catch (e: Exception) {
+            0.0
+        }
+    }
+
     // ─── Import audit ─────────────────────────────────────────────────────────
 
     fun insertAudit(
@@ -266,13 +389,21 @@ internal class DbWriter private constructor(context: Context) {
     }
 
     fun getStats(): Map<String, Any?> {
+        // Outcomes are written by workers as either exact strings ('imported_realtime',
+        // 'quarantined', 'ignored_not_mpesa', …) or as `${category}:${reason}` (e.g.
+        // 'parse_failed:no_code', 'duplicate_detected:mpesa_code'). Match via LIKE so
+        // the suffixed variants aren't miscategorised.
+        //
+        // Only rows whose outcome contains "imported" or "realtime" count toward
+        // the imported total. `retried`/`dismissed`/`ignored_*`/`fuliza_*` are
+        // administrative and shouldn't inflate the imported count.
         var imported = 0L; var skipped = 0L; var errors = 0L; var quarantined = 0L; var lastAt: String? = null
         db.rawQuery(
             """SELECT
-               SUM(CASE WHEN outcome NOT IN ('duplicate_detected','parse_failed','ignored_not_mpesa','quarantined','fuliza_notice') THEN 1 ELSE 0 END),
-               SUM(CASE WHEN outcome = 'duplicate_detected' THEN 1 ELSE 0 END),
-               SUM(CASE WHEN outcome IN ('parse_failed','import_failed') THEN 1 ELSE 0 END),
-               SUM(CASE WHEN outcome = 'quarantined' THEN 1 ELSE 0 END),
+               SUM(CASE WHEN outcome LIKE 'imported%' OR outcome LIKE 'retry_imported%' THEN 1 ELSE 0 END),
+               SUM(CASE WHEN outcome LIKE 'duplicate_detected%' THEN 1 ELSE 0 END),
+               SUM(CASE WHEN outcome LIKE 'parse_failed%' OR outcome LIKE 'import_failed%' THEN 1 ELSE 0 END),
+               SUM(CASE WHEN outcome LIKE 'quarantined%' THEN 1 ELSE 0 END),
                MAX(created_at)
                FROM import_audit""",
             null

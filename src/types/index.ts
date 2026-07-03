@@ -4,8 +4,8 @@
  */
 
 export type SyncState = 'pending' | 'synced' | 'conflict' | 'error';
-export type RecordSource = 'manual' | 'sms' | 'csv' | 'recurring' | 'import';
-export type TransactionType = 'expense' | 'income' | 'transfer';
+export type RecordSource = 'manual' | 'sms' | 'sms_import' | 'csv' | 'recurring' | 'import';
+export type TransactionType = 'expense' | 'income' | 'transfer' | 'fuliza';
 export type TransactionStatus = 'completed' | 'pending' | 'failed' | 'reversed';
 
 export interface Transaction {
@@ -101,6 +101,7 @@ export interface Budget {
   limitAmount: number;
   period: BudgetPeriod;
   alertThreshold?: number; // 0-1
+  isActive?: boolean;
   createdAt: string;
   updatedAt: string;
   syncState: SyncState;
@@ -266,15 +267,4 @@ export interface AppSettings {
   smsBackgroundReceiver: boolean;
 }
 
-export interface ParsedSmsResult {
-  code: string;
-  type: string;
-  counterparty: string;
-  amount: number;
-  balanceAfter?: number;
-  date: string;
-  confidence: number;
-  category?: string;
-  fee?: number;
-  description?: string;
-}
+

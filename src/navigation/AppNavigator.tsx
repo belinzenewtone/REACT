@@ -49,6 +49,22 @@ import { LearningScreen } from '../screens/learning/LearningScreen';
 import { WeekReviewScreen } from '../screens/review/WeekReviewScreen';
 import { ScreenLockScreen } from '../screens/settings/ScreenLockScreen';
 import { NotificationsScreen } from '../screens/settings/NotificationsScreen';
+import {
+  reconcilePermissionState,
+  syncDailyDigest,
+  syncTaskReminders,
+  syncEventReminders,
+  syncRecurringReminders,
+  syncBillReminders,
+} from '../services/notificationSyncService';
+import { checkAllBudgetThresholds } from '../services/budgetAlertService';
+import { fireNewTransactionAlert } from '../services/notificationService';
+import {
+  addNewTransactionListener,
+  enableBackgroundReceiver,
+  setFulizaLimit,
+} from '../../modules/lifeos-sms';
+import { useDataVersion } from '../store/dataVersion';
 import type { RootStackParamList } from './types';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -100,6 +116,82 @@ export function AppNavigator() {
       mounted = false;
     };
   }, [db, setIsLoading]);
+
+  // Bootstrap notifications once the DB and persisted store are ready.
+  // IMPORTANT: uses `reconcilePermissionState()` — a PASSIVE check that never
+  // fires the OS permission dialog. The dialog is only shown when the user
+  // taps "Allow" in the onboarding permission step or the Settings toggle.
+  useEffect(() => {
+    if (!dbReady || !hasHydrated) return;
+    let cancelled = false;
+    async function bootstrapNotifications() {
+      try {
+        // Reconcile persisted JS settings → native SharedPreferences on boot.
+        // Handles fresh installs where JS defaults (e.g. fulizaLimit: 10000)
+        // haven't yet been pushed to the native worker, and keeps state in
+        // sync if the JS side changed while the process was killed.
+        try {
+          const s = useAppStore.getState().settings;
+          await enableBackgroundReceiver(s.smsBackgroundReceiver ?? true);
+          await setFulizaLimit(s.fulizaLimit ?? 0);
+        } catch {}
+        if (cancelled) return;
+        await reconcilePermissionState();
+        if (cancelled) return;
+        // These sync fns are no-ops (or cancel) when permission is not granted.
+        await syncDailyDigest();
+        if (cancelled) return;
+        await syncTaskReminders(db);
+        if (cancelled) return;
+        await syncEventReminders(db);
+        if (cancelled) return;
+        await syncRecurringReminders(db);
+        if (cancelled) return;
+        await syncBillReminders(db);
+        if (cancelled) return;
+        // Re-evaluate budget alerts on cold start in case spending crossed a
+        // threshold while the app was closed.
+        await checkAllBudgetThresholds(db);
+      } catch (error) {
+        console.warn('Notification bootstrap failed:', error);
+      }
+    }
+    bootstrapNotifications();
+    return () => {
+      cancelled = true;
+    };
+  }, [db, dbReady, hasHydrated]);
+
+  // Listen for real-time SMS transactions and re-evaluate budget thresholds.
+  useEffect(() => {
+    if (!dbReady || !hasHydrated) return;
+    const subscription = addNewTransactionListener((tx) => {
+      // Native worker just wrote to SQLite from its own connection.
+      // Bump so every subscribed store re-reads from disk.
+      useDataVersion.getState().bump();
+
+      // Heads-up notification for the auto-imported transaction, gated by
+      // the user's notification preferences.
+      const s = useAppStore.getState().settings;
+      if (
+        s.notificationsEnabled &&
+        s.notificationTypes?.transactionAlerts !== false &&
+        tx?.mpesaCode
+      ) {
+        fireNewTransactionAlert(
+          tx.mpesaCode,
+          tx.amount,
+          tx.merchant,
+          tx.transactionType,
+        ).catch(() => {});
+      }
+
+      checkAllBudgetThresholds(db).catch((error) => {
+        console.warn('Budget check after SMS failed:', error);
+      });
+    });
+    return () => subscription.remove();
+  }, [db, dbReady, hasHydrated]);
 
   // Cold start is handled synchronously during store rehydration (see useAppStore).
   // Here we only need to re-arm the lock when the app returns to the foreground after

@@ -9,6 +9,7 @@ import { useSQLiteContext } from 'expo-sqlite';
 import { useThemeColors } from '../../hooks/useThemeColors';
 import { useBudgetStore } from '../../store';
 import { BudgetRepository } from '../../database/repositories/BudgetRepository';
+import { checkBudgetThresholds } from '../../services/budgetAlertService';
 import { CATEGORY_COLORS, CATEGORY_ICONS } from '../../constants';
 import { Dropdown } from '../../components/common/Dropdown';
 import { spacing, typography, borderRadius } from '../../theme';
@@ -42,6 +43,7 @@ export function BudgetFormScreen() {
   const [limit, setLimit] = useState('');
   const [period, setPeriod] = useState<(typeof PERIODS)[number]>('monthly');
   const [threshold, setThreshold] = useState('80');
+  const [isActive, setIsActive] = useState(true);
 
   useEffect(() => {
     if (!budgetId) return;
@@ -52,6 +54,7 @@ export function BudgetFormScreen() {
         setLimit(budget.limit_amount.toString());
         setPeriod(budget.period);
         setThreshold(((budget.alert_threshold ?? 0.8) * 100).toString());
+        setIsActive(budget.is_active !== 0);
       }
       setIsReady(true);
     });
@@ -71,6 +74,7 @@ export function BudgetFormScreen() {
       limitAmount,
       period,
       alertThreshold: thresholdValue,
+      isActive,
       recordSource: 'manual' as const,
     };
 
@@ -82,6 +86,7 @@ export function BudgetFormScreen() {
         await createBudget(db, data);
         setSuccessMsg('Budget added');
       }
+      await checkBudgetThresholds(db, category);
       setTimeout(() => navigation.goBack(), 900);
     } catch (error) {
       console.error('Failed to save budget:', error);
@@ -115,7 +120,7 @@ export function BudgetFormScreen() {
           <TouchableOpacity onPress={() => navigation.goBack()}>
             <Text style={[styles.headerAction, { color: colors.textSecondary }]}>Cancel</Text>
           </TouchableOpacity>
-          <Text style={[styles.title, { color: colors.textPrimary }]}>
+          <Text style={[styles.title, { color: colors.textPrimary }]} numberOfLines={1}>
             {isEditing ? 'Edit Budget' : 'Add Budget'}
           </Text>
           <TouchableOpacity onPress={handleSave}>
@@ -177,6 +182,15 @@ export function BudgetFormScreen() {
             onChangeText={setThreshold}
           />
         </View>
+
+        <TouchableOpacity
+          style={[styles.toggle, { backgroundColor: isActive ? colors.accentPrimary : colors.glassWhite, borderColor: colors.border }]}
+          onPress={() => setIsActive((v) => !v)}
+        >
+          <Text style={{ color: isActive ? colors.textInverse : colors.textPrimary, fontWeight: '500' }}>
+            Active: {isActive ? 'Yes' : 'No'}
+          </Text>
+        </TouchableOpacity>
 
         {isEditing && (
           <TouchableOpacity style={[styles.deleteButton, { borderColor: colors.danger }]} onPress={handleDelete}>
@@ -249,6 +263,13 @@ const styles = StyleSheet.create({
     fontSize: typography.sizes.sm,
     fontWeight: typography.weights.medium,
     textTransform: 'capitalize',
+  },
+  toggle: {
+    borderRadius: borderRadius.lg,
+    borderWidth: 1,
+    paddingVertical: spacing.base,
+    alignItems: 'center',
+    marginTop: spacing.lg,
   },
   deleteButton: {
     flexDirection: 'row',

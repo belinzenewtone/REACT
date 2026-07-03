@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -7,22 +7,26 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Alert,
+  RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { useThemeColors } from '../../hooks/useThemeColors';
 import { spacing, typography, borderRadius } from '../../theme';
 import { GlassCard } from '../../components/common/GlassCard';
 import {
   getStats,
   getAuditLog,
+  getRecentRejections,
   getReceiverStatus,
   importHistoricalSms,
   retryQuarantined,
   type SmsStats,
   type AuditEntry,
+  type RejectionEntry,
 } from '../../../modules/lifeos-sms';
+import { useDataVersion } from '../../store/dataVersion';
 
 function SectionCard({ title, children, colors }: { title?: string; children: React.ReactNode; colors: any }) {
   return (
@@ -79,17 +83,32 @@ function outcomeColor(outcome: string, colors: any): string {
 }
 
 function outcomeLabelShort(outcome: string): string {
-  if (outcome.includes('imported_realtime')) return 'realtime';
-  if (outcome.includes('imported_review')) return 'review';
-  if (outcome.includes('imported_batch')) return 'batch';
-  if (outcome.includes('retry_imported')) return 'retried';
-  if (outcome.includes('fuliza_balance')) return 'fuliza';
-  if (outcome.includes('duplicate')) return 'duplicate';
-  if (outcome.includes('quarantined')) return 'quarantined';
-  if (outcome.includes('parse_failed')) return outcome.replace('parse_failed:', 'fail:');
-  if (outcome.includes('import_failed')) return 'failed';
-  if (outcome.includes('ignored')) return 'ignored';
+  if (outcome.startsWith('imported_realtime')) return 'realtime';
+  if (outcome.startsWith('imported_review')) return 'review';
+  if (outcome.startsWith('imported_batch')) return 'batch';
+  if (outcome.startsWith('retry_imported')) return 'retried';
+  if (outcome.startsWith('fuliza_balance')) return 'fuliza';
+  if (outcome.startsWith('duplicate_detected')) return 'duplicate';
+  if (outcome.startsWith('quarantined')) return 'quarantined';
+  if (outcome.startsWith('parse_failed')) return outcome.replace('parse_failed:', 'fail:');
+  if (outcome.startsWith('import_failed')) return 'failed';
+  if (outcome.startsWith('ignored')) return 'ignored';
+  if (outcome.startsWith('dismissed')) return 'dismissed';
+  if (outcome.startsWith('retried')) return 'retried';
   return outcome.length > 20 ? outcome.slice(0, 20) + '…' : outcome;
+}
+
+// Turn raw parser rejection reason codes into human-friendly labels.
+function rejectionReasonLabel(reason: string): string {
+  if (reason.startsWith('parse_exception')) return 'Parser exception';
+  switch (reason) {
+    case 'not_mpesa':          return 'Not an M-Pesa SMS';
+    case 'fuliza_notice':      return 'Fuliza service notice';
+    case 'ambiguous_receipt':  return 'Ambiguous receipt';
+    case 'no_code':            return 'No M-Pesa code found';
+    case 'no_amount':          return 'No amount extractable';
+    default:                   return reason;
+  }
 }
 
 export function SmsImportHealthScreen() {
@@ -97,22 +116,29 @@ export function SmsImportHealthScreen() {
   const navigation = useNavigation<any>();
   const [stats, setStats] = useState<SmsStats | null>(null);
   const [auditEntries, setAuditEntries] = useState<AuditEntry[]>([]);
+  const [rejections, setRejections] = useState<RejectionEntry[]>([]);
   const [receiverEnabled, setReceiverEnabled] = useState(true);
   const [lastFireMs, setLastFireMs] = useState(0);
   const [loading, setLoading] = useState(true);
   const [reconciling, setReconciling] = useState(false);
   const [retrying, setRetrying] = useState(false);
+  // Subscribe to the global dataVersion so this screen refreshes automatically
+  // when another surface (Finance import, real-time SmsReceiver, retry) bumps it.
+  const dataVersion = useDataVersion((s) => s.version);
+  const loadedVersion = useRef(-1);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [s, entries, receiverStatus] = await Promise.all([
+      const [s, entries, recentRejections, receiverStatus] = await Promise.all([
         getStats(),
         getAuditLog(100),
+        getRecentRejections(20),
         getReceiverStatus(),
       ]);
       setStats(s);
       setAuditEntries(entries);
+      setRejections(recentRejections);
       setReceiverEnabled(receiverStatus.enabled);
       setLastFireMs(receiverStatus.lastFireMs);
     } catch (e) {
@@ -122,13 +148,46 @@ export function SmsImportHealthScreen() {
     }
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  // Reload whenever the screen gains focus AND the global data version has
+  // advanced (avoids redundant reloads on every focus change).
+  useFocusEffect(
+    useCallback(() => {
+      if (dataVersion !== loadedVersion.current) {
+        loadedVersion.current = dataVersion;
+        load();
+      }
+    }, [dataVersion, load])
+  );
+
+  // First mount — always populate.
+  useEffect(() => {
+    if (loadedVersion.current === -1) {
+      loadedVersion.current = dataVersion;
+      load();
+    }
+  }, [dataVersion, load]);
+
+  // Realtime bump while the screen is already focused (e.g. SMS arrives mid-view).
+  useEffect(() => {
+    if (loadedVersion.current !== -1 && dataVersion !== loadedVersion.current) {
+      loadedVersion.current = dataVersion;
+      load();
+    }
+  }, [dataVersion, load]);
+
+  // Recompute "Active vs Idle" label as time passes even without new data.
+  const [nowTick, setNowTick] = useState(Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNowTick(Date.now()), 30_000);
+    return () => clearInterval(t);
+  }, []);
 
   const handleReconcile = async () => {
     setReconciling(true);
     try {
       const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
       const result = await importHistoricalSms(sevenDaysAgo, Date.now());
+      useDataVersion.getState().bump();
       await load();
       Alert.alert(
         'Reconcile complete',
@@ -145,6 +204,7 @@ export function SmsImportHealthScreen() {
     setRetrying(true);
     try {
       const result = await retryQuarantined();
+      useDataVersion.getState().bump();
       await load();
       Alert.alert(
         'Retry complete',
@@ -161,16 +221,19 @@ export function SmsImportHealthScreen() {
   const successRate = totalProcessed > 0 ? Math.round(((stats?.totalImported ?? 0) * 100) / totalProcessed) : 0;
 
   const lastEntry = auditEntries[0];
+  // `imported_*` outcomes: imported_realtime, imported_batch, imported_review, retry_imported
   const lastImported = auditEntries.find(
-    (e) => e.outcome.includes('imported') || e.outcome.includes('realtime') || e.outcome.includes('retry')
+    (e) => e.outcome.startsWith('imported_') || e.outcome.startsWith('retry_imported')
   );
-  const lastRealtime = auditEntries.find((e) => e.outcome.includes('realtime'));
-  const lastBatch = auditEntries.find((e) => e.outcome.includes('batch') || e.outcome.includes('import'));
+  const lastRealtime = auditEntries.find((e) => e.outcome.startsWith('imported_realtime'));
+  const lastBatch = auditEntries.find(
+    (e) => e.outcome.startsWith('imported_batch') || e.outcome.startsWith('imported_review')
+  );
 
   const receiverStatus: 'active' | 'idle' | 'disabled' | 'unknown' = (() => {
     if (!receiverEnabled) return 'disabled';
     if (lastFireMs === 0) return 'unknown';
-    const hoursAgo = (Date.now() - lastFireMs) / (1000 * 60 * 60);
+    const hoursAgo = (nowTick - lastFireMs) / (1000 * 60 * 60);
     return hoursAgo <= 24 ? 'active' : 'idle';
   })();
   const receiverStatusColor =
@@ -187,12 +250,22 @@ export function SmsImportHealthScreen() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.bgPrimary }]} edges={['top']}>
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView
+        contentContainerStyle={styles.content}
+        refreshControl={
+          <RefreshControl
+            refreshing={loading}
+            onRefresh={load}
+            tintColor={colors.accentPrimary}
+            colors={[colors.accentPrimary]}
+          />
+        }
+      >
         <View style={styles.header}>
           <TouchableOpacity onPress={() => navigation.goBack()}>
             <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
           </TouchableOpacity>
-          <Text style={[styles.title, { color: colors.textPrimary }]}>SMS Import Health</Text>
+          <Text style={[styles.title, { color: colors.textPrimary }]} numberOfLines={1}>SMS Import Health</Text>
           <TouchableOpacity onPress={load} disabled={loading}>
             <Ionicons name="refresh-outline" size={22} color={loading ? colors.textTertiary : colors.accentPrimary} />
           </TouchableOpacity>
@@ -303,6 +376,36 @@ export function SmsImportHealthScreen() {
             </TouchableOpacity>
           </View>
         </SectionCard>
+
+        {/* Recent Rejections */}
+        {rejections.length > 0 && (
+          <SectionCard title="Recent Rejections" colors={colors}>
+            <Text style={[styles.actionsDesc, { color: colors.textSecondary }]}>
+              Messages skipped by the parser and the reason they were rejected.
+            </Text>
+            {rejections.slice(0, 5).map((r, i) => (
+              <View key={i}>
+                <View style={styles.auditRow}>
+                  <View style={[styles.auditDot, { backgroundColor: colors.danger }]} />
+                  <View style={styles.auditInfo}>
+                    <Text style={[styles.auditOutcome, { color: colors.danger }]} numberOfLines={1}>
+                      {rejectionReasonLabel(r.reason)}
+                    </Text>
+                    <Text style={[styles.auditReason, { color: colors.textSecondary }]} numberOfLines={2}>
+                      {r.rawSms}
+                    </Text>
+                    <Text style={[styles.auditTime, { color: colors.textTertiary }]}>
+                      {formatTimestamp(new Date(r.timestampMs).toISOString())}
+                    </Text>
+                  </View>
+                </View>
+                {i < Math.min(rejections.length, 5) - 1 && (
+                  <View style={[styles.divider, { backgroundColor: colors.border }]} />
+                )}
+              </View>
+            ))}
+          </SectionCard>
+        )}
 
         {/* Audit Log */}
         <SectionCard colors={colors}>

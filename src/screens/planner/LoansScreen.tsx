@@ -1,5 +1,7 @@
-import React, { useEffect, useMemo } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
+import React, { useEffect, useMemo, useState } from 'react';
+import { View, Text, TouchableOpacity, ScrollView, StyleSheet, Modal, TextInput, Alert } from 'react-native';
+import { TopBanner } from '../../components/common/TopBanner';
+import { nowIso } from '../../database';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
@@ -16,7 +18,10 @@ export function LoansScreen() {
   const colors = useThemeColors();
   const db = useSQLiteContext();
   const navigation = useNavigation<any>();
-  const { loans, loadAll } = usePlannerStore();
+  const { loans, loadAll, updateLoan } = usePlannerStore();
+  const [payLoanId, setPayLoanId] = useState<string | null>(null);
+  const [payAmount, setPayAmount] = useState('');
+  const [banner, setBanner] = useState<string | null>(null);
 
   useEffect(() => {
     loadAll(db);
@@ -29,8 +34,42 @@ export function LoansScreen() {
     [openLoans]
   );
 
+  const handleLogRepayment = async () => {
+    const loan = loans.find((l) => l.id === payLoanId);
+    if (!loan) { setPayLoanId(null); return; }
+    const delta = parseFloat(payAmount);
+    if (!Number.isFinite(delta) || delta <= 0) {
+      Alert.alert('Invalid amount', 'Enter a positive repayment amount.');
+      return;
+    }
+    const outstanding = loan.draw_amount_kes - loan.total_repaid_kes;
+    const applied = Math.min(delta, outstanding);
+    const nextRepaid = loan.total_repaid_kes + applied;
+    const fullyPaid = nextRepaid >= loan.draw_amount_kes - 0.005;
+    await updateLoan(db, loan.id, {
+      totalRepaidKes: nextRepaid,
+      lastRepaymentDate: nowIso(),
+      ...(fullyPaid ? { status: 'repaid' as const } : {}),
+    });
+    setBanner(fullyPaid ? 'Loan fully repaid 🎉' : `Logged ${formatCurrency(applied)} repayment`);
+    setPayLoanId(null);
+    setPayAmount('');
+  };
+
+  const handleMarkRepaid = async (loanId: string) => {
+    const loan = loans.find((l) => l.id === loanId);
+    if (!loan) return;
+    await updateLoan(db, loanId, {
+      totalRepaidKes: loan.draw_amount_kes,
+      lastRepaymentDate: nowIso(),
+      status: 'repaid',
+    });
+    setBanner('Loan marked as repaid');
+  };
+
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.bgPrimary }]} edges={['top']}>
+      <TopBanner tone="success" message={banner ?? ''} visible={!!banner} autoDismissMs={2500} onDismiss={() => setBanner(null)} />
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.header}>
           <TouchableOpacity onPress={() => navigation.goBack()}>
@@ -38,7 +77,7 @@ export function LoansScreen() {
           </TouchableOpacity>
           <View style={styles.headerTextCol}>
             <Text style={[styles.eyebrow, { color: colors.textSecondary }]}>Finance Tools</Text>
-            <Text style={[styles.title, { color: colors.textPrimary }]}>Loans &amp; Fuliza</Text>
+            <Text style={[styles.title, { color: colors.textPrimary }]} numberOfLines={1}>Loans &amp; Fuliza</Text>
             <Text style={[styles.subtitle, { color: colors.textSecondary }]} numberOfLines={1}>
               Track outstanding draws and repayment history
             </Text>
@@ -77,7 +116,13 @@ export function LoansScreen() {
               <>
                 <Text style={[styles.sectionTitle, { color: colors.warning }]}>Open Draws</Text>
                 {openLoans.map((loan) => (
-                  <LoanCard key={loan.id} loan={loan} onPress={() => navigation.navigate('LoanForm', { loanId: loan.id })} />
+                  <LoanCard
+                    key={loan.id}
+                    loan={loan}
+                    onPress={() => navigation.navigate('LoanForm', { loanId: loan.id })}
+                    onLogRepayment={() => { setPayLoanId(loan.id); setPayAmount(''); }}
+                    onMarkRepaid={() => handleMarkRepaid(loan.id)}
+                  />
                 ))}
               </>
             )}
@@ -94,11 +139,59 @@ export function LoansScreen() {
           </>
         )}
       </ScrollView>
+
+      <Modal
+        visible={payLoanId != null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setPayLoanId(null)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={[styles.modalCard, { backgroundColor: colors.bgSecondary, borderColor: colors.border }]}>
+            <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>Log repayment</Text>
+            <Text style={[styles.modalSub, { color: colors.textSecondary }]}>
+              Outstanding: {formatCurrency(
+                (() => {
+                  const l = loans.find((x) => x.id === payLoanId);
+                  return l ? l.draw_amount_kes - l.total_repaid_kes : 0;
+                })()
+              )}
+            </Text>
+            <TextInput
+              value={payAmount}
+              onChangeText={setPayAmount}
+              keyboardType="decimal-pad"
+              placeholder="Amount repaid"
+              placeholderTextColor={colors.textTertiary}
+              style={[styles.modalInput, { color: colors.textPrimary, borderColor: colors.border }]}
+              autoFocus
+            />
+            <View style={styles.modalActions}>
+              <TouchableOpacity onPress={() => setPayLoanId(null)} style={styles.modalBtn}>
+                <Text style={{ color: colors.textSecondary, fontSize: typography.sizes.sm, fontWeight: typography.weights.medium }}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={handleLogRepayment} style={styles.modalBtn}>
+                <Text style={{ color: colors.accentPrimary, fontSize: typography.sizes.sm, fontWeight: typography.weights.medium }}>Log</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
 
-function LoanCard({ loan, onPress }: { loan: FulizaLoanDbRecord; onPress: () => void }) {
+function LoanCard({
+  loan,
+  onPress,
+  onLogRepayment,
+  onMarkRepaid,
+}: {
+  loan: FulizaLoanDbRecord;
+  onPress: () => void;
+  onLogRepayment?: () => void;
+  onMarkRepaid?: () => void;
+}) {
   const colors = useThemeColors();
   const outstanding = loan.draw_amount_kes - loan.total_repaid_kes;
   const isClosed = loan.status !== 'active';
@@ -127,6 +220,22 @@ function LoanCard({ loan, onPress }: { loan: FulizaLoanDbRecord; onPress: () => 
           <Text style={[styles.repaid, { color: colors.textSecondary }]}>
             Repaid: {formatCurrency(loan.total_repaid_kes)}
           </Text>
+        ) : null}
+        {!isClosed && (onLogRepayment || onMarkRepaid) ? (
+          <View style={[styles.actions, { borderTopColor: colors.border }]}>
+            {onLogRepayment && (
+              <TouchableOpacity style={styles.actionBtn} onPress={onLogRepayment}>
+                <Ionicons name="add-circle-outline" size={16} color={colors.accentPrimary} />
+                <Text style={[styles.actionText, { color: colors.accentPrimary }]}>Log Repayment</Text>
+              </TouchableOpacity>
+            )}
+            {onMarkRepaid && (
+              <TouchableOpacity style={styles.actionBtn} onPress={onMarkRepaid}>
+                <Ionicons name="checkmark-circle-outline" size={16} color={colors.success} />
+                <Text style={[styles.actionText, { color: colors.success }]}>Mark Repaid</Text>
+              </TouchableOpacity>
+            )}
+          </View>
         ) : null}
       </GlassCard>
     </TouchableOpacity>
@@ -174,4 +283,45 @@ const styles = StyleSheet.create({
   amount: { fontSize: typography.sizes.base, fontWeight: typography.weights.bold },
   status: { fontSize: typography.sizes.xs, marginTop: 2 },
   repaid: { fontSize: typography.sizes.xs, marginTop: spacing.sm },
+  actions: {
+    flexDirection: 'row',
+    marginTop: spacing.sm,
+    paddingTop: spacing.sm,
+    borderTopWidth: 1,
+    gap: spacing.lg,
+  },
+  actionBtn: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
+  actionText: { fontSize: typography.sizes.sm, fontWeight: typography.weights.medium },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: spacing.lg,
+  },
+  modalCard: {
+    width: '100%',
+    maxWidth: 360,
+    borderRadius: borderRadius.lg,
+    borderWidth: 1,
+    padding: spacing.lg,
+    gap: spacing.sm,
+  },
+  modalTitle: { fontSize: typography.sizes.base, fontWeight: typography.weights.semibold },
+  modalSub: { fontSize: typography.sizes.sm },
+  modalInput: {
+    borderWidth: 1,
+    borderRadius: borderRadius.md,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.sm,
+    fontSize: typography.sizes.base,
+    marginTop: spacing.xs,
+  },
+  modalActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: spacing.lg,
+    marginTop: spacing.sm,
+  },
+  modalBtn: { paddingVertical: spacing.xs, paddingHorizontal: spacing.sm },
 });

@@ -2,7 +2,7 @@
  * App-wide constants.
  */
 
-export const APP_NAME = 'BELTECH';
+export const APP_NAME = 'LifeOS';
 export const APP_VERSION = '1.0.0';
 
 export const CURRENCIES = ['KES', 'USD', 'EUR', 'GBP', 'UGX', 'TZS'] as const;

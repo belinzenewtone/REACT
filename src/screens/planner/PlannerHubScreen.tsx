@@ -29,7 +29,7 @@ export function PlannerHubScreen() {
             <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
           </TouchableOpacity>
           <View style={styles.headerText}>
-            <Text style={[styles.title, { color: colors.textPrimary }]}>Finance Hub</Text>
+            <Text style={[styles.title, { color: colors.textPrimary }]} numberOfLines={1}>Finance Hub</Text>
           </View>
           <View style={{ width: 24 }} />
         </View>
@@ -53,7 +53,7 @@ export function PlannerHubScreen() {
               <View style={[styles.iconCircle, { backgroundColor: `${section.color}20` }]}>
                 <Ionicons name={section.icon as keyof typeof Ionicons.glyphMap} size={22} color={section.color} />
               </View>
-              <Text style={[styles.rowLabel, { color: colors.textPrimary }]}>{section.label}</Text>
+              <Text style={[styles.rowLabel, { color: colors.textPrimary }]} numberOfLines={1}>{section.label}</Text>
               <Ionicons name="chevron-forward" size={20} color={colors.textTertiary} />
             </TouchableOpacity>
           ))}

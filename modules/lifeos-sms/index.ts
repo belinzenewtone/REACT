@@ -36,20 +36,33 @@ export interface AuditEntry {
   createdAt: string;
 }
 
+export interface RejectionEntry {
+  reason: string;
+  rawSms: string;
+  timestampMs: number;
+}
+
 export interface ParsedTransaction {
   mpesaCode: string;
   amount: number;
   merchant: string;
   category: string;
-  transactionType: 'income' | 'expense' | 'transfer';
+  transactionType: 'income' | 'expense' | 'transfer' | 'fuliza';
   confidence: 'high' | 'medium' | 'low';
   description: string;
   dateMs: number;
   balanceAfter: number | null;
+  fee: number | null;
+  rawSms: string;
+  parseRoute: 'direct' | 'review' | 'quarantine';
+  semanticHash: string;
+  matchPhase: number;
+  ruleId: string;
+  sourceHash: string;
 }
 
 export type SmsPreviewResult =
-  | ({ ok: true } & ParsedTransaction & { parseRoute: string; semanticHash: string; matchPhase: number })
+  | ({ ok: true } & ParsedTransaction)
   | { ok: false; reason: string };
 
 /** Returns true if READ_SMS and RECEIVE_SMS are both granted. */
@@ -68,7 +81,17 @@ export async function checkPermissions(): Promise<{ receive: boolean; read: bool
  * Returns stats when complete (blocks until done, up to 5 min).
  */
 export async function importHistoricalSms(fromMs: number, toMs: number): Promise<SmsImportResult> {
-  return LifeosSmsModule?.importHistoricalSms(fromMs, toMs);
+  const result = await LifeosSmsModule?.importHistoricalSms(fromMs, toMs);
+  return (
+    result ?? {
+      total: 0,
+      imported: 0,
+      duplicates: 0,
+      quarantined: 0,
+      failed: 0,
+      workId: '',
+    }
+  );
 }
 
 /** Retrieve import statistics from the audit log. */
@@ -79,6 +102,11 @@ export async function getStats(): Promise<SmsStats> {
 /** Retrieve the last N audit log entries (default 100). */
 export async function getAuditLog(limit = 100): Promise<AuditEntry[]> {
   return LifeosSmsModule?.getAuditLog(limit) ?? [];
+}
+
+/** Retrieve recent parse rejections from the in-memory ring buffer (default 20). */
+export async function getRecentRejections(limit = 20): Promise<RejectionEntry[]> {
+  return LifeosSmsModule?.getRecentRejections(limit) ?? [];
 }
 
 /**

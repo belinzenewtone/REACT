@@ -14,10 +14,10 @@ export function SectionHeader({ title, actionLabel, onAction }: SectionHeaderPro
 
   return (
     <View style={styles.container}>
-      <Text style={[styles.title, { color: colors.textPrimary }]}>{title}</Text>
+      <Text style={[styles.title, { color: colors.textPrimary }]} numberOfLines={1}>{title}</Text>
       {actionLabel && onAction && (
         <TouchableOpacity onPress={onAction}>
-          <Text style={[styles.action, { color: colors.accentPrimary }]}>{actionLabel}</Text>
+          <Text style={[styles.action, { color: colors.accentPrimary }]} numberOfLines={1}>{actionLabel}</Text>
         </TouchableOpacity>
       )}
     </View>

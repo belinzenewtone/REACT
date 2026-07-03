@@ -12,6 +12,7 @@ import { EmptyState } from '../../components/common/EmptyState';
 import { formatCurrency, formatDate } from '../../utils/formatters';
 import { spacing, typography, borderRadius } from '../../theme';
 import { animateLayout } from '../../utils/animation';
+import { haptic } from '../../utils/haptics';
 
 const CYCLE_LABELS: Record<string, string> = {
   daily: 'Daily',
@@ -34,17 +35,28 @@ export function BillsScreen() {
 
   const activeBills = bills.filter((b) => b.is_active);
 
-  const handleMarkPaid = (id: string) => {
+  const handleTogglePaid = (id: string) => {
     const bill = bills.find((b) => b.id === id);
     if (!bill) return;
     animateLayout();
-    const nextDueDate = bill.cycle !== 'one_time' ? advanceDueDate(bill.next_due_date, bill.cycle) : undefined;
-    updateBill(db, id, {
-      paidStatus: true,
-      lastPaidAt: new Date().toISOString(),
-      ...(nextDueDate ? { nextDueDate } : {}),
-    });
-    setBanner(`${bill.title} marked as paid`);
+    const nextPaidStatus = !bill.paid_status;
+    if (nextPaidStatus) {
+      const nextDueDate = bill.cycle !== 'one_time' ? advanceDueDate(bill.next_due_date, bill.cycle) : undefined;
+      updateBill(db, id, {
+        paidStatus: true,
+        lastPaidAt: new Date().toISOString(),
+        ...(nextDueDate ? { nextDueDate } : {}),
+      });
+      haptic('success');
+      setBanner(`${bill.title} marked as paid`);
+    } else {
+      updateBill(db, id, {
+        paidStatus: false,
+        lastPaidAt: undefined,
+      });
+      haptic('light');
+      setBanner(`${bill.title} marked as unpaid`);
+    }
   };
 
   const handleDelete = (id: string, title: string) => {
@@ -71,7 +83,7 @@ export function BillsScreen() {
           </TouchableOpacity>
           <View style={styles.headerTextCol}>
             <Text style={[styles.eyebrow, { color: colors.textSecondary }]}>Recurring Obligations</Text>
-            <Text style={[styles.title, { color: colors.textPrimary }]}>Bills</Text>
+            <Text style={[styles.title, { color: colors.textPrimary }]} numberOfLines={1}>Bills</Text>
             <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
               {activeBills.length} active bill{activeBills.length === 1 ? '' : 's'}
             </Text>
@@ -130,12 +142,12 @@ export function BillsScreen() {
                     </View>
                   </View>
                   <View style={[styles.actions, { borderTopColor: colors.border }]}>
-                    {!bill.paid_status && (
-                      <TouchableOpacity style={styles.actionButton} onPress={() => handleMarkPaid(bill.id)}>
-                        <Ionicons name="checkmark-circle-outline" size={16} color={colors.success} />
-                        <Text style={[styles.actionText, { color: colors.success }]}>Mark Paid</Text>
-                      </TouchableOpacity>
-                    )}
+                    <TouchableOpacity style={styles.actionButton} onPress={() => handleTogglePaid(bill.id)}>
+                      <Ionicons name={bill.paid_status ? 'close-circle-outline' : 'checkmark-circle-outline'} size={16} color={bill.paid_status ? colors.warning : colors.success} />
+                      <Text style={[styles.actionText, { color: bill.paid_status ? colors.warning : colors.success }]}>
+                        {bill.paid_status ? 'Mark Unpaid' : 'Mark Paid'}
+                      </Text>
+                    </TouchableOpacity>
                     <TouchableOpacity style={styles.actionButton} onPress={() => handleDelete(bill.id, bill.title)}>
                       <Ionicons name="trash-outline" size={16} color={colors.danger} />
                       <Text style={[styles.actionText, { color: colors.danger }]}>Delete</Text>

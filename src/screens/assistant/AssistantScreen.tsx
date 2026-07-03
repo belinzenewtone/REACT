@@ -11,6 +11,7 @@ import {
   Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useThemeColors } from '../../hooks/useThemeColors';
@@ -18,7 +19,7 @@ import { useAssistantStore, useAppStore } from '../../store';
 import { ChatMessage } from '../../components/assistant/ChatMessage';
 import { ChatInput } from '../../components/assistant/ChatInput';
 import { SuggestedPrompts } from '../../components/assistant/SuggestedPrompts';
-import { spacing, typography, borderRadius, BOTTOM_NAV_SAFE_AREA } from '../../theme';
+import { spacing, typography, borderRadius } from '../../theme';
 
 const SUGGESTED_PROMPTS = [
   'How much did I spend this week?',
@@ -40,9 +41,13 @@ function TypingIndicator({ colors }: { colors: any }) {
   );
 }
 
+const FLOATING_TAB_BAR_HEIGHT = 58;
+const TAB_BAR_HAIRLINE_GAP = 2;
+
 export function AssistantScreen() {
   const colors = useThemeColors();
   const db = useSQLiteContext();
+  const insets = useSafeAreaInsets();
   const listRef = useRef<FlatList>(null);
   const { messages, isLoading, loadMessages, sendMessage, clearConversation } = useAssistantStore();
   const quickSuggestionsEnabled = useAppStore((s) => s.settings.assistantQuickSuggestions);
@@ -91,17 +96,23 @@ export function AssistantScreen() {
   const hasMessages = messages.length > 0;
   const showSuggestions = messages.length <= 1;
 
+  // The input bar sits just above the floating tab bar with a hairline gap.
+  // When the keyboard is open, the bar should rest directly on the keyboard.
+  const tabBarSafeInset =
+    Math.max(insets.bottom, spacing.sm) + spacing.sm + FLOATING_TAB_BAR_HEIGHT + TAB_BAR_HAIRLINE_GAP;
+  const inputBottomInset = isKeyboardVisible ? 0 : tabBarSafeInset;
+
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.bgPrimary }]} edges={['top']}>
       <KeyboardAvoidingView
         style={styles.flex}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'padding'}
+        keyboardVerticalOffset={0}
       >
         {/* Header */}
         <View style={styles.header}>
           <View>
-            <Text style={[styles.title, { color: colors.textPrimary }]}>Assistant</Text>
+            <Text style={[styles.title, { color: colors.textPrimary }]} numberOfLines={1}>Assistant</Text>
             <Text style={[styles.subtitle, { color: isLoading ? colors.accentPrimary : colors.textSecondary }]}>
               {isLoading ? 'Thinking…' : 'Offline · Rule-based'}
             </Text>
@@ -155,7 +166,7 @@ export function AssistantScreen() {
         <ChatInput
           onSend={handleSend}
           disabled={isLoading}
-          bottomInset={isKeyboardVisible ? 0 : BOTTOM_NAV_SAFE_AREA - spacing.sm}
+          bottomInset={inputBottomInset}
         />
       </KeyboardAvoidingView>
     </SafeAreaView>

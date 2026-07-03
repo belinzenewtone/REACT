@@ -37,6 +37,7 @@ import { ImportCsvSheet } from '../../components/finance/ImportCsvSheet';
 import { ImportSmsSheet, type SmsScanPeriod } from '../../components/finance/ImportSmsSheet';
 import { importHistoricalSms } from '../../../modules/lifeos-sms';
 import { CATEGORY_COLORS } from '../../constants';
+import { checkAllBudgetThresholds, checkBudgetThresholds } from '../../services/budgetAlertService';
 import { formatCurrency, formatDate, formatRelativeDay } from '../../utils/formatters';
 import { spacing, typography, borderRadius, BOTTOM_NAV_SAFE_AREA } from '../../theme';
 import { animateLayout } from '../../utils/animation';
@@ -143,9 +144,21 @@ export function FinanceScreen() {
     setSmsImportBanner('Scanning M-Pesa messages…');
     try {
       const result = await importHistoricalSms(now - periodMs[period], now);
+      // Native module writes SQLite from its own connection; force every store
+      // subscribed to dataVersion to reload from disk so the imported rows appear.
+      useDataVersion.getState().bump();
       await loadTransactions(repo, true);
+      await checkAllBudgetThresholds(db);
+      const imported = result?.imported ?? 0;
+      const dupes = result?.duplicates ?? 0;
+      const failed = result?.failed ?? 0;
+      const total = result?.total ?? 0;
       setSmsImportBanner(
-        `Import complete · ${result.imported} new · ${result.duplicates} dupes · ${result.failed} failed`
+        total === 0
+          ? 'No M-Pesa messages found in this window'
+          : imported === 0 && dupes > 0 && failed === 0
+          ? `Everything up to date · ${dupes} already imported`
+          : `Import complete · ${imported} new · ${dupes} dupes · ${failed} failed`
       );
       setTimeout(() => setSmsImportBanner(null), 5000);
     } catch (e: any) {
@@ -154,7 +167,9 @@ export function FinanceScreen() {
     } finally {
       setSmsImporting(false);
     }
-  }, [repo, loadTransactions]);
+  }, [repo, loadTransactions, db]);
+
+  const activeBudgets = useMemo(() => budgets.filter((b) => b.isActive), [budgets]);
 
   const monthTotals = useMemo(() => {
     const now = new Date();
@@ -203,10 +218,10 @@ export function FinanceScreen() {
   }, [transactions, filters.period, monthTotals]);
 
   const topAlertBudget = useMemo(() => {
-    if (budgets.length === 0) return null;
-    const sorted = [...budgets].sort((a, b) => b.percent - a.percent);
+    if (activeBudgets.length === 0) return null;
+    const sorted = [...activeBudgets].sort((a, b) => b.percent - a.percent);
     return sorted.find((b) => b.percent >= 80) ?? sorted[0];
-  }, [budgets]);
+  }, [activeBudgets]);
 
   const monthEndForecast = useMemo(() => {
     const now = new Date();
@@ -217,8 +232,8 @@ export function FinanceScreen() {
   }, [monthTotals.expense]);
 
   const totalMonthBudget = useMemo(
-    () => budgets.reduce((sum, b) => sum + (b.budget.limit_amount ?? 0), 0),
-    [budgets]
+    () => activeBudgets.reduce((sum, b) => sum + (b.budget.limit_amount ?? 0), 0),
+    [activeBudgets]
   );
 
   const spendingVelocity = useMemo(() => {
@@ -231,6 +246,8 @@ export function FinanceScreen() {
     const overshoot = projected - totalMonthBudget;
     return overshoot > 0 ? { projected, overshoot } : null;
   }, [monthTotals.expense, totalMonthBudget]);
+
+  const activeBudgetsCount = activeBudgets.length;
 
   const fulizaOpenLoans = useMemo(() => loans.filter((l) => l.status === 'active'), [loans]);
   const fulizaOutstanding = useMemo(
@@ -254,11 +271,15 @@ export function FinanceScreen() {
           text: 'Delete',
           style: 'destructive',
           onPress: async () => {
+            const tx = await repo.findById(id);
             await repo.softDelete(id);
             animateLayout();
             await loadTransactions(repo, true);
             await loadDashboard(db);
             await loadBudgets(db);
+            if (tx?.transaction_type === 'expense' && tx.category) {
+              await checkBudgetThresholds(db, tx.category);
+            }
           },
         },
       ]);
@@ -357,7 +378,7 @@ export function FinanceScreen() {
         ListHeaderComponent={
           <>
             <View style={styles.header}>
-              <Text style={[styles.title, { color: colors.textPrimary }]}>Finance</Text>
+              <Text style={[styles.title, { color: colors.textPrimary }]} numberOfLines={1}>Finance</Text>
             </View>
 
             <ScrollView
@@ -373,7 +394,7 @@ export function FinanceScreen() {
                   activeOpacity={0.7}
                 >
                   <Ionicons name={chip.icon} size={16} color={colors.accentPrimary} />
-                  <Text style={[styles.actionChipLabel, { color: colors.textPrimary }]}>{chip.label}</Text>
+                  <Text style={[styles.actionChipLabel, { color: colors.textPrimary }]} numberOfLines={1}>{chip.label}</Text>
                 </TouchableOpacity>
               ))}
             </ScrollView>
@@ -415,10 +436,11 @@ export function FinanceScreen() {
                       styles.guardrailTitle,
                       { color: topAlertBudget.percent >= 100 ? colors.danger : colors.warning },
                     ]}
+                    numberOfLines={1}
                   >
                     {topAlertBudget.percent >= 100 ? 'Over budget' : 'Approaching budget'}
                   </Text>
-                  <Text style={[styles.guardrailSubtitle, { color: colors.textSecondary }]}>
+                  <Text style={[styles.guardrailSubtitle, { color: colors.textSecondary }]} numberOfLines={1}>
                     {topAlertBudget.budget.category} is {Math.round(topAlertBudget.percent)}% used
                   </Text>
                 </View>
@@ -432,10 +454,10 @@ export function FinanceScreen() {
                 onPress={() => navigation.navigate('Categorize')}
                 activeOpacity={0.8}
               >
-                <Text style={[styles.uncategorizedText, { color: colors.warning }]}>
+                <Text style={[styles.uncategorizedText, { color: colors.warning }]} numberOfLines={1}>
                   {uncategorizedCount} transaction{uncategorizedCount === 1 ? '' : 's'} need a category
                 </Text>
-                <Text style={[styles.uncategorizedAction, { color: colors.accentPrimary }]}>Organize</Text>
+                <Text style={[styles.uncategorizedAction, { color: colors.accentPrimary }]} numberOfLines={1}>Organize</Text>
               </TouchableOpacity>
             )}
 
@@ -446,27 +468,27 @@ export function FinanceScreen() {
             >
               <GlassCard style={styles.insightCard}>
                 <View style={styles.infoCardHeader}>
-                  <Text style={[styles.infoCardLabel, { color: colors.textSecondary }]}>Budget</Text>
+                  <Text style={[styles.infoCardLabel, { color: colors.textSecondary }]} numberOfLines={1}>Budget</Text>
                   <TouchableOpacity onPress={() => navigation.navigate('Budgets')}>
-                    <Text style={[styles.infoCardAction, { color: colors.accentPrimary }]}>View</Text>
+                    <Text style={[styles.infoCardAction, { color: colors.accentPrimary }]} numberOfLines={1}>View</Text>
                   </TouchableOpacity>
                 </View>
-                <Text style={[styles.infoCardAmount, { color: colors.textPrimary }]}>
+                <Text style={[styles.infoCardAmount, { color: colors.textPrimary }]} numberOfLines={1}>
                   {formatCurrency(totalMonthBudget, { decimals: 0 })}
                 </Text>
-                <Text style={[styles.infoCardSub, { color: colors.textTertiary }]}>
-                  {budgets.length} guardrail{budgets.length === 1 ? '' : 's'}
+                <Text style={[styles.infoCardSub, { color: colors.textTertiary }]} numberOfLines={1}>
+                  {activeBudgetsCount} guardrail{activeBudgetsCount === 1 ? '' : 's'}
                 </Text>
               </GlassCard>
 
               <GlassCard style={styles.insightCard}>
                 <View style={styles.infoCardHeader}>
-                  <Text style={[styles.infoCardLabel, { color: colors.textSecondary }]}>Month-End Forecast</Text>
+                  <Text style={[styles.infoCardLabel, { color: colors.textSecondary }]} numberOfLines={1}>Month-End Forecast</Text>
                 </View>
-                <Text style={[styles.infoCardAmount, { color: colors.textPrimary }]}>
+                <Text style={[styles.infoCardAmount, { color: colors.textPrimary }]} numberOfLines={1}>
                   {formatCurrency(monthEndForecast, { decimals: 0 })}
                 </Text>
-                <Text style={[styles.infoCardSub, { color: colors.textTertiary }]}>
+                <Text style={[styles.infoCardSub, { color: colors.textTertiary }]} numberOfLines={1}>
                   based on current pace
                 </Text>
               </GlassCard>
@@ -474,12 +496,12 @@ export function FinanceScreen() {
               {fulizaOpenLoans.length > 0 && (
                 <GlassCard style={styles.insightCard}>
                   <View style={styles.infoCardHeader}>
-                    <Text style={[styles.infoCardLabel, { color: colors.textSecondary }]}>Fuliza Outstanding</Text>
+                    <Text style={[styles.infoCardLabel, { color: colors.textSecondary }]} numberOfLines={1}>Fuliza Outstanding</Text>
                   </View>
-                  <Text style={[styles.infoCardAmount, { color: colors.warning }]}>
+                  <Text style={[styles.infoCardAmount, { color: colors.warning }]} numberOfLines={1}>
                     {formatCurrency(fulizaOutstanding, { decimals: 0 })}
                   </Text>
-                  <Text style={[styles.infoCardSub, { color: colors.textTertiary }]}>
+                  <Text style={[styles.infoCardSub, { color: colors.textTertiary }]} numberOfLines={1}>
                     {fulizaOpenLoans.length} open loan{fulizaOpenLoans.length === 1 ? '' : 's'}
                     {fulizaLimit ? ` · Limit ${formatCurrency(fulizaLimit, { decimals: 0 })}` : ''}
                   </Text>
@@ -490,12 +512,12 @@ export function FinanceScreen() {
                 <TouchableOpacity onPress={() => navigation.navigate('FeeAnalytics')} activeOpacity={0.8}>
                   <GlassCard style={styles.insightCard}>
                     <View style={styles.infoCardHeader}>
-                      <Text style={[styles.infoCardLabel, { color: colors.textSecondary }]}>Service Charges</Text>
+                      <Text style={[styles.infoCardLabel, { color: colors.textSecondary }]} numberOfLines={1}>Service Charges</Text>
                     </View>
-                    <Text style={[styles.infoCardAmount, { color: colors.warning }]}>
+                    <Text style={[styles.infoCardAmount, { color: colors.warning }]} numberOfLines={1}>
                       {formatCurrency(feesTotal, { decimals: 0 })}
                     </Text>
-                    <Text style={[styles.infoCardSub, { color: colors.textTertiary }]}>
+                    <Text style={[styles.infoCardSub, { color: colors.textTertiary }]} numberOfLines={1}>
                       Airtime, Fuliza &amp; subscriptions
                     </Text>
                   </GlassCard>
@@ -504,7 +526,7 @@ export function FinanceScreen() {
 
               {spendingVelocity && (
                 <GlassCard style={styles.insightCard}>
-                  <Text style={[styles.infoCardLabel, { color: colors.warning }]}>Spending pace</Text>
+                  <Text style={[styles.infoCardLabel, { color: colors.warning }]} numberOfLines={1}>Spending pace</Text>
                   <Text style={[styles.infoCardAmount, { color: colors.textPrimary }]} numberOfLines={1}>
                     {formatCurrency(spendingVelocity.projected, { decimals: 0 })} projected
                   </Text>
@@ -535,6 +557,7 @@ export function FinanceScreen() {
                         styles.periodChipText,
                         { color: isSelected ? colors.textInverse : colors.textPrimary },
                       ]}
+                      numberOfLines={1}
                     >
                       {p.label}
                     </Text>
@@ -549,10 +572,10 @@ export function FinanceScreen() {
             />
 
             <View style={styles.transactionsHeader}>
-              <Text style={[styles.transactionsTitle, { color: colors.textPrimary }]}>
+              <Text style={[styles.transactionsTitle, { color: colors.textPrimary }]} numberOfLines={1}>
                 Transactions
               </Text>
-              <Text style={[styles.transactionsCount, { color: colors.textTertiary }]}>
+              <Text style={[styles.transactionsCount, { color: colors.textTertiary }]} numberOfLines={1}>
                 {data.length}
               </Text>
             </View>
@@ -596,7 +619,12 @@ function MetricCard({ label, amount }: { label: string; amount: number }) {
   return (
     <GlassCard style={styles.metricCard}>
       <Text style={[styles.metricLabel, { color: colors.textSecondary }]}>{label}</Text>
-      <Text style={[styles.metricAmount, { color: colors.textPrimary }]} numberOfLines={1} ellipsizeMode="tail">
+      <Text
+        style={[styles.metricAmount, { color: colors.textPrimary }]}
+        numberOfLines={1}
+        ellipsizeMode="tail"
+        adjustsFontSizeToFit
+      >
         {formatCurrency(amount, { decimals: 0 })}
       </Text>
     </GlassCard>
@@ -653,8 +681,10 @@ const styles = StyleSheet.create({
     marginBottom: spacing.base,
   },
   metricCard: {
-    width: 140,
+    minWidth: 140,
+    width: 'auto',
     padding: spacing.lg,
+    paddingRight: spacing.xl,
   },
   metricLabel: {
     fontSize: typography.sizes.sm,

@@ -14,7 +14,7 @@ export interface RecentTransactionItem {
   category: string;
   amount: number;
   date: string;
-  type: 'income' | 'expense' | 'transfer';
+  type: 'income' | 'expense' | 'transfer' | 'fuliza';
 }
 
 interface RecentTransactionsProps {

@@ -61,7 +61,7 @@ export function TaskRow({
         onPress={onToggleComplete}
         style={[styles.checkbox, { borderColor: priorityColor }, completed && { backgroundColor: priorityColor }]}
       >
-        {completed && <Ionicons name="checkmark" size={14} color={colors.textInverse} />}
+        {completed && <Ionicons name="checkmark" size={16} color={colors.textInverse} />}
       </TouchableOpacity>
     </TouchableOpacity>
   );
@@ -116,12 +116,14 @@ const styles = StyleSheet.create({
     fontWeight: typography.weights.medium,
   },
   checkbox: {
-    width: 22,
-    height: 22,
-    borderRadius: 5,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
     borderWidth: 2,
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: spacing.base,
+    backgroundColor: 'transparent',
+    overflow: 'hidden',
   },
 });

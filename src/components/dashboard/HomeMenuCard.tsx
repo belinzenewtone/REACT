@@ -56,13 +56,13 @@ export function HomeMenuCard({
             <View style={[styles.iconContainer, { backgroundColor: `${colors.accentPrimary}20` }]}>
               <Ionicons name={item.icon as keyof typeof Ionicons.glyphMap} size={20} color={colors.accentPrimary} />
             </View>
-            <Text style={[styles.label, { color: colors.textPrimary }]}>{item.label}</Text>
+            <Text style={[styles.label, { color: colors.textPrimary }]} numberOfLines={1}>{item.label}</Text>
             <View style={styles.valueContainer}>
               <Text style={[styles.value, { color: colors.textSecondary }]} numberOfLines={1} ellipsizeMode="tail">
                 {value}
               </Text>
               {item.key === 'nextEvent' && nextEvent ? (
-                <Text style={[styles.subvalue, { color: colors.textTertiary }]}>
+                <Text style={[styles.subvalue, { color: colors.textTertiary }]} numberOfLines={1}>
                   {formatDateTime(nextEvent.date, { dateFormat: 'MMM d', use24h: false })}
                 </Text>
               ) : null}

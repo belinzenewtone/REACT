@@ -228,7 +228,7 @@ export function LearningScreen() {
           </TouchableOpacity>
           <View style={styles.headerCenter}>
             <Text style={[styles.eyebrow, { color: colors.textSecondary }]}>Growth</Text>
-            <Text style={[styles.title, { color: colors.textPrimary }]}>Learn</Text>
+            <Text style={[styles.title, { color: colors.textPrimary }]} numberOfLines={1}>Learn</Text>
           </View>
           <View style={{ width: 24 }} />
         </View>

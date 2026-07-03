@@ -11,6 +11,8 @@ import type { Transaction, TransactionType, TransactionStatus } from '../types';
 import type { TransactionRecord } from '../database/repositories/TransactionRepository';
 import type { TransactionRepository } from '../database/repositories/TransactionRepository';
 import { useDataVersion } from './dataVersion';
+import { checkBudgetThresholds } from '../services/budgetAlertService';
+import { haptic } from '../utils/haptics';
 
 export type TransactionPeriod = 'all' | 'today' | 'week' | 'month';
 
@@ -116,17 +118,28 @@ export const useTransactionStore = create<TransactionState>((set, get) => ({
     await repo.create(data);
     useDataVersion.getState().bump();
     await get().loadTransactions(repo, true);
+    // Fire budget alerts for the transaction's category (no-op if the user
+    // hasn't enabled budget alerts).
+    if (data.category && data.transactionType === 'expense') {
+      checkBudgetThresholds(repo.database, data.category).catch(() => {});
+    }
+    haptic('success');
   },
 
   updateTransaction: async (repo, id, data) => {
     await repo.update(id, data);
     useDataVersion.getState().bump();
     await get().loadTransactions(repo, true);
+    if (data.category && data.transactionType === 'expense') {
+      checkBudgetThresholds(repo.database, data.category).catch(() => {});
+    }
+    haptic('light');
   },
 
   deleteTransaction: async (repo, id) => {
     await repo.softDelete(id);
     useDataVersion.getState().bump();
     await get().loadTransactions(repo, true);
+    haptic('warning');
   },
 }));

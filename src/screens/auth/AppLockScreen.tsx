@@ -95,7 +95,7 @@ export function AppLockScreen() {
             color={colors.accentPrimary}
           />
         </View>
-        <Text style={[styles.title, { color: colors.textPrimary }]}>
+        <Text style={[styles.title, { color: colors.textPrimary }]} numberOfLines={1}>
           {checkingFingerprint ? 'Fingerprint required' : 'Enter your PIN'}
         </Text>
         <Text style={[styles.subtitle, { color: error ? colors.danger : colors.textSecondary }]}>

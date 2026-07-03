@@ -161,7 +161,7 @@ export function SettingsScreen() {
           <TouchableOpacity onPress={() => navigation.goBack()}>
             <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
           </TouchableOpacity>
-          <Text style={[styles.title, { color: colors.textPrimary }]}>Settings</Text>
+          <Text style={[styles.title, { color: colors.textPrimary }]} numberOfLines={1}>Settings</Text>
           <View style={{ width: 24 }} />
         </View>
 
@@ -194,6 +194,13 @@ export function SettingsScreen() {
             toggleValue={settings.hapticFeedback}
             onToggleChange={(value) => {
               updateSettings({ hapticFeedback: value });
+              // Give an immediate confirmation pulse when the user enables haptics
+              // so they can feel that it actually works.
+              if (value) {
+                setTimeout(() => {
+                  import('../../utils/haptics').then((m) => m.haptic('success'));
+                }, 30);
+              }
               setInfoMessage(value ? 'Haptics enabled' : 'Haptics disabled');
             }}
             isLast

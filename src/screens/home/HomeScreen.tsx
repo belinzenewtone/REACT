@@ -91,7 +91,7 @@ export function HomeScreen() {
 
         <View style={styles.focusSection}>
           <Text style={[styles.focusLabel, { color: colors.accentPrimary }]}>Daily focus</Text>
-          <Text style={[styles.greeting, { color: colors.textPrimary }]}>
+          <Text style={[styles.greeting, { color: colors.textPrimary }]} numberOfLines={2}>
             {greeting}, {name}
           </Text>
           <Text style={[styles.subtitle, { color: colors.textSecondary }]}>

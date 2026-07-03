@@ -99,7 +99,7 @@ export function PersonalInformationScreen() {
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
             <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
           </TouchableOpacity>
-          <Text style={[styles.title, { color: colors.textPrimary }]}>Personal Information</Text>
+          <Text style={[styles.title, { color: colors.textPrimary }]} numberOfLines={1}>Personal Information</Text>
           <View style={styles.headerSpacer} />
         </View>
 

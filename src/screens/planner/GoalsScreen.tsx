@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, StyleSheet, Alert } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, StyleSheet, Alert, Modal, TextInput } from 'react-native';
 import { TopBanner } from '../../components/common/TopBanner';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -19,6 +19,8 @@ export function GoalsScreen() {
   const navigation = useNavigation<any>();
   const { goals, loadAll, updateGoal, deleteGoal } = usePlannerStore();
   const [banner, setBanner] = useState<string | null>(null);
+  const [logGoalId, setLogGoalId] = useState<string | null>(null);
+  const [logAmount, setLogAmount] = useState('');
 
   useEffect(() => {
     loadAll(db);
@@ -31,6 +33,26 @@ export function GoalsScreen() {
     animateLayout();
     updateGoal(db, id, { status: 'completed' });
     setBanner(`${goal?.title ?? 'Goal'} marked as complete`);
+  };
+
+  const handleLogProgress = () => {
+    const goal = goals.find((g) => g.id === logGoalId);
+    if (!goal) { setLogGoalId(null); return; }
+    const delta = parseFloat(logAmount);
+    if (!Number.isFinite(delta) || delta <= 0) {
+      Alert.alert('Invalid amount', 'Enter a positive number.');
+      return;
+    }
+    const next = Math.min(goal.current_value + delta, goal.target_value);
+    const reached = next >= goal.target_value;
+    animateLayout();
+    updateGoal(db, goal.id, {
+      currentValue: next,
+      ...(reached ? { status: 'completed' as const } : {}),
+    });
+    setBanner(reached ? `Goal reached: ${goal.title} 🎉` : `Logged ${formatCurrency(delta)} · ${goal.title}`);
+    setLogGoalId(null);
+    setLogAmount('');
   };
 
   const handleDelete = (id: string, title: string) => {
@@ -57,7 +79,7 @@ export function GoalsScreen() {
           </TouchableOpacity>
           <View style={styles.headerTextCol}>
             <Text style={[styles.eyebrow, { color: colors.textSecondary }]}>Personal Growth</Text>
-            <Text style={[styles.title, { color: colors.textPrimary }]}>Goals</Text>
+            <Text style={[styles.title, { color: colors.textPrimary }]} numberOfLines={1}>Goals</Text>
             <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
               {activeGoals.length} active goal{activeGoals.length === 1 ? '' : 's'}
             </Text>
@@ -110,10 +132,16 @@ export function GoalsScreen() {
                   </View>
                   <View style={[styles.actions, { borderTopColor: colors.border }]}>
                     {!isCompleted && (
-                      <TouchableOpacity style={styles.actionButton} onPress={() => handleComplete(goal.id)}>
-                        <Ionicons name="checkmark-circle-outline" size={16} color={colors.success} />
-                        <Text style={[styles.actionText, { color: colors.success }]}>Mark Complete</Text>
-                      </TouchableOpacity>
+                      <>
+                        <TouchableOpacity style={styles.actionButton} onPress={() => { setLogGoalId(goal.id); setLogAmount(''); }}>
+                          <Ionicons name="add-circle-outline" size={16} color={colors.accentPrimary} />
+                          <Text style={[styles.actionText, { color: colors.accentPrimary }]}>Log Progress</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity style={styles.actionButton} onPress={() => handleComplete(goal.id)}>
+                          <Ionicons name="checkmark-circle-outline" size={16} color={colors.success} />
+                          <Text style={[styles.actionText, { color: colors.success }]}>Mark Complete</Text>
+                        </TouchableOpacity>
+                      </>
                     )}
                     <TouchableOpacity style={styles.actionButton} onPress={() => handleDelete(goal.id, goal.title)}>
                       <Ionicons name="trash-outline" size={16} color={colors.danger} />
@@ -126,6 +154,39 @@ export function GoalsScreen() {
           })
         )}
       </ScrollView>
+
+      <Modal
+        visible={logGoalId != null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setLogGoalId(null)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={[styles.modalCard, { backgroundColor: colors.bgSecondary, borderColor: colors.border }]}>
+            <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>Log progress</Text>
+            <Text style={[styles.modalSub, { color: colors.textSecondary }]}>
+              Add to {goals.find((g) => g.id === logGoalId)?.title ?? 'goal'}
+            </Text>
+            <TextInput
+              value={logAmount}
+              onChangeText={setLogAmount}
+              keyboardType="decimal-pad"
+              placeholder="Amount"
+              placeholderTextColor={colors.textTertiary}
+              style={[styles.modalInput, { color: colors.textPrimary, borderColor: colors.border }]}
+              autoFocus
+            />
+            <View style={styles.modalActions}>
+              <TouchableOpacity onPress={() => setLogGoalId(null)} style={styles.modalBtn}>
+                <Text style={[styles.actionText, { color: colors.textSecondary }]}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={handleLogProgress} style={styles.modalBtn}>
+                <Text style={[styles.actionText, { color: colors.accentPrimary }]}>Log</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -180,4 +241,36 @@ const styles = StyleSheet.create({
     marginRight: spacing.lg,
   },
   actionText: { fontSize: typography.sizes.sm, fontWeight: typography.weights.medium },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: spacing.lg,
+  },
+  modalCard: {
+    width: '100%',
+    maxWidth: 360,
+    borderRadius: borderRadius.lg,
+    borderWidth: 1,
+    padding: spacing.lg,
+    gap: spacing.sm,
+  },
+  modalTitle: { fontSize: typography.sizes.base, fontWeight: typography.weights.semibold },
+  modalSub: { fontSize: typography.sizes.sm },
+  modalInput: {
+    borderWidth: 1,
+    borderRadius: borderRadius.md,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.sm,
+    fontSize: typography.sizes.base,
+    marginTop: spacing.xs,
+  },
+  modalActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: spacing.lg,
+    marginTop: spacing.sm,
+  },
+  modalBtn: { paddingVertical: spacing.xs, paddingHorizontal: spacing.sm },
 });

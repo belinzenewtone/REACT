@@ -23,6 +23,11 @@ interface AppState {
   updateSettings: (settings: Partial<AppSettings>) => void;
   setTheme: (theme: ThemeMode) => void;
 
+  // Fired budget alerts (key: category|level|yearMonth) to prevent duplicate notifications
+  firedBudgetAlerts: Record<string, string>;
+  markBudgetAlertFired: (key: string) => void;
+  clearFiredBudgetAlerts: (prefix?: string) => void;
+
   // Profile
   profile: UserProfile | null;
   setProfile: (profile: UserProfile | null) => void;
@@ -44,12 +49,13 @@ const defaultSettings: AppSettings = {
   dateFormat: DEFAULT_DATE_FORMAT,
   timeFormat: '24h',
   decimalPrecision: 2,
-  notificationsEnabled: true,
+  notificationsEnabled: false, // require explicit user opt-in via onboarding / settings
   notificationTypes: {
     reminders: true,
     budgetAlerts: true,
     dailyDigest: true,
     recurringRules: true,
+    transactionAlerts: true,
   },
   lockTimeoutMinutes: 5,
   defaultTransactionCategory: 'uncategorized',
@@ -85,6 +91,21 @@ export const useAppStore = create<AppState>()(
       setTheme: (theme) =>
         set((state) => ({ settings: { ...state.settings, theme } })),
 
+      firedBudgetAlerts: {},
+      markBudgetAlertFired: (key) =>
+        set((state) => ({
+          firedBudgetAlerts: { ...state.firedBudgetAlerts, [key]: new Date().toISOString() },
+        })),
+      clearFiredBudgetAlerts: (prefix) =>
+        set((state) => {
+          if (!prefix) return { firedBudgetAlerts: {} };
+          const next: Record<string, string> = {};
+          for (const [k, v] of Object.entries(state.firedBudgetAlerts)) {
+            if (!k.startsWith(prefix)) next[k] = v;
+          }
+          return { firedBudgetAlerts: next };
+        }),
+
       profile: null,
       setProfile: (profile) => set({ profile }),
       updateProfile: (updates) =>
@@ -109,6 +130,7 @@ export const useAppStore = create<AppState>()(
         profile: state.profile,
         onboardingStep: state.onboardingStep,
         onboardingGoal: state.onboardingGoal,
+        firedBudgetAlerts: state.firedBudgetAlerts,
       }),
       onRehydrateStorage: () => (state) => {
         // Require the PIN immediately on cold start (before first render of app content)

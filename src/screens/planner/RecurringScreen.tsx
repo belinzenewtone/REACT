@@ -55,7 +55,7 @@ export function RecurringScreen() {
           </TouchableOpacity>
           <View style={styles.headerTextCol}>
             <Text style={[styles.eyebrow, { color: colors.textSecondary }]}>Automation</Text>
-            <Text style={[styles.title, { color: colors.textPrimary }]}>Recurring</Text>
+            <Text style={[styles.title, { color: colors.textPrimary }]} numberOfLines={1}>Recurring</Text>
             <Text style={[styles.subtitle, { color: colors.textSecondary }]}>Subscriptions and repeating items</Text>
           </View>
           <TouchableOpacity onPress={() => navigation.navigate('RecurringForm')}>

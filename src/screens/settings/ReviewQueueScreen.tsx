@@ -21,6 +21,7 @@ import {
   retrySingle,
   type AuditEntry,
 } from '../../../modules/lifeos-sms';
+import { useDataVersion } from '../../store/dataVersion';
 
 // Outcomes that indicate this entry needs review / recovery
 const PENDING_OUTCOMES = new Set([
@@ -151,6 +152,7 @@ export function ReviewQueueScreen() {
       const result = await retrySingle(entry.id);
       if (result.ok || result.note === 'already_exists') {
         setEntries((prev) => prev.filter((e) => e.id !== entry.id));
+        useDataVersion.getState().bump();
         setMessage({ text: result.note === 'already_exists' ? 'Already in ledger — marked complete.' : 'Transaction recovered.', ok: true });
       } else {
         setMessage({ text: `Could not recover: ${result.error ?? 'still quarantined'}`, ok: false });
@@ -184,6 +186,7 @@ export function ReviewQueueScreen() {
           setBulkProcessing(true);
           try {
             const result = await retryQuarantined();
+            useDataVersion.getState().bump();
             await load();
             setMessage({ text: `Reprocessed ${result.retried} · ${result.imported} recovered`, ok: true });
           } catch {
@@ -315,7 +318,7 @@ function ReviewQueueHeader({
         <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
       </TouchableOpacity>
       <View style={styles.headerCenter}>
-        <Text style={[styles.title, { color: colors.textPrimary }]}>Review Queue</Text>
+        <Text style={[styles.title, { color: colors.textPrimary }]} numberOfLines={1}>Review Queue</Text>
         {entries.length > 0 && (
           <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
             {entries.length} pending

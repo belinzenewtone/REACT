@@ -9,6 +9,10 @@ import { useCalendarStore } from '../../store';
 import { TaskRepository, type TaskRecord } from '../../database/repositories/TaskRepository';
 import { formatDateTime } from '../../utils/formatters';
 import { spacing, typography, borderRadius } from '../../theme';
+import { syncTaskReminders } from '../../services/notificationSyncService';
+import { cancelTaskReminders } from '../../services/notificationService';
+import { haptic } from '../../utils/haptics';
+import { useDataVersion } from '../../store/dataVersion';
 import type { RootStackParamList } from '../../navigation/types';
 
 type TaskDetailRouteProp = RouteProp<RootStackParamList, 'TaskDetail'>;
@@ -32,9 +36,12 @@ export function TaskDetailScreen() {
     if (!task) return;
     const repo = new TaskRepository(db);
     await repo.toggleComplete(taskId);
+    await syncTaskReminders(db, taskId);
     const updated = await repo.findById(taskId);
     setTask(updated);
+    useDataVersion.getState().bump();
     await loadCalendar(db);
+    haptic(updated?.status === 'completed' ? 'success' : 'light');
   };
 
   const handleDelete = () => {
@@ -46,7 +53,10 @@ export function TaskDetailScreen() {
         onPress: async () => {
           const repo = new TaskRepository(db);
           await repo.softDelete(taskId);
+          await cancelTaskReminders(taskId);
+          useDataVersion.getState().bump();
           await loadCalendar(db);
+          haptic('warning');
           navigation.goBack();
         },
       },
@@ -75,7 +85,7 @@ export function TaskDetailScreen() {
           <TouchableOpacity onPress={() => navigation.goBack()}>
             <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
           </TouchableOpacity>
-          <Text style={[styles.title, { color: colors.textPrimary }]}>Task</Text>
+          <Text style={[styles.title, { color: colors.textPrimary }]} numberOfLines={1}>Task</Text>
           <TouchableOpacity onPress={handleDelete}>
             <Ionicons name="trash-outline" size={22} color={colors.danger} />
           </TouchableOpacity>
@@ -87,7 +97,7 @@ export function TaskDetailScreen() {
               {task.priority.toUpperCase()}
             </Text>
           </View>
-          <Text style={[styles.taskTitle, isCompleted && styles.completed, { color: colors.textPrimary }]}>
+          <Text style={[styles.taskTitle, isCompleted && styles.completed, { color: colors.textPrimary }]} numberOfLines={3}>
             {task.title}
           </Text>
           {task.description ? (
@@ -107,7 +117,7 @@ export function TaskDetailScreen() {
           ]}
           onPress={handleToggleComplete}
         >
-          <Text style={[styles.statusButtonText, { color: colors.textInverse }]}>
+          <Text style={[styles.statusButtonText, { color: colors.textInverse }]} numberOfLines={1}>
             {isCompleted ? 'Mark as Active' : 'Mark as Completed'}
           </Text>
         </TouchableOpacity>
@@ -116,7 +126,7 @@ export function TaskDetailScreen() {
           style={[styles.editButton, { backgroundColor: colors.glassWhiteStrong, borderColor: colors.border }]}
           onPress={() => navigation.navigate('TaskForm', { taskId })}
         >
-          <Text style={[styles.editButtonText, { color: colors.textPrimary }]}>Edit Task</Text>
+          <Text style={[styles.editButtonText, { color: colors.textPrimary }]} numberOfLines={1}>Edit Task</Text>
         </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>

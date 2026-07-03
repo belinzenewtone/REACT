@@ -18,11 +18,15 @@ import { useThemeColors } from '../../hooks/useThemeColors';
 import { useCalendarStore } from '../../store';
 import { useAppStore } from '../../store';
 import {
-  scheduleTaskReminders,
+  syncTaskReminders,
+  syncEventReminders,
+} from '../../services/notificationSyncService';
+import {
   cancelTaskReminders,
-  scheduleEventReminders,
   cancelEventReminders,
 } from '../../services/notificationService';
+import { useDataVersion } from '../../store/dataVersion';
+import { wallClockInZoneToUtcIso, deviceTimeZone } from '../../utils/tz';
 import { TaskRepository, type TaskRecord } from '../../database/repositories/TaskRepository';
 import { EventRepository, type EventRecord } from '../../database/repositories/EventRepository';
 import { SearchField } from '../common/SearchField';
@@ -114,7 +118,6 @@ export function TaskEventForm({ editTaskId, editEventId, defaultType = 'task' }:
   const db = useSQLiteContext();
   const navigation = useNavigation<any>();
   const { loadCalendar } = useCalendarStore();
-  const notificationsEnabled = useAppStore((s) => s.settings.notificationsEnabled);
 
   const [type, setType] = useState<FormType>(defaultType);
   const [title, setTitle] = useState('');
@@ -133,6 +136,7 @@ export function TaskEventForm({ editTaskId, editEventId, defaultType = 'task' }:
   const [endDate, setEndDate] = useState('');
   const [endTime, setEndTime] = useState('');
   const [repeatRule, setRepeatRule] = useState<RepeatRule>('none');
+  const [repeatEndDate, setRepeatEndDate] = useState<string>('');
   const [location, setLocation] = useState('');
   const [guests, setGuests] = useState<string[]>([]);
   const [guestInput, setGuestInput] = useState('');
@@ -195,6 +199,7 @@ export function TaskEventForm({ editTaskId, editEventId, defaultType = 'task' }:
           setAllDay(event.all_day === 1);
           setKind(event.kind);
           setRepeatRule(event.repeat_rule);
+          setRepeatEndDate(event.repeat_end_date ? event.repeat_end_date.split('T')[0] : '');
           setLocation(event.location ?? '');
           setGuests(parseGuests(event.guests));
           setTimeZoneId(event.time_zone_id);
@@ -248,10 +253,21 @@ export function TaskEventForm({ editTaskId, editEventId, defaultType = 'task' }:
   const buildIso = (date: string, time: string, defaultTime: string): string | undefined => {
     if (!date.trim()) return undefined;
     const t = time.trim() || defaultTime;
-    const iso = `${date}T${t}:00.000Z`;
-    const parsed = new Date(iso);
-    if (isNaN(parsed.getTime())) return undefined;
-    return parsed.toISOString();
+    // Parse "YYYY-MM-DD" and "HH:mm" independently so we can interpret the
+    // wall-clock in the user-selected zone (or the device zone) rather than
+    // treating it as raw UTC.
+    const dParts = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date.trim());
+    const tParts = /^(\d{1,2}):(\d{2})$/.exec(t);
+    if (!dParts || !tParts) return undefined;
+    const y  = parseInt(dParts[1], 10);
+    const mo = parseInt(dParts[2], 10);
+    const d  = parseInt(dParts[3], 10);
+    const h  = parseInt(tParts[1], 10);
+    const mi = parseInt(tParts[2], 10);
+    // Prefer the explicit event zone; fall back to the device zone.
+    const zone = timeZoneId?.trim() || deviceTimeZone();
+    const iso = wallClockInZoneToUtcIso(y, mo, d, h, mi, zone);
+    return isNaN(new Date(iso).getTime()) ? undefined : iso;
   };
 
   const parseTimeOfDayMinutes = (time: string): number | undefined => {
@@ -281,16 +297,10 @@ export function TaskEventForm({ editTaskId, editEventId, defaultType = 'task' }:
         };
         if (editTaskId) {
           await repo.update(editTaskId, data);
-          if (notificationsEnabled && deadline && reminderOffsets.length > 0) {
-            await scheduleTaskReminders(editTaskId, title.trim(), deadline, reminderOffsets, alarmEnabled);
-          } else if (editTaskId) {
-            await cancelTaskReminders(editTaskId);
-          }
+          await syncTaskReminders(db, editTaskId);
         } else {
           const created = await repo.create({ ...data, recordSource: 'manual' });
-          if (notificationsEnabled && deadline && reminderOffsets.length > 0) {
-            await scheduleTaskReminders(created.id, title.trim(), deadline, reminderOffsets, alarmEnabled);
-          }
+          await syncTaskReminders(db, created.id);
         }
       } else {
         let date: string | undefined;
@@ -316,7 +326,9 @@ export function TaskEventForm({ editTaskId, editEventId, defaultType = 'task' }:
             // countdown
             effectiveRepeatRule = repeatRule;
             effectiveReminderTimeMinutes = parseTimeOfDayMinutes(countdownReminderTime);
-            effectiveOffsets = remind3DaysBefore ? [THREE_DAYS_MINUTES] : [];
+            effectiveOffsets = [];
+            if (remind3DaysBefore) effectiveOffsets.push(THREE_DAYS_MINUTES);
+            if (effectiveReminderTimeMinutes != null) effectiveOffsets.push(0);
           }
         } else {
           date = buildIso(startDate, allDay ? '00:00' : startTime, '00:00');
@@ -343,6 +355,12 @@ export function TaskEventForm({ editTaskId, editEventId, defaultType = 'task' }:
           reminderTimeOfDayMinutes: effectiveReminderTimeMinutes,
           allDay: effectiveAllDay,
           repeatRule: effectiveRepeatRule,
+          // Only persist an end date when the event actually repeats — otherwise
+          // it's meaningless. Empty string / invalid date → undefined.
+          repeatEndDate:
+            effectiveRepeatRule !== 'none' && repeatEndDate.trim()
+              ? buildIso(repeatEndDate, '23:59', '23:59')
+              : undefined,
           location: effectiveLocation,
           guests: effectiveGuests.length ? effectiveGuests : undefined,
           timeZoneId,
@@ -351,24 +369,14 @@ export function TaskEventForm({ editTaskId, editEventId, defaultType = 'task' }:
 
         if (editEventId) {
           await repo.update(editEventId, data);
-          if (notificationsEnabled && date) {
-            const willFire =
-              effectiveOffsets.length > 0 ||
-              type === 'birthday' ||
-              type === 'anniversary';
-            if (willFire) {
-              await scheduleEventReminders(editEventId, title.trim(), date, effectiveOffsets, alarmEnabled, type, effectiveReminderTimeMinutes);
-            } else {
-              await cancelEventReminders(editEventId);
-            }
-          }
+          await syncEventReminders(db, editEventId);
         } else {
           const created = await repo.create({ ...data, recordSource: 'manual' });
-          if (notificationsEnabled && date) {
-            await scheduleEventReminders(created.id, title.trim(), date, effectiveOffsets, alarmEnabled, type, effectiveReminderTimeMinutes);
-          }
+          await syncEventReminders(db, created.id);
         }
       }
+      // Signal every subscribed screen (Calendar, Home, Analytics, WeekReview) to reload.
+      useDataVersion.getState().bump();
       await loadCalendar(db);
       navigation.goBack();
     } catch (error) {
@@ -392,6 +400,7 @@ export function TaskEventForm({ editTaskId, editEventId, defaultType = 'task' }:
               await new EventRepository(db).softDelete(editEventId);
               await cancelEventReminders(editEventId);
             }
+            useDataVersion.getState().bump();
             await loadCalendar(db);
             navigation.goBack();
           } catch (error) {
@@ -474,7 +483,7 @@ export function TaskEventForm({ editTaskId, editEventId, defaultType = 'task' }:
           <TouchableOpacity onPress={() => navigation.goBack()}>
             <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
           </TouchableOpacity>
-          <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>
+          <Text style={[styles.headerTitle, { color: colors.textPrimary }]} numberOfLines={1}>
             {isEditing ? 'Edit' : 'New'} {typeLabel}
           </Text>
           {isEditing ? (
@@ -555,12 +564,36 @@ export function TaskEventForm({ editTaskId, editEventId, defaultType = 'task' }:
             <DateField label="Date" value={startDate} onChange={setStartDate} />
 
             {type === 'birthday' && (
-              <RowToggle label="Add year" value={addYear} onValueChange={setAddYear} />
+              <>
+                <RowToggle label="Add year" value={addYear} onValueChange={setAddYear} />
+                {addYear && (
+                  <DateField
+                    label="Repeat until (optional)"
+                    value={repeatEndDate}
+                    onChange={setRepeatEndDate}
+                  />
+                )}
+              </>
+            )}
+
+            {type === 'anniversary' && (
+              <DateField
+                label="Repeat until (optional)"
+                value={repeatEndDate}
+                onChange={setRepeatEndDate}
+              />
             )}
 
             {type === 'countdown' && (
               <>
                 <RowButton label="Repeat" value={repeatLabel} onPress={() => setRepeatModalOpen(true)} />
+                {repeatRule !== 'none' && (
+                  <DateField
+                    label="Repeat until (optional)"
+                    value={repeatEndDate}
+                    onChange={setRepeatEndDate}
+                  />
+                )}
                 <TimeField
                   label="Remind me at (time)"
                   value={countdownReminderTime}
@@ -602,6 +635,13 @@ export function TaskEventForm({ editTaskId, editEventId, defaultType = 'task' }:
             )}
 
             <RowButton label="Repeat" value={repeatLabel} onPress={() => setRepeatModalOpen(true)} />
+            {repeatRule !== 'none' && (
+              <DateField
+                label="Repeat until (optional)"
+                value={repeatEndDate}
+                onChange={setRepeatEndDate}
+              />
+            )}
 
             <InputGroup label="Guests">
               <View style={styles.guestInputRow}>
@@ -700,7 +740,7 @@ export function TaskEventForm({ editTaskId, editEventId, defaultType = 'task' }:
             style={[styles.saveButton, { backgroundColor: colors.accentPrimary }]}
             onPress={handleSave}
           >
-            <Text style={[styles.saveButtonText, { color: colors.textInverse }]}>Save</Text>
+            <Text style={[styles.saveButtonText, { color: colors.textInverse }]} numberOfLines={1}>Save</Text>
           </TouchableOpacity>
         )}
       </ScrollView>

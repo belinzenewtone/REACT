@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { View, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useThemeColors } from '../../hooks/useThemeColors';
-import { spacing, borderRadius } from '../../theme';
+import { spacing, borderRadius, typography } from '../../theme';
 
 interface ChatInputProps {
   onSend: (text: string) => void;
@@ -21,11 +21,11 @@ export function ChatInput({ onSend, disabled, bottomInset = 0 }: ChatInputProps)
   };
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.bgSecondary, paddingBottom: spacing.sm + bottomInset }]}>
-      <View style={[styles.inputRow, { backgroundColor: colors.glassWhite, borderColor: colors.border }]}>
+    <View style={[styles.container, { paddingBottom: bottomInset }]}>
+      <View style={[styles.inner, { backgroundColor: colors.bgSecondary, borderColor: colors.border }]}>
         <TextInput
           style={[styles.input, { color: colors.textPrimary }]}
-          placeholder="Message BELTECH..."
+          placeholder="Message LifeOS..."
           placeholderTextColor={colors.textTertiary}
           value={text}
           onChangeText={setText}
@@ -36,15 +36,15 @@ export function ChatInput({ onSend, disabled, bottomInset = 0 }: ChatInputProps)
         <TouchableOpacity
           style={[
             styles.sendButton,
-            { backgroundColor: text.trim() ? colors.accentPrimary : colors.textTertiary },
+            { backgroundColor: text.trim() ? colors.accentPrimary : colors.bgTertiary },
           ]}
           onPress={handleSend}
           disabled={!text.trim() || disabled}
         >
           {disabled ? (
-            <ActivityIndicator size={20} color={colors.textInverse} />
+            <ActivityIndicator size={18} color={colors.textInverse} />
           ) : (
-            <Ionicons name="arrow-up" size={20} color={colors.textInverse} />
+            <Ionicons name="arrow-up" size={20} color={text.trim() ? colors.textInverse : colors.textTertiary} />
           )}
         </TouchableOpacity>
       </View>
@@ -54,30 +54,32 @@ export function ChatInput({ onSend, disabled, bottomInset = 0 }: ChatInputProps)
 
 const styles = StyleSheet.create({
   container: {
-    paddingTop: 10,
     paddingHorizontal: spacing.screenHorizontal,
+    paddingTop: spacing.xs,
   },
-  inputRow: {
+  inner: {
     flexDirection: 'row',
     alignItems: 'flex-end',
     borderRadius: borderRadius.full,
     borderWidth: 1,
-    paddingLeft: 16,
-    paddingRight: 8,
-    paddingVertical: 8,
-    gap: 8,
+    paddingLeft: spacing.base,
+    paddingRight: spacing.xs,
+    paddingVertical: spacing.xs,
+    gap: spacing.xs,
   },
   input: {
     flex: 1,
-    fontSize: 15,
+    fontSize: typography.sizes.base,
     maxHeight: 100,
-    paddingVertical: 0,
+    paddingVertical: spacing.sm,
+    lineHeight: typography.sizes.base * 1.2,
   },
   sendButton: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     justifyContent: 'center',
     alignItems: 'center',
+    marginBottom: 1,
   },
 });

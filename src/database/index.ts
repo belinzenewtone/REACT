@@ -12,6 +12,13 @@ export * from './schema';
 export async function migrateDatabaseAsync(db: SQLiteDatabase): Promise<void> {
   await db.execAsync(CREATE_TABLES_SQL);
 
+  // Migration: ensure budgets have an is_active column for existing installs.
+  try {
+    await db.execAsync(`ALTER TABLE budgets ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1`);
+  } catch {
+    // Column already exists — ignore.
+  }
+
   // Future migrations can be gated by PRAGMA user_version.
   // const version = await db.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
   // if ((version?.user_version ?? 0) < 2) { ...; await db.execAsync('PRAGMA user_version = 2'); }

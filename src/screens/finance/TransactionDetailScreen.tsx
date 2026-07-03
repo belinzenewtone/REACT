@@ -10,6 +10,7 @@ import { TransactionRepository, type TransactionRecord } from '../../database/re
 import { CATEGORY_COLORS, CATEGORY_ICONS } from '../../constants';
 import { formatCurrency, formatDateTime } from '../../utils/formatters';
 import { spacing, typography, borderRadius } from '../../theme';
+import { checkBudgetThresholds } from '../../services/budgetAlertService';
 import type { RootStackParamList } from '../../navigation/types';
 
 type TransactionDetailRouteProp = RouteProp<RootStackParamList, 'TransactionDetail'>;
@@ -39,6 +40,9 @@ export function TransactionDetailScreen() {
           const repo = new TransactionRepository(db);
           await repo.softDelete(transactionId);
           await loadTransactions(repo, true);
+          if (transaction?.transaction_type === 'expense' && transaction.category) {
+            await checkBudgetThresholds(db, transaction.category);
+          }
           navigation.goBack();
         },
       },
@@ -86,7 +90,7 @@ export function TransactionDetailScreen() {
           <TouchableOpacity onPress={() => navigation.goBack()}>
             <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
           </TouchableOpacity>
-          <Text style={[styles.title, { color: colors.textPrimary }]}>Transaction</Text>
+          <Text style={[styles.title, { color: colors.textPrimary }]} numberOfLines={1}>Transaction</Text>
           <View style={styles.headerActions}>
             <TouchableOpacity onPress={handleShare} style={styles.actionButton}>
               <Ionicons name="share-outline" size={22} color={colors.textPrimary} />
@@ -101,7 +105,7 @@ export function TransactionDetailScreen() {
           <View style={[styles.iconContainer, { backgroundColor: `${categoryColor}20` }]}>
             <Ionicons name={iconName} size={32} color={categoryColor} />
           </View>
-          <Text style={[styles.merchant, { color: colors.textPrimary }]}>{transaction.merchant}</Text>
+          <Text style={[styles.merchant, { color: colors.textPrimary }]} numberOfLines={2}>{transaction.merchant}</Text>
           <Text style={[styles.category, { color: colors.textSecondary }]}>
             {transaction.category} · {typeLabel}
           </Text>
@@ -124,7 +128,7 @@ export function TransactionDetailScreen() {
           style={[styles.editButton, { backgroundColor: colors.accentPrimary }]}
           onPress={() => navigation.navigate('TransactionForm', { transactionId })}
         >
-          <Text style={[styles.editButtonText, { color: colors.textInverse }]}>Edit Transaction</Text>
+          <Text style={[styles.editButtonText, { color: colors.textInverse }]} numberOfLines={1}>Edit Transaction</Text>
         </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>

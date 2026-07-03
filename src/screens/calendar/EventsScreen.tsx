@@ -38,7 +38,7 @@ export function EventsScreen() {
             <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
           </TouchableOpacity>
           <View style={styles.headerText}>
-            <Text style={[styles.title, { color: colors.textPrimary }]}>Events</Text>
+            <Text style={[styles.title, { color: colors.textPrimary }]} numberOfLines={1}>Events</Text>
             <Text style={[styles.subtitle, { color: colors.textSecondary }]}>Upcoming</Text>
           </View>
           <TouchableOpacity onPress={() => navigation.navigate('EventForm')}>

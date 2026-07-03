@@ -9,6 +9,7 @@ interface BudgetProgress {
   spent: number;
   remaining: number;
   percent: number;
+  isActive: boolean;
 }
 
 interface BudgetState {
@@ -41,6 +42,7 @@ export const useBudgetStore = create<BudgetState>((set, get) => ({
           spent: spentAmount,
           remaining: Math.max(b.limit_amount - spentAmount, 0),
           percent: b.limit_amount > 0 ? Math.min((spentAmount / b.limit_amount) * 100, 100) : 0,
+          isActive: b.is_active === 1,
         };
       });
 

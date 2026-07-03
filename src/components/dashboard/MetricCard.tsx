@@ -16,7 +16,12 @@ export function MetricCard({ label, amount }: MetricCardProps) {
   return (
     <GlassCard style={styles.card}>
       <Text style={[styles.label, { color: colors.textSecondary }]}>{label}</Text>
-      <Text style={[styles.amount, { color: colors.textPrimary }]} numberOfLines={1} ellipsizeMode="tail">
+      <Text
+        style={[styles.amount, { color: colors.textPrimary }]}
+        numberOfLines={1}
+        ellipsizeMode="tail"
+        adjustsFontSizeToFit
+      >
         {formatCurrency(amount, { decimals: 0 })}
       </Text>
     </GlassCard>
@@ -25,8 +30,10 @@ export function MetricCard({ label, amount }: MetricCardProps) {
 
 const styles = StyleSheet.create({
   card: {
-    width: 140,
+    minWidth: 140,
+    width: 'auto',
     padding: spacing.lg,
+    paddingRight: spacing.xl,
     marginRight: spacing.base,
   },
   label: {

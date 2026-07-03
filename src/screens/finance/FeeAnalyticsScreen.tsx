@@ -127,7 +127,7 @@ export function FeeAnalyticsScreen() {
           </TouchableOpacity>
           <View style={styles.headerCenter}>
             <Text style={[styles.eyebrow, { color: colors.textSecondary }]}>Finance</Text>
-            <Text style={[styles.title, { color: colors.textPrimary }]}>Service Charges</Text>
+            <Text style={[styles.title, { color: colors.textPrimary }]} numberOfLines={1}>Service Charges</Text>
           </View>
           <View style={{ width: 24 }} />
         </View>

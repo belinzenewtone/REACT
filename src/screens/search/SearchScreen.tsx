@@ -49,7 +49,7 @@ function SectionHeader({
 }) {
   return (
     <TouchableOpacity style={styles.sectionHeader} onPress={onToggle} activeOpacity={0.7}>
-      <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>{title}</Text>
+      <Text style={[styles.sectionTitle, { color: colors.textPrimary }]} numberOfLines={1}>{title}</Text>
       <View style={[styles.countBadge, { backgroundColor: colors.bgTertiary }]}>
         <Text style={[styles.countBadgeText, { color: colors.textSecondary }]}>{count}</Text>
       </View>
@@ -77,6 +77,10 @@ export function SearchScreen() {
     countdowns: true,
     budgets: true,
     recurring: true,
+    bills: true,
+    goals: true,
+    incomes: true,
+    loans: true,
   });
 
   const debouncedQuery = useDebounce(query, 300);
@@ -121,7 +125,11 @@ export function SearchScreen() {
         results.anniversaries.length +
         results.countdowns.length +
         results.budgets.length +
-        results.recurring.length >
+        results.recurring.length +
+        results.bills.length +
+        results.goals.length +
+        results.incomes.length +
+        results.loans.length >
       0
     : false;
 
@@ -150,7 +158,7 @@ export function SearchScreen() {
               <Ionicons name={icon} size={16} color="#FFF" />
             </View>
             <View style={styles.cardContent}>
-              <Highlight text={title} query={debouncedQuery} style={[styles.cardTitle, { color: colors.textPrimary }]} />
+              <Highlight text={title} query={debouncedQuery} style={[styles.cardTitle, { color: colors.textPrimary }]} numberOfLines={1} />
               <Text style={[styles.cardSub, { color: colors.textSecondary }]} numberOfLines={1}>
                 {subtitle}
               </Text>
@@ -193,7 +201,12 @@ export function SearchScreen() {
       </View>
 
       {/* Filter chips */}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        nestedScrollEnabled
+        contentContainerStyle={styles.chips}
+      >
         {FILTERS.map((f) => {
           const active = filter === f.key;
           return (
@@ -212,6 +225,7 @@ export function SearchScreen() {
             </TouchableOpacity>
           );
         })}
+        <View style={styles.chipsTrailing} />
       </ScrollView>
 
       <ScrollView contentContainerStyle={styles.content}>
@@ -292,7 +306,7 @@ export function SearchScreen() {
                           <Ionicons name="cash-outline" size={16} color={colors.accentPrimary} />
                         </View>
                         <View style={styles.cardContent}>
-                          <Highlight text={tx.merchant} query={debouncedQuery} style={[styles.cardTitle, { color: colors.textPrimary }]} />
+                          <Highlight text={tx.merchant} query={debouncedQuery} style={[styles.cardTitle, { color: colors.textPrimary }]} numberOfLines={1} />
                           <Text style={[styles.cardSub, { color: colors.textSecondary }]}>
                             <Highlight text={tx.category} query={debouncedQuery} style={{ color: colors.textSecondary }} /> · {formatDate(tx.date)}
                           </Text>
@@ -321,11 +335,19 @@ export function SearchScreen() {
                   <TouchableOpacity key={task.id} onPress={() => navigation.navigate('TaskDetail', { taskId: task.id })}>
                     <GlassCard style={styles.card}>
                       <View style={styles.cardRow}>
-                        <View style={[styles.iconBox, { backgroundColor: `${colors.success}20` }]}>
-                          <Ionicons name={task.status === 'completed' ? 'checkbox' : 'square-outline'} size={16} color={colors.success} />
+                        <View
+                          style={[
+                            styles.resultCheckbox,
+                            {
+                              borderColor: task.status === 'completed' ? colors.success : colors.border,
+                              backgroundColor: task.status === 'completed' ? colors.success : 'transparent',
+                            },
+                          ]}
+                        >
+                          {task.status === 'completed' && <Ionicons name="checkmark" size={14} color={colors.textInverse} />}
                         </View>
                         <View style={styles.cardContent}>
-                          <Highlight text={task.title} query={debouncedQuery} style={[styles.cardTitle, { color: colors.textPrimary }]} />
+                          <Highlight text={task.title} query={debouncedQuery} style={[styles.cardTitle, { color: colors.textPrimary }]} numberOfLines={1} />
                           {task.deadline && (
                             <Text style={[styles.cardSub, { color: colors.textSecondary }]}>{formatDateTime(task.deadline)}</Text>
                           )}
@@ -365,7 +387,7 @@ export function SearchScreen() {
                             <Ionicons name={eventIcon} size={16} color={eventColor} />
                           </View>
                           <View style={styles.cardContent}>
-                            <Highlight text={event.title} query={debouncedQuery} style={[styles.cardTitle, { color: colors.textPrimary }]} />
+                            <Highlight text={event.title} query={debouncedQuery} style={[styles.cardTitle, { color: colors.textPrimary }]} numberOfLines={1} />
                             <Text style={[styles.cardSub, { color: colors.textSecondary }]}>
                               {formatDateTime(event.date)}{event.location ? ` · ${event.location}` : ''}
                             </Text>
@@ -396,7 +418,7 @@ export function SearchScreen() {
                           <Ionicons name="gift-outline" size={16} color="#FF69B4" />
                         </View>
                         <View style={styles.cardContent}>
-                          <Highlight text={event.title} query={debouncedQuery} style={[styles.cardTitle, { color: colors.textPrimary }]} />
+                          <Highlight text={event.title} query={debouncedQuery} style={[styles.cardTitle, { color: colors.textPrimary }]} numberOfLines={1} />
                           <Text style={[styles.cardSub, { color: colors.textSecondary }]}>
                             {formatDateTime(event.date)}
                           </Text>
@@ -427,7 +449,7 @@ export function SearchScreen() {
                           <Ionicons name="heart-outline" size={16} color="#FF6B6B" />
                         </View>
                         <View style={styles.cardContent}>
-                          <Highlight text={event.title} query={debouncedQuery} style={[styles.cardTitle, { color: colors.textPrimary }]} />
+                          <Highlight text={event.title} query={debouncedQuery} style={[styles.cardTitle, { color: colors.textPrimary }]} numberOfLines={1} />
                           <Text style={[styles.cardSub, { color: colors.textSecondary }]}>
                             {formatDateTime(event.date)}
                           </Text>
@@ -458,7 +480,7 @@ export function SearchScreen() {
                           <Ionicons name="timer-outline" size={16} color="#FFA726" />
                         </View>
                         <View style={styles.cardContent}>
-                          <Highlight text={event.title} query={debouncedQuery} style={[styles.cardTitle, { color: colors.textPrimary }]} />
+                          <Highlight text={event.title} query={debouncedQuery} style={[styles.cardTitle, { color: colors.textPrimary }]} numberOfLines={1} />
                           <Text style={[styles.cardSub, { color: colors.textSecondary }]}>
                             {formatDateTime(event.date)}
                           </Text>
@@ -489,7 +511,7 @@ export function SearchScreen() {
                           <Ionicons name="wallet-outline" size={16} color="#A78BFA" />
                         </View>
                         <View style={styles.cardContent}>
-                          <Highlight text={budget.category} query={debouncedQuery} style={[styles.cardTitle, { color: colors.textPrimary }]} />
+                          <Highlight text={budget.category} query={debouncedQuery} style={[styles.cardTitle, { color: colors.textPrimary }]} numberOfLines={1} />
                           <Text style={[styles.cardSub, { color: colors.textSecondary }]}>
                             Limit {formatCurrency(budget.limit_amount)}
                           </Text>
@@ -520,12 +542,138 @@ export function SearchScreen() {
                           <Ionicons name="repeat-outline" size={16} color={colors.info ?? '#4DB8FF'} />
                         </View>
                         <View style={styles.cardContent}>
-                          <Highlight text={rule.title} query={debouncedQuery} style={[styles.cardTitle, { color: colors.textPrimary }]} />
+                          <Highlight text={rule.title} query={debouncedQuery} style={[styles.cardTitle, { color: colors.textPrimary }]} numberOfLines={1} />
                           <Text style={[styles.cardSub, { color: colors.textSecondary }]}>
                             {rule.cadence}{rule.amount ? ` · ${formatCurrency(rule.amount)}` : ''}
                           </Text>
                         </View>
                         <Ionicons name={rule.enabled ? 'checkmark-circle' : 'ellipse-outline'} size={16} color={rule.enabled ? colors.success : colors.textTertiary} />
+                      </View>
+                    </GlassCard>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+
+            {/* Bills */}
+            {results.bills.length > 0 && (
+              <View style={styles.section}>
+                <SectionHeader
+                  title="Bills"
+                  count={results.bills.length}
+                  expanded={expanded.bills}
+                  onToggle={() => toggleSection('bills')}
+                  colors={colors}
+                />
+                {expanded.bills && results.bills.map((bill) => (
+                  <TouchableOpacity key={bill.id} onPress={() => navigation.navigate('BillForm', { billId: bill.id })}>
+                    <GlassCard style={styles.card}>
+                      <View style={styles.cardRow}>
+                        <View style={[styles.iconBox, { backgroundColor: '#F59E0B20' }]}>
+                          <Ionicons name="receipt-outline" size={16} color="#F59E0B" />
+                        </View>
+                        <View style={styles.cardContent}>
+                          <Highlight text={bill.title} query={debouncedQuery} style={[styles.cardTitle, { color: colors.textPrimary }]} numberOfLines={1} />
+                          <Text style={[styles.cardSub, { color: colors.textSecondary }]}>
+                            {formatCurrency(bill.amount)} · {bill.cycle}{bill.paid_status === 1 ? ' · paid' : ''}
+                          </Text>
+                        </View>
+                        <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
+                      </View>
+                    </GlassCard>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+
+            {/* Goals */}
+            {results.goals.length > 0 && (
+              <View style={styles.section}>
+                <SectionHeader
+                  title="Goals"
+                  count={results.goals.length}
+                  expanded={expanded.goals}
+                  onToggle={() => toggleSection('goals')}
+                  colors={colors}
+                />
+                {expanded.goals && results.goals.map((goal) => (
+                  <TouchableOpacity key={goal.id} onPress={() => navigation.navigate('GoalForm', { goalId: goal.id })}>
+                    <GlassCard style={styles.card}>
+                      <View style={styles.cardRow}>
+                        <View style={[styles.iconBox, { backgroundColor: '#EC489920' }]}>
+                          <Ionicons name="flag-outline" size={16} color="#EC4899" />
+                        </View>
+                        <View style={styles.cardContent}>
+                          <Highlight text={goal.title} query={debouncedQuery} style={[styles.cardTitle, { color: colors.textPrimary }]} numberOfLines={1} />
+                          <Text style={[styles.cardSub, { color: colors.textSecondary }]}>
+                            {formatCurrency(goal.current_value)} / {formatCurrency(goal.target_value)}
+                          </Text>
+                        </View>
+                        <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
+                      </View>
+                    </GlassCard>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+
+            {/* Incomes */}
+            {results.incomes.length > 0 && (
+              <View style={styles.section}>
+                <SectionHeader
+                  title="Income"
+                  count={results.incomes.length}
+                  expanded={expanded.incomes}
+                  onToggle={() => toggleSection('incomes')}
+                  colors={colors}
+                />
+                {expanded.incomes && results.incomes.map((income) => (
+                  <TouchableOpacity key={income.id} onPress={() => navigation.navigate('IncomeForm', { incomeId: income.id })}>
+                    <GlassCard style={styles.card}>
+                      <View style={styles.cardRow}>
+                        <View style={[styles.iconBox, { backgroundColor: '#22C55E20' }]}>
+                          <Ionicons name="trending-up-outline" size={16} color="#22C55E" />
+                        </View>
+                        <View style={styles.cardContent}>
+                          <Highlight text={income.source} query={debouncedQuery} style={[styles.cardTitle, { color: colors.textPrimary }]} numberOfLines={1} />
+                          <Text style={[styles.cardSub, { color: colors.textSecondary }]}>
+                            {formatCurrency(income.amount)}
+                          </Text>
+                        </View>
+                        <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
+                      </View>
+                    </GlassCard>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+
+            {/* Loans (Fuliza) */}
+            {results.loans.length > 0 && (
+              <View style={styles.section}>
+                <SectionHeader
+                  title="Loans"
+                  count={results.loans.length}
+                  expanded={expanded.loans}
+                  onToggle={() => toggleSection('loans')}
+                  colors={colors}
+                />
+                {expanded.loans && results.loans.map((loan) => (
+                  <TouchableOpacity key={loan.id} onPress={() => navigation.navigate('LoanForm', { loanId: loan.id })}>
+                    <GlassCard style={styles.card}>
+                      <View style={styles.cardRow}>
+                        <View style={[styles.iconBox, { backgroundColor: '#F9731620' }]}>
+                          <Ionicons name="cash-outline" size={16} color="#F97316" />
+                        </View>
+                        <View style={styles.cardContent}>
+                          <Text style={[styles.cardTitle, { color: colors.textPrimary }]} numberOfLines={1}>
+                            Draw {formatCurrency(loan.draw_amount_kes)}
+                          </Text>
+                          <Text style={[styles.cardSub, { color: colors.textSecondary }]}>
+                            {loan.status} · repaid {formatCurrency(loan.total_repaid_kes)}
+                          </Text>
+                        </View>
+                        <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
                       </View>
                     </GlassCard>
                   </TouchableOpacity>
@@ -567,7 +715,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.base, height: 48, gap: spacing.sm,
   },
   input: { flex: 1, fontSize: typography.sizes.base, height: '100%' },
-  chips: { paddingHorizontal: spacing.screenHorizontal, paddingBottom: spacing.base, flexDirection: 'row', alignItems: 'center' },
+  chips: {
+    paddingHorizontal: spacing.screenHorizontal,
+    paddingTop: spacing.xs,
+    paddingBottom: spacing.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  chipsTrailing: { width: spacing.screenHorizontal },
   chip: {
     flexDirection: 'row', alignItems: 'center',
     paddingHorizontal: spacing.base, paddingVertical: spacing.sm,
@@ -600,6 +755,17 @@ const styles = StyleSheet.create({
   card: { marginBottom: spacing.sm },
   cardRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   iconBox: { width: 36, height: 36, borderRadius: 18, justifyContent: 'center', alignItems: 'center', flexShrink: 0 },
+  resultCheckbox: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 2,
+    justifyContent: 'center',
+    alignItems: 'center',
+    flexShrink: 0,
+    marginRight: spacing.sm,
+    overflow: 'hidden',
+  },
   cardContent: { flex: 1 },
   cardTitle: { fontSize: typography.sizes.base, fontWeight: typography.weights.medium },
   cardSub: { fontSize: typography.sizes.sm, marginTop: 2 },

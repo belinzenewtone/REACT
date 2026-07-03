@@ -19,6 +19,10 @@ import { useCalendarStore } from '../../store';
 import { TaskRepository, type TaskRecord } from '../../database/repositories/TaskRepository';
 import { spacing, typography, borderRadius } from '../../theme';
 import { animateLayout } from '../../utils/animation';
+import { syncTaskReminders } from '../../services/notificationSyncService';
+import { cancelTaskReminders } from '../../services/notificationService';
+import { haptic } from '../../utils/haptics';
+import { useDataVersion } from '../../store/dataVersion';
 
 const COMPLETED_LIMIT = 20;
 
@@ -85,9 +89,13 @@ export function TasksScreen() {
   const handleToggleComplete = async (task: TaskRecord) => {
     const repo = new TaskRepository(db);
     await repo.toggleComplete(task.id);
+    await syncTaskReminders(db, task.id);
+    useDataVersion.getState().bump();
     animateLayout();
     await loadCalendar(db);
     await loadTasks();
+    // If the task was active before, we've just completed it → success pulse.
+    haptic(task.status === 'active' ? 'success' : 'light');
   };
 
   const handleDelete = (task: TaskRecord) => {
@@ -99,9 +107,12 @@ export function TasksScreen() {
         onPress: async () => {
           const repo = new TaskRepository(db);
           await repo.softDelete(task.id);
+          await cancelTaskReminders(task.id);
+          useDataVersion.getState().bump();
           animateLayout();
           await loadCalendar(db);
           await loadTasks();
+          haptic('warning');
         },
       },
     ]);
@@ -322,7 +333,7 @@ interface SwipeableTaskCardProps {
   onPress: () => void;
 }
 
-const SWIPE_ACTION_WIDTH = 64;
+const SWIPE_ACTION_WIDTH = 56;
 
 function SwipeableTaskCard({ task, onToggleComplete, onDelete, onPress, ...rest }: SwipeableTaskCardProps) {
   const colors = useThemeColors();
@@ -435,13 +446,18 @@ function TaskCard({
     >
       <View style={[styles.priorityBar, { backgroundColor: color }]} />
       <TouchableOpacity
-        style={[styles.checkbox, task.status === 'completed' && { backgroundColor: colors.success, borderColor: colors.success }]}
+        style={[
+          styles.checkbox,
+          { borderColor: task.status === 'completed' ? colors.success : color },
+          task.status === 'completed' && { backgroundColor: colors.success },
+        ]}
         onPress={(e) => {
           e.stopPropagation();
           onToggleComplete();
         }}
+        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
       >
-        {task.status === 'completed' && <Ionicons name="checkmark" size={14} color={colors.textInverse} />}
+        {task.status === 'completed' && <Ionicons name="checkmark" size={16} color={colors.textInverse} />}
       </TouchableOpacity>
       <View style={styles.cardContent}>
         <Text
@@ -553,12 +569,14 @@ const styles = StyleSheet.create({
   },
   swipeWrapper: {
     marginBottom: spacing.base,
+    borderRadius: borderRadius['2xl'],
+    overflow: 'hidden',
   },
   swipeAction: {
     position: 'absolute',
     top: 0,
     bottom: 0,
-    width: 64,
+    width: SWIPE_ACTION_WIDTH,
     justifyContent: 'center',
     alignItems: 'center',
     borderRadius: borderRadius['2xl'],
@@ -576,14 +594,16 @@ const styles = StyleSheet.create({
     marginRight: spacing.base,
   },
   checkbox: {
-    width: 22,
-    height: 22,
-    borderRadius: 6,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
     borderWidth: 2,
     borderColor: '#4B5563',
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: spacing.base,
+    backgroundColor: 'transparent',
+    overflow: 'hidden',
   },
   cardContent: {
     flex: 1,

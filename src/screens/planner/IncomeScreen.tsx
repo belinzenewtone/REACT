@@ -45,7 +45,7 @@ export function IncomeScreen() {
             <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
           </TouchableOpacity>
           <View style={styles.headerTextCol}>
-            <Text style={[styles.title, { color: colors.textPrimary }]}>Income</Text>
+            <Text style={[styles.title, { color: colors.textPrimary }]} numberOfLines={1}>Income</Text>
             <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
               {incomes.length} entr{incomes.length === 1 ? 'y' : 'ies'} tracked
             </Text>

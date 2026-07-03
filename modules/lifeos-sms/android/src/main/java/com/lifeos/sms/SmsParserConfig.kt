@@ -22,27 +22,43 @@ internal object SmsParserConfig {
 
     // ─── Core extraction regexes ───────────────────────────────────────
 
-    /** M-Pesa transaction confirmation code — exactly 10 uppercase alphanum chars. */
-    val CODE_RE = Regex("""\b([A-Z0-9]{10})\b""")
+    /** M-Pesa transaction confirmation code — 9-10 alphanum chars (case-insensitive). */
+    val CODE_RE = Regex("""\b([A-Za-z0-9]{9,10})\b""")
 
     /** Primary amount — first Ksh/KES figure in the message. */
     val AMOUNT_RE = Regex("""(?:Ksh|KES)\s?([\d,]+(?:\.\d{1,2})?)""", RegexOption.IGNORE_CASE)
 
     /** M-Pesa balance after the transaction. */
     val BALANCE_RE = Regex(
-        """(?:New M-PESA balance is|balance is|M-PESA balance is)\s*(?:Ksh|KES)\s?([\d,]+(?:\.\d{1,2})?)""",
+        """(?:new\s*)?(?:m-pesa\s*)?(?:available\s*)?balance\s*(?:is\s*)?\s*(?:Ksh|KES)\s?([\d,]+(?:\.\d{1,2})?)""",
         RegexOption.IGNORE_CASE,
     )
 
     /** Transaction fee / cost. */
     val FEE_RE = Regex(
-        """[Tt]ransaction cost[,.]?\s*(?:(?:Ksh|KES)\s?)?([\d,]+(?:\.\d{1,2})?)""",
+        """(?:transaction\s+cost|fee|charge|access\s+fee|withdrawal\s+charges?)[,.]?\s*(?:(?:Ksh|KES)\s?)?([\d,]+(?:\.\d{1,2})?)""",
         RegexOption.IGNORE_CASE,
     )
 
-    /** Date with optional time — e.g. "3/7/25 at 2:30 PM" or "3/7/2025". */
+    /** Date with optional time — e.g. "3/7/25 at 2:30 PM", "3-7-2025 14:30", "2025-07-03",
+     *  "3-JUL-25", "Jul 3, 2025". */
     val DATE_RE = Regex(
-        """(\d{1,2}/\d{1,2}/\d{2,4})(?:\s+at\s+(\d{1,2}:\d{2}\s*[AP]M))?""",
+        """(\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4}-\d{2}-\d{2}|\d{1,2}-[A-Za-z]{3,9}-\d{2,4}|[A-Za-z]{3,9}\s+\d{1,2},?\s+\d{2,4})(?:\s+(?:at\s+)?(\d{1,2}:\d{2}(?:\s*[AP]M)?))?""",
+        RegexOption.IGNORE_CASE,
+    )
+
+    /** Lipa na M-Pesa till number (5-6 digits). */
+    val TILL_RE = Regex("""\btill\s*(?:number)?\s*[:#]?\s*(\d{5,6})\b""", RegexOption.IGNORE_CASE)
+
+    /** Agent float / till deposit patterns. */
+    val AGENT_FLOAT_DEPOSIT_RE = Regex(
+        """agent\s+float(?:\s+of)?\s+(?:Ksh|KES)\s?[\d,.]+(?:\s+deposited|\s+received)""",
+        RegexOption.IGNORE_CASE,
+    )
+
+    /** Agent float / till withdrawal patterns. */
+    val AGENT_FLOAT_WITHDRAW_RE = Regex(
+        """agent\s+float(?:\s+of)?\s+(?:Ksh|KES)\s?[\d,.]+(?:\s+withdrawn|\s+paid\s+out)""",
         RegexOption.IGNORE_CASE,
     )
 
@@ -58,10 +74,22 @@ internal object SmsParserConfig {
         RegexOption.IGNORE_CASE,
     )
 
+    /** Fuliza access fee in charge-notice SMS. */
+    val FULIZA_ACCESS_FEE_RE = Regex(
+        """(?:access\s+fee|maintenance\s+fee)\s*(?:charged\s*)?(?:(?:Ksh|KES)\s?)?([\d,]+(?:\.\d{1,2})?)""",
+        RegexOption.IGNORE_CASE,
+    )
+
+    /** Repayment amount in Fuliza repayment SMS — the figure before "from your M-PESA". */
+    val LOAN_REPAYMENT_AMOUNT_RE = Regex(
+        """(?:Ksh|KES)\s?([\d,]+(?:\.\d{1,2})?)\s+from your M-PESA""",
+        RegexOption.IGNORE_CASE,
+    )
+
     /** Detects reversal of a received payment (net effect = money leaves balance). */
     val RECEIVED_REVERSED_RE = Regex(
-        """(?:received|you have received)\s+(?:Ksh|KES)\s?[\d,.]+.+has been reversed""" +
-        """|(?:Ksh|KES)\s?[\d,.]+\s+received from.+has been reversed""",
+        """(?:your\s+m-pesa\s+transaction\s+)?(?:received|you have received)\s+(?:Ksh|KES)\s?[\d,.]+.+has been reversed""" +
+        """|(?:transaction of\s+)?(?:Ksh|KES)\s?[\d,.]+\s+received from.+has been reversed""",
         RegexOption.IGNORE_CASE,
     )
 
@@ -102,9 +130,12 @@ internal object SmsParserConfig {
      *
      * Covers major Kenyan paybill operators, retailers, and service categories.
      */
-    fun refineAppCategory(category: SmsCategory, counterparty: String?): String {
+    fun refineAppCategory(category: SmsCategory, counterparty: String?, amount: Double? = null): String {
         val base = APP_CATEGORY[category] ?: "uncategorized"
-        if (counterparty.isNullOrBlank()) return base
+        if (counterparty.isNullOrBlank()) {
+            // Amount-based fallback when no merchant string is available
+            return amount?.let { amountHeuristicCategory(it, category) } ?: base
+        }
 
         val cp = counterparty.lowercase().replace(WS_RE, " ")
 
@@ -137,6 +168,14 @@ internal object SmsParserConfig {
             cp.containsAny("tuskys", "nakumatt", "chandarana", "ukwala") -> "groceries"
             cp.containsAny("uchumi", "game ", "shoprite", "massmart") -> "groceries"
             cp.containsAny("fairprice", "market", "supermarket") -> "groceries"
+            cp.containsAny("eastmatt", "tumaini", "magunas", "mulleys", "khetia") -> "groceries"
+            cp.containsAny("mama mboga", "mboga", "kiosk", "food stall", "duka") -> "groceries"
+            cp.containsAny("greenspoon", "zucchini", "healthy u") -> "groceries"
+
+            // ── Fuel ───────────────────────────────────────────────────────────
+            cp.containsAny("shell", "total ", "totalenergies", "kenol", "rubis") -> "fuel"
+            cp.containsAny("vivo energy", "kobil", "hass petroleum", "hashi", "oilliby") -> "fuel"
+            cp.containsAny("petrol", "petroleum", "fuel station", "service station") -> "fuel"
 
             // ── Transport ─────────────────────────────────────────────────────
             cp.containsAny("uber", "bolt cab", "little cab", "taxify") -> "transport"
@@ -147,7 +186,7 @@ internal object SmsParserConfig {
 
             // ── Entertainment & Subscriptions ──────────────────────────────────
             cp.containsAny("dstv", "multichoice") -> "entertainment"
-            cp.containsAny("zuku", "startimes", "gotv") -> "entertainment"
+            cp.containsAny("zuku", "startimes", "gotv", "safaricom home", "poa internet") -> "entertainment"
             cp.containsAny("netflix", "showmax", "spotify", "apple") -> "subscriptions"
             cp.containsAny("youtube", "amazon prime", "disney") -> "subscriptions"
             cp.containsAny("cinema", "imax", "movies") -> "entertainment"
@@ -179,11 +218,38 @@ internal object SmsParserConfig {
             cp.containsAny("postbank", "national bank", "sidian") -> "transfer"
             cp.containsAny("mshwari", "m-shwari", "kcb mpesa", "kcb m-pesa") -> "savings"
 
+            // ── Digital loans / SACCOs ─────────────────────────────────────────
+            cp.containsAny("tala", "branch", "zenka", "haraka", "okolea", "timiza", "berry") -> "loans"
+            cp.containsAny("hustler fund", "hustler", "faulu", "sacco loan") -> "loans"
+
             // ── Government / Fees ─────────────────────────────────────────────
             cp.containsAny("kra", "revenue authority", "tax") -> "miscellaneous"
             cp.containsAny("huduma", "ecitizen", "county cess") -> "miscellaneous"
+            cp.containsAny("nssf", "national social security") -> "miscellaneous"
 
-            else -> base
+            else -> amount?.let { amountHeuristicCategory(it, category) } ?: base
+        }
+    }
+
+    /**
+     * Amount-based fallback categorization for expenses when no merchant match.
+     * Mirrors the Kotlin reference (`CategoryInferenceEngine.amountHeuristic`).
+     */
+    private fun amountHeuristicCategory(amount: Double, category: SmsCategory): String {
+        val isExpense = when (category) {
+            SmsCategory.SENT, SmsCategory.AIRTIME, SmsCategory.PAYBILL,
+            SmsCategory.BUY_GOODS, SmsCategory.WITHDRAW -> true
+            else -> false
+        }
+        if (!isExpense) {
+            return if (amount >= 30_000.0) "salary" else APP_CATEGORY[category] ?: "uncategorized"
+        }
+        return when {
+            amount <= 50.0    -> "airtime"
+            amount <= 500.0   -> "food"
+            amount <= 2_000.0 -> "shopping"
+            amount <= 8_000.0 -> "utilities"
+            else              -> "transfer"
         }
     }
 
@@ -253,6 +319,7 @@ internal object SmsParserConfig {
                 Regex("""(?:received|sent)\s+(?:Ksh|KES)\s?[\d,.]+.+has been reversed""", RegexOption.IGNORE_CASE),
                 Regex("""(?:Ksh|KES)\s?[\d,.]+\s+sent to.+has been reversed""", RegexOption.IGNORE_CASE),
                 Regex("""(?:Ksh|KES)\s?[\d,.]+\s+received from.+has been reversed""", RegexOption.IGNORE_CASE),
+                Regex("""(?:your\s+m-pesa\s+transaction\s+)?(?:received|you have received)\s+(?:Ksh|KES)\s?[\d,.]+.+has been reversed""", RegexOption.IGNORE_CASE),
             ),
             fallbackPatterns = listOf(
                 Regex("""has been reversed""", RegexOption.IGNORE_CASE),
@@ -261,6 +328,8 @@ internal object SmsParserConfig {
             counterpartyPatterns = listOf(
                 Regex("""received from\s+(.+?)(?:\s+on\s|\s+New\s|\.|$)""", RegexOption.IGNORE_CASE),
                 Regex("""sent to\s+(.+?)(?:\s+on\s|\s+New\s|\.|$)""", RegexOption.IGNORE_CASE),
+                Regex("""(?:Ksh|KES)\s?[\d,.]+\s+received from\s+(.+?)(?:\s+on\s|\s+New\s|\.|$)""", RegexOption.IGNORE_CASE),
+                Regex("""(?:Ksh|KES)\s?[\d,.]+\s+sent to\s+(.+?)(?:\s+on\s|\s+New\s|\.|$)""", RegexOption.IGNORE_CASE),
             ),
         ),
 
@@ -272,13 +341,20 @@ internal object SmsParserConfig {
             patterns = listOf(
                 Regex("""(?:you have\s+)?received\s+(?:Ksh|KES)\s?[\d,.]+\s+from\s+""", RegexOption.IGNORE_CASE),
                 Regex("""(?:Ksh|KES)\s?[\d,.]+\s+received from\s+""", RegexOption.IGNORE_CASE),
+                // Old / compact formats sometimes drop "You have"
+                Regex("""received\s+(?:Ksh|KES)\s?[\d,.]+\s+from\s+[A-Z]""", RegexOption.IGNORE_CASE),
+                // Non-English fragment variants (Swahili)
+                Regex("""umepokea\s+(?:Ksh|KES)\s?[\d,.]+\s+(?:kutoka|from)\s+""", RegexOption.IGNORE_CASE),
             ),
             fallbackPatterns = listOf(
                 Regex("""received from\s+[A-Z]""", RegexOption.IGNORE_CASE),
+                Regex("""umepokea\s+(?:Ksh|KES)""", RegexOption.IGNORE_CASE),
+                Regex("""umepokea""", RegexOption.IGNORE_CASE),
             ),
             counterpartyPatterns = listOf(
                 Regex("""received\s+(?:Ksh|KES)\s?[\d,.]+\s+from\s+(.+?)(?:\s+on\s|\s+New\s|\.|$)""", RegexOption.IGNORE_CASE),
                 Regex("""(?:Ksh|KES)\s?[\d,.]+\s+received from\s+(.+?)(?:\s+on\s|\s+New\s|\.|$)""", RegexOption.IGNORE_CASE),
+                Regex("""umepokea\s+(?:Ksh|KES)\s?[\d,.]+\s+(?:kutoka|from)\s+(.+?)(?:\s+on\s|\s+New\s|\.|$)""", RegexOption.IGNORE_CASE),
             ),
         ),
 
@@ -291,14 +367,18 @@ internal object SmsParserConfig {
                 Regex("""(?:Ksh|KES)\s?[\d,.]+\s+deposited""", RegexOption.IGNORE_CASE),
                 Regex("""cash deposit of\s+(?:Ksh|KES)\s?[\d,.]+""", RegexOption.IGNORE_CASE),
                 Regex("""deposited\s+(?:Ksh|KES)\s?[\d,.]+""", RegexOption.IGNORE_CASE),
+                Regex("""agent\s+float\s+(?:of\s+)?(?:Ksh|KES)\s?[\d,.]+.*\s+deposited""", RegexOption.IGNORE_CASE),
+                Regex("""agent\s+float\s+deposited""", RegexOption.IGNORE_CASE),
             ),
             fallbackPatterns = listOf(
                 Regex("""deposited\s+(?:Ksh|KES)""", RegexOption.IGNORE_CASE),
                 Regex("""\bdeposited\b""", RegexOption.IGNORE_CASE),
+                Regex("""agent\s+float""", RegexOption.IGNORE_CASE),
             ),
             counterpartyPatterns = listOf(
                 Regex("""deposited by(?:\s+agent)?\s+\d+\s*-?\s*(.+?)(?:\s+on\s|\s+New\s|\.|$)""", RegexOption.IGNORE_CASE),
                 Regex("""deposited by(?:\s+agent)\s+([A-Za-z][^.]+?)(?:\s+on\s|\s+New\s|\.|$)""", RegexOption.IGNORE_CASE),
+                Regex("""agent\s+float\s+(?:of\s+)?(?:Ksh|KES)\s?[\d,.]+\s+deposited\s+(?:by\s+)?(?:agent\s+)?\d+\s*-?\s*(.+?)(?:\s+on\s|\s+New\s|\.|$)""", RegexOption.IGNORE_CASE),
             ),
         ),
 
@@ -325,23 +405,27 @@ internal object SmsParserConfig {
             ),
         ),
 
-        // 5. PAYBILL — BEFORE buy_goods: paybill has an explicit account number
+        // 5. PAYBILL — BEFORE buy_goods: paybill has an explicit account/reference number
         DetectionRule(
             id = "paybill",
             category = SmsCategory.PAYBILL,
-            description = "Paybill payment — utility, subscription or bill with account number",
+            description = "Paybill payment — utility, subscription or bill with reference",
             patterns = listOf(
-                Regex("""(?:Ksh|KES)\s?[\d,.]+\s+sent to\s+.+?\s+(?:for\s+(?:account|acc\.?|acct\.?)|(?:account|acc\.?|acct\.?))\s+[\w-]+""", RegexOption.IGNORE_CASE),
-                Regex("""paid to\s+.+?\s+(?:for\s+(?:account|acc\.?|acct\.?)|(?:account|acc\.?|acct\.?))\s+[\w-]+""", RegexOption.IGNORE_CASE),
-                Regex("""paybill""", RegexOption.IGNORE_CASE),
+                Regex("""(?:Ksh|KES)\s?[\d,.]+\s+sent to\s+.+?\s+(?:for\s+)?(?:account|acc\.?|acct\.?|account\s+number|meter|ref\.?|reference|policy|postpay|token|bill|invoice)\s*[\w-]+""", RegexOption.IGNORE_CASE),
+                Regex("""paid to\s+.+?\s+(?:for\s+)?(?:account|acc\.?|acct\.?|account\s+number|meter|ref\.?|reference|policy|postpay|token|bill|invoice)\s*[\w-]+""", RegexOption.IGNORE_CASE),
+                Regex("""paybill to\s+\d+""", RegexOption.IGNORE_CASE),
+                Regex("""paybill\s+\d+\s+account\s*[:#]?\s*[\w-]+""", RegexOption.IGNORE_CASE),
             ),
             fallbackPatterns = listOf(
-                Regex("""(?:sent to|paid to)\s+.+?\s+(?:account|acc\.?|acct\.)\s+[\w-]+""", RegexOption.IGNORE_CASE),
+                Regex("""(?:sent to|paid to)\s+.+?\s+(?:for\s+)?(?:account|acc\.?|acct\.|account\s+number|meter|ref\.?|reference|policy|postpay|token|bill|invoice)\s*[\w-]+""", RegexOption.IGNORE_CASE),
+                Regex("""account\s*(?:number|no\.?)?\s*[:#]?\s*[\w-]+""", RegexOption.IGNORE_CASE),
+                Regex("""paybill\b""", RegexOption.IGNORE_CASE),
             ),
             counterpartyPatterns = listOf(
-                Regex("""(?:Ksh|KES)\s?[\d,.]+\s+sent to\s+(.+?)\s+(?:for\s+(?:account|acc\.?|acct\.?)|(?:account|acc\.?|acct\.?))\s+[\w-]+""", RegexOption.IGNORE_CASE),
-                Regex("""paid to\s+(.+?)\s+(?:for\s+(?:account|acc\.?|acct\.?)|(?:account|acc\.?|acct\.?))\s+[\w-]+""", RegexOption.IGNORE_CASE),
-                Regex("""sent to\s+(.+?)\s+(?:for\s+(?:account|acc\.?|acct\.?)|(?:account|acc\.?|acct\.?))\s+[\w-]+""", RegexOption.IGNORE_CASE),
+                Regex("""(?:Ksh|KES)\s?[\d,.]+\s+sent to\s+(.+?)\s+(?:for\s+)?(?:account|acc\.?|acct\.?|account\s+number|meter|ref\.?|reference|policy|postpay|token|bill|invoice)\s*[\w-]+""", RegexOption.IGNORE_CASE),
+                Regex("""paid to\s+(.+?)\s+(?:for\s+)?(?:account|acc\.?|acct\.?|account\s+number|meter|ref\.?|reference|policy|postpay|token|bill|invoice)\s*[\w-]+""", RegexOption.IGNORE_CASE),
+                Regex("""sent to\s+(.+?)\s+(?:for\s+)?(?:account|acc\.?|acct\.?|account\s+number|meter|ref\.?|reference|policy|postpay|token|bill|invoice)\s*[\w-]+""", RegexOption.IGNORE_CASE),
+                Regex("""paybill to\s+\d+\s+(.+?)(?:\s+on\s|\s+New\s|\.|$)""", RegexOption.IGNORE_CASE),
             ),
         ),
 
@@ -355,17 +439,19 @@ internal object SmsParserConfig {
                 Regex("""(?:Ksh|KES)\s?[\d,.]+\s+paid to\s+.+?\s+(?:on\s\d|\.\s|confirmed)""", RegexOption.IGNORE_CASE),
                 Regex("""(?:Ksh|KES)\s?[\d,.]+\s+paid to\s+.+?\s+via\s+(?:kopo[\s-]+kopo|kopokopo)\b""", RegexOption.IGNORE_CASE),
                 Regex("""buy goods""", RegexOption.IGNORE_CASE),
-                Regex("""till number\s+\d+""", RegexOption.IGNORE_CASE),
-                Regex("""paid to\s+[A-Z].+?\.\s+New M-PESA""", RegexOption.IGNORE_CASE),
+                Regex("""till\s*(?:number)?\s*[:#]?\s*\d{5,6}""", RegexOption.IGNORE_CASE),
+                Regex("""paid to\s+.+?\.\s+New M-PESA""", RegexOption.IGNORE_CASE),
+                Regex("""(?:Ksh|KES)\s?[\d,.]+\s+paid to\s+.+?\s+till\s*(?:number)?\s*\d+""", RegexOption.IGNORE_CASE),
             ),
             fallbackPatterns = listOf(
-                Regex("""paid to\s+[A-Z]""", RegexOption.IGNORE_CASE),
+                Regex("""paid to\s+\S""", RegexOption.IGNORE_CASE),
+                Regex("""till\s*(?:number)?\s*[:#]?\s*\d{5,6}""", RegexOption.IGNORE_CASE),
             ),
             counterpartyPatterns = listOf(
                 Regex("""buy goods from\s+(.+?)(?:\s+on\s|\.|$)""", RegexOption.IGNORE_CASE),
                 Regex("""(?:Ksh|KES)\s?[\d,.]+\s+paid to\s+(.+?)\s+via\s+(?:kopo[\s-]+kopo|kopokopo)(?:\.\s|\s+on\s|\s+New\s|$)""", RegexOption.IGNORE_CASE),
-                Regex("""(?:Ksh|KES)\s?[\d,.]+\s+paid to\s+(.+?)(?:\s+on\s\d|\.\s|confirmed|$)""", RegexOption.IGNORE_CASE),
-                Regex("""paid to\s+(.+?)(?:\s+on\s\d|\.\s|confirmed|$)""", RegexOption.IGNORE_CASE),
+                Regex("""(?:Ksh|KES)\s?[\d,.]+\s+paid to\s+(.+?)(?:\s+on\s\d|\.\s|confirmed|\s+till\s*(?:number)?\s*\d+|$)""", RegexOption.IGNORE_CASE),
+                Regex("""paid to\s+(.+?)(?:\s+on\s\d|\.\s|confirmed|\s+till\s*(?:number)?\s*\d+|$)""", RegexOption.IGNORE_CASE),
             ),
         ),
 
@@ -379,15 +465,19 @@ internal object SmsParserConfig {
                 Regex("""cash withdrawal\s+of\s+(?:Ksh|KES)""", RegexOption.IGNORE_CASE),
                 Regex("""(?:Ksh|KES)\s?[\d,.]+\s+withdrawn""", RegexOption.IGNORE_CASE),
                 Regex("""(?:Ksh|KES)\s?[\d,.]+\s+withdrawn from ATM""", RegexOption.IGNORE_CASE),
+                Regex("""agent\s+float\s+(?:of\s+)?(?:Ksh|KES)\s?[\d,.]+.*\s+withdrawn""", RegexOption.IGNORE_CASE),
+                Regex("""agent\s+float\s+withdrawn""", RegexOption.IGNORE_CASE),
             ),
             fallbackPatterns = listOf(
                 Regex("""cash withdrawal""", RegexOption.IGNORE_CASE),
                 Regex("""withdrawn from""", RegexOption.IGNORE_CASE),
+                Regex("""agent\s+float""", RegexOption.IGNORE_CASE),
             ),
             counterpartyPatterns = listOf(
                 Regex("""withdrawn from(?:\s+agent)?\s+\d+\s*-?\s*(.+?)(?:\s+on\s|\s+New\s|\.|$)""", RegexOption.IGNORE_CASE),
                 Regex("""withdrawn from(?:\s+agent)\s+([A-Za-z][^.]+?)(?:\s+on\s|\s+New\s|\.|$)""", RegexOption.IGNORE_CASE),
                 Regex("""withdrawn at\s+(.+?)(?:\s+on\s|\s+New\s|\.|$)""", RegexOption.IGNORE_CASE),
+                Regex("""agent\s+float\s+(?:of\s+)?(?:Ksh|KES)\s?[\d,.]+\s+withdrawn\s+(?:from\s+)?(?:agent\s+)?\d+\s*-?\s*(.+?)(?:\s+on\s|\s+New\s|\.|$)""", RegexOption.IGNORE_CASE),
             ),
         ),
 
@@ -438,15 +528,19 @@ internal object SmsParserConfig {
                 Regex("""(?:Ksh|KES)\s?[\d,.]+\s+sent to\s+(?:\+?254|0)\d{8,9}\b""", RegexOption.IGNORE_CASE),
                 // spaced/hyphenated phone: 07 12 34 56 78
                 Regex("""(?:Ksh|KES)\s?[\d,.]+\s+sent to\s+(?:0|\+?254[\s-]?)\d[\d\s-]{7,14}\b""", RegexOption.IGNORE_CASE),
+                // Old / compact formats: "You have sent Ksh X to Y"
+                Regex("""you have sent\s+(?:Ksh|KES)\s?[\d,.]+\s+to\s+""", RegexOption.IGNORE_CASE),
             ),
             fallbackPatterns = listOf(
                 Regex("""sent to\s+[A-Z]""", RegexOption.IGNORE_CASE),
                 Regex("""sent to\s+(?:\+?254|0)\d{8,9}\b""", RegexOption.IGNORE_CASE),
                 Regex("""sent to\s+(?:0|\+?254[\s-]?)\d[\d\s-]{7,14}\b""", RegexOption.IGNORE_CASE),
+                Regex("""you have sent""", RegexOption.IGNORE_CASE),
             ),
             counterpartyPatterns = listOf(
                 Regex("""(?:Ksh|KES)\s?[\d,.]+\s+sent to\s+(.+?)(?:\s+on\s|\s+New\s|\.|confirmed|$)""", RegexOption.IGNORE_CASE),
                 Regex("""customer transfer of\s+(?:Ksh|KES)\s?[\d,.]+\s+to\s+(.+?)(?:\s+on\s|\s+New\s|\.|confirmed|$)""", RegexOption.IGNORE_CASE),
+                Regex("""you have sent\s+(?:Ksh|KES)\s?[\d,.]+\s+to\s+(.+?)(?:\s+on\s|\s+New\s|\.|confirmed|$)""", RegexOption.IGNORE_CASE),
                 Regex("""sent to\s+((?:\+?254|0)\d{8,9})\b""", RegexOption.IGNORE_CASE),
             ),
         ),

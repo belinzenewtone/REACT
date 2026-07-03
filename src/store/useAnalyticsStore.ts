@@ -47,8 +47,9 @@ export const useAnalyticsStore = create<AnalyticsState>((set, get) => ({
   loadAnalytics: async (db) => {
     set({ isLoading: true });
     try {
-      const { start, end } = getDateRange(get().dateRange);
-      const data = await computeAnalytics(db, start, end);
+      const range = get().dateRange;
+      const { start, end } = getDateRange(range);
+      const data = await computeAnalytics(db, start, end, range);
       set({ data, isLoading: false });
     } catch (error) {
       console.error('Failed to load analytics:', error);

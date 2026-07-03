@@ -15,6 +15,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { useThemeColors } from '../../hooks/useThemeColors';
 import { useAppStore, type OnboardingGoal } from '../../store';
 import { requestNotificationPermissions } from '../../services/notificationService';
+import { syncAllNotifications } from '../../services/notificationSyncService';
+import { useSQLiteContext } from 'expo-sqlite';
 import { generateId, nowIso } from '../../database';
 import { HeroSurface } from '../../components/common/HeroSurface';
 import { InlineBanner } from '../../components/common/InlineBanner';
@@ -39,6 +41,7 @@ const GOALS: Array<{ key: OnboardingGoal; title: string; description: string; ic
 
 export function OnboardingScreen() {
   const colors = useThemeColors();
+  const db = useSQLiteContext();
   const setHasCompletedOnboarding = useAppStore((state) => state.setHasCompletedOnboarding);
   const onboardingStep = useAppStore((state) => state.onboardingStep);
   const setOnboardingStep = useAppStore((state) => state.setOnboardingStep);
@@ -140,32 +143,52 @@ export function OnboardingScreen() {
             ]}
           >
             <GlassCard variant="elevated">
-            {onboardingStep === 1 ? <WelcomeStep /> : null}
-            {onboardingStep === 2 ? <PillarsStep /> : null}
-            {onboardingStep === 3 ? (
-              <ProfileSetupStep
-                fullName={fullName}
-                onNameChange={(value) => {
-                  setFullName(value);
-                  setErrorMessage(null);
-                }}
-                selectedGoal={onboardingGoal}
-                onGoalSelect={setOnboardingGoal}
-              />
-            ) : null}
-            {onboardingStep === 4 ? (
-              <PermissionStep
-                allowed={notificationsAllowed}
-                onAllow={async () => {
-                  const granted = await requestNotificationPermissions();
-                  updateSettings({ notificationsEnabled: granted });
-                  setNotificationsAllowed(granted);
-                }}
-                onSkip={() => setNotificationsAllowed(false)}
-              />
-            ) : null}
-            {onboardingStep === TOTAL_STEPS ? <FinalStep /> : null}
-          </GlassCard>
+              {(() => {
+                // Guard against any out-of-range step value showing a blank card
+                // (e.g. transient state during `setOnboardingStep` + `setHasCompletedOnboarding`).
+                // Clamp into the [1..TOTAL_STEPS] range and render exactly one step.
+                const step = Math.min(Math.max(onboardingStep, 1), TOTAL_STEPS);
+                switch (step) {
+                  case 1:
+                    return <WelcomeStep />;
+                  case 2:
+                    return <PillarsStep />;
+                  case 3:
+                    return (
+                      <ProfileSetupStep
+                        fullName={fullName}
+                        onNameChange={(value) => {
+                          setFullName(value);
+                          setErrorMessage(null);
+                        }}
+                        selectedGoal={onboardingGoal}
+                        onGoalSelect={setOnboardingGoal}
+                      />
+                    );
+                  case 4:
+                    return (
+                      <PermissionStep
+                        allowed={notificationsAllowed}
+                        onAllow={async () => {
+                          const granted = await requestNotificationPermissions();
+                          updateSettings({ notificationsEnabled: granted });
+                          setNotificationsAllowed(granted);
+                          if (granted) {
+                            await syncAllNotifications(db);
+                          }
+                        }}
+                        onSkip={() => {
+                          updateSettings({ notificationsEnabled: false });
+                          setNotificationsAllowed(false);
+                        }}
+                      />
+                    );
+                  case TOTAL_STEPS:
+                  default:
+                    return <FinalStep />;
+                }
+              })()}
+            </GlassCard>
         </Animated.View>
         </ScrollView>
 

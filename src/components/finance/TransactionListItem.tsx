@@ -20,7 +20,7 @@ export interface TransactionListItemData {
   category: string;
   amount: number;
   date: string;
-  type: 'income' | 'expense' | 'transfer';
+  type: 'income' | 'expense' | 'transfer' | 'fuliza';
   status: 'completed' | 'pending' | 'failed' | 'reversed';
   description?: string | null;
 }
@@ -31,8 +31,8 @@ interface TransactionListItemProps {
   onDelete?: (id: string) => void;
 }
 
-const SWIPE_THRESHOLD = -80;
-const ACTION_WIDTH = 80;
+const ACTION_WIDTH = 56;
+const SWIPE_THRESHOLD = -(ACTION_WIDTH * 2);
 
 export function TransactionListItem({ item, onPress, onDelete }: TransactionListItemProps) {
   const colors = useThemeColors();
@@ -110,14 +110,14 @@ export function TransactionListItem({ item, onPress, onDelete }: TransactionList
           onPress={handleCategory}
         >
           <Ionicons name="pricetag-outline" size={20} color={colors.textInverse} />
-          <Text style={[styles.actionLabel, { color: colors.textInverse }]}>Category</Text>
+          <Text style={[styles.actionLabel, { color: colors.textInverse }]} numberOfLines={1}>Category</Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={[styles.actionButton, { backgroundColor: colors.danger }]}
           onPress={handleDelete}
         >
           <Ionicons name="trash-outline" size={20} color={colors.textInverse} />
-          <Text style={[styles.actionLabel, { color: colors.textInverse }]}>Delete</Text>
+          <Text style={[styles.actionLabel, { color: colors.textInverse }]} numberOfLines={1}>Delete</Text>
         </TouchableOpacity>
       </View>
 
@@ -211,7 +211,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   actionLabel: {
-    fontSize: typography.sizes.xs,
+    fontSize: 10,
     fontWeight: typography.weights.medium,
     marginTop: 4,
   },
@@ -219,6 +219,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     padding: spacing.base,
+    paddingRight: spacing.lg,
     borderRadius: borderRadius.lg,
     borderWidth: 1,
   },

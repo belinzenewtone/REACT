@@ -174,10 +174,10 @@ export function ProfileScreen() {
 
             {/* Info */}
             <View style={styles.heroInfo}>
-              <Text style={[styles.heroName, { color: colors.textPrimary }]} numberOfLines={1}>
+              <Text style={[styles.heroName, { color: colors.textPrimary }]} numberOfLines={1} ellipsizeMode="tail">
                 {profile?.name?.trim() || 'Set up your profile'}
               </Text>
-              <Text style={[styles.heroUsername, { color: colors.accentPrimary }]}>
+              <Text style={[styles.heroUsername, { color: colors.accentPrimary }]} numberOfLines={1}>
                 {displayUsername}
               </Text>
               {memberSince && (
@@ -202,14 +202,14 @@ export function ProfileScreen() {
               }}
             >
               <Ionicons name="create-outline" size={16} color={colors.accentPrimary} />
-              <Text style={[styles.heroBtnText, { color: colors.accentPrimary }]}>Edit Profile</Text>
+              <Text style={[styles.heroBtnText, { color: colors.accentPrimary }]} numberOfLines={1}>Edit Profile</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.heroBtn, { borderColor: colors.border }]}
               onPress={() => navigation.navigate('Settings')}
             >
               <Ionicons name="settings-outline" size={16} color={colors.accentPrimary} />
-              <Text style={[styles.heroBtnText, { color: colors.accentPrimary }]}>Settings</Text>
+              <Text style={[styles.heroBtnText, { color: colors.accentPrimary }]} numberOfLines={1}>Settings</Text>
             </TouchableOpacity>
           </View>
         </GlassCard>
@@ -281,10 +281,10 @@ export function ProfileScreen() {
             </View>
 
             <TouchableOpacity style={[styles.saveButton, { backgroundColor: colors.accentPrimary }]} onPress={handleSaveProfile}>
-              <Text style={[styles.saveText, { color: colors.textInverse }]}>Save</Text>
+              <Text style={[styles.saveText, { color: colors.textInverse }]} numberOfLines={1}>Save</Text>
             </TouchableOpacity>
             <TouchableOpacity onPress={() => setEditVisible(false)}>
-              <Text style={[styles.cancelText, { color: colors.textSecondary }]}>Cancel</Text>
+              <Text style={[styles.cancelText, { color: colors.textSecondary }]} numberOfLines={1}>Cancel</Text>
             </TouchableOpacity>
           </View>
         </View>

@@ -8,7 +8,9 @@ import { useSQLiteContext } from 'expo-sqlite';
 import { useThemeColors } from '../../hooks/useThemeColors';
 import { useBudgetStore } from '../../store';
 import { BudgetRepository } from '../../database/repositories/BudgetRepository';
+import { checkBudgetThresholds } from '../../services/budgetAlertService';
 import { GlassCard } from '../../components/common/GlassCard';
+import { LifeOSSwitch } from '../../components/common/LifeOSSwitch';
 import { CATEGORY_COLORS, CATEGORY_ICONS } from '../../constants';
 import { formatCurrency, clamp } from '../../utils/formatters';
 import { spacing, typography, borderRadius } from '../../theme';
@@ -31,18 +33,20 @@ export function BudgetsScreen() {
     }, [db, loadBudgets, dataVersion])
   );
 
+  const activeBudgetItems = useMemo(() => budgets.filter((item) => item.isActive), [budgets]);
+
   const summary = useMemo(() => {
     let totalLimit = 0;
     let totalSpent = 0;
     let overBudgetCount = 0;
-    budgets.forEach((item) => {
+    activeBudgetItems.forEach((item) => {
       totalLimit += item.budget.limit_amount;
       totalSpent += item.spent;
       if (item.spent > item.budget.limit_amount) overBudgetCount += 1;
     });
     const percent = totalLimit > 0 ? (totalSpent / totalLimit) * 100 : 0;
-    return { totalLimit, totalSpent, percent, overBudgetCount, count: budgets.length };
-  }, [budgets]);
+    return { totalLimit, totalSpent, percent, overBudgetCount, count: activeBudgetItems.length, totalCount: budgets.length };
+  }, [activeBudgetItems, budgets.length]);
 
   const handleDelete = (id: string, category: string) => {
     Alert.alert('Delete budget', `Remove ${category} budget?`, [
@@ -57,6 +61,16 @@ export function BudgetsScreen() {
         },
       },
     ]);
+  };
+
+  const handleToggleActive = async (id: string, active: boolean) => {
+    animateLayout();
+    const item = budgets.find((b) => b.budget.id === id);
+    await new BudgetRepository(db).update(id, { isActive: active });
+    await loadBudgets(db);
+    if (active && item) {
+      await checkBudgetThresholds(db, item.budget.category);
+    }
   };
 
   return (
@@ -81,7 +95,7 @@ export function BudgetsScreen() {
               </TouchableOpacity>
               <View style={styles.headerText}>
                 <Text style={[styles.overline, { color: colors.textSecondary }]}>Spending Guardrails</Text>
-                <Text style={[styles.title, { color: colors.textPrimary }]}>Budgets</Text>
+                <Text style={[styles.title, { color: colors.textPrimary }]} numberOfLines={1}>Budgets</Text>
               </View>
               <TouchableOpacity onPress={() => navigation.navigate('BudgetForm')}>
                 <Ionicons name="add" size={24} color={colors.accentPrimary} />
@@ -92,7 +106,7 @@ export function BudgetsScreen() {
               <View style={styles.summaryTop}>
                 <View>
                   <Text style={[styles.summaryLabel, { color: colors.textSecondary }]}>This Month</Text>
-                  <Text style={[styles.summaryAmount, { color: colors.textPrimary }]}>
+                  <Text style={[styles.summaryAmount, { color: colors.textPrimary }]} numberOfLines={1}>
                     {formatCurrency(summary.totalSpent)}
                     <Text style={[styles.summarySlash, { color: colors.textTertiary }]}>
                       {' '}
@@ -137,19 +151,24 @@ export function BudgetsScreen() {
               <Text style={[styles.summaryMeta, { color: colors.textTertiary }]}>
                 {summary.overBudgetCount > 0
                   ? `${summary.overBudgetCount} category${summary.overBudgetCount > 1 ? 'ies' : 'y'} over budget`
-                  : summary.count === 0
+                  : summary.totalCount === 0
                   ? 'No budgets set'
                   : 'All categories within budget'}
               </Text>
             </GlassCard>
 
-            {summary.count > 0 && (
+            {summary.totalCount > 0 && (
               <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>Categories</Text>
             )}
           </>
         }
         renderItem={({ item }) => (
-          <BudgetCard item={item} onEdit={() => navigation.navigate('BudgetForm', { budgetId: item.budget.id })} onDelete={() => handleDelete(item.budget.id, item.budget.category)} />
+          <BudgetCard
+            item={item}
+            onEdit={() => navigation.navigate('BudgetForm', { budgetId: item.budget.id })}
+            onDelete={() => handleDelete(item.budget.id, item.budget.category)}
+            onToggleActive={(active) => handleToggleActive(item.budget.id, active)}
+          />
         )}
         ListEmptyComponent={
           <View style={styles.empty}>
@@ -171,10 +190,12 @@ function BudgetCard({
   item,
   onEdit,
   onDelete,
+  onToggleActive,
 }: {
-  item: { budget: { category: string; limit_amount: number; id: string; period: string }; spent: number; percent: number };
+  item: { budget: { category: string; limit_amount: number; id: string; period: string }; spent: number; percent: number; isActive: boolean };
   onEdit: () => void;
   onDelete: () => void;
+  onToggleActive: (active: boolean) => void;
 }) {
   const colors = useThemeColors();
   const categoryColor = CATEGORY_COLORS[item.budget.category] ?? colors.textTertiary;
@@ -186,7 +207,7 @@ function BudgetCard({
   const statusLabel = isOver ? 'Over' : isWarning ? 'Close' : 'On track';
 
   return (
-    <GlassCard style={styles.budgetCard}>
+    <GlassCard style={StyleSheet.flatten([styles.budgetCard, !item.isActive && { opacity: 0.7 }])}>
       <View style={styles.budgetHeader}>
         <View style={[styles.categoryIcon, { backgroundColor: `${categoryColor}20` }]}>
           <Ionicons name={iconName as keyof typeof Ionicons.glyphMap} size={18} color={categoryColor} />
@@ -194,15 +215,18 @@ function BudgetCard({
         <View style={styles.budgetTitleCol}>
           <View style={styles.categoryRow}>
             <View style={[styles.statusDot, { backgroundColor: statusColor }]} />
-            <Text style={[styles.category, { color: colors.textPrimary }]}>{item.budget.category}</Text>
+            <Text style={[styles.category, { color: colors.textPrimary }]} numberOfLines={1}>{item.budget.category}</Text>
           </View>
-          <Text style={[styles.budgetLimit, { color: colors.textTertiary }]}>
+          <Text style={[styles.budgetLimit, { color: colors.textTertiary }]} numberOfLines={1}>
             {item.budget.period.charAt(0).toUpperCase() + item.budget.period.slice(1).toLowerCase()} · Limit{' '}
             {formatCurrency(item.budget.limit_amount)}
           </Text>
         </View>
-        <View style={[styles.statusBadge, { backgroundColor: `${statusColor}20` }]}>
-          <Text style={[styles.statusText, { color: statusColor }]}>{statusLabel}</Text>
+        <View style={styles.budgetHeaderActions}>
+          <View style={[styles.statusBadge, { backgroundColor: `${statusColor}20` }]}>
+            <Text style={[styles.statusText, { color: statusColor }]}>{statusLabel}</Text>
+          </View>
+          <LifeOSSwitch value={item.isActive} onValueChange={onToggleActive} />
         </View>
       </View>
 
@@ -317,6 +341,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: spacing.sm,
+  },
+  budgetHeaderActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
   },
   categoryIcon: {
     width: 36,

@@ -6,8 +6,8 @@ import { useNavigation } from '@react-navigation/native';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useThemeColors } from '../../hooks/useThemeColors';
 import { useAnalyticsStore, type DateRange } from '../../store/useAnalyticsStore';
+import { useDataVersion } from '../../store/dataVersion';
 import { AnalyticsSummaryCards } from '../../components/analytics/AnalyticsSummaryCards';
-import { CategoryBreakdownChart } from '../../components/analytics/CategoryBreakdownChart';
 import { WeeklySpendByCategoryChart } from '../../components/analytics/WeeklySpendByCategoryChart';
 import { TopMerchants } from '../../components/analytics/TopMerchants';
 import { GlassCard } from '../../components/common/GlassCard';
@@ -32,10 +32,11 @@ export function AnalyticsScreen() {
   const db = useSQLiteContext();
   const [tab, setTab] = useState<Tab>('analytics');
   const { data, isLoading, dateRange, setDateRange, loadAnalytics } = useAnalyticsStore();
+  const dataVersion = useDataVersion((s) => s.version);
 
   useEffect(() => {
     loadAnalytics(db);
-  }, [db, dateRange, loadAnalytics]);
+  }, [db, dateRange, loadAnalytics, dataVersion]);
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.bgPrimary }]} edges={['top']}>
@@ -55,8 +56,8 @@ export function AnalyticsScreen() {
             <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
           </TouchableOpacity>
           <View style={styles.headerText}>
-            <Text style={[styles.title, { color: colors.textPrimary }]}>Analytics</Text>
-            <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
+            <Text style={[styles.title, { color: colors.textPrimary }]} numberOfLines={1}>Analytics</Text>
+            <Text style={[styles.subtitle, { color: colors.textSecondary }]} numberOfLines={1}>
               Productivity and finance trends in one place
             </Text>
           </View>
@@ -134,10 +135,6 @@ export function AnalyticsScreen() {
 
             <View style={styles.section}>
               <WeeklySpendByCategoryChart data={data.weeklyCategorySpend} />
-            </View>
-
-            <View style={styles.section}>
-              <CategoryBreakdownChart data={data.categoryBreakdown} />
             </View>
 
             <View style={styles.section}>
