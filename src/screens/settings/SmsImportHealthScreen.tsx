@@ -13,13 +13,13 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { useSQLiteContext } from 'expo-sqlite';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useThemeColors } from '../../hooks/useThemeColors';
 import { spacing, typography, borderRadius } from '../../theme';
 import { GlassCard } from '../../components/common/GlassCard';
 import {
   getStats,
   getAuditLog,
-  clearAuditLog,
   getRecentRejections,
   getReceiverStatus,
   importHistoricalSms,
@@ -34,6 +34,8 @@ import {
 } from '../../../modules/lifeos-sms';
 import { useDataVersion } from '../../store/dataVersion';
 import { useLiveQuery } from '../../hooks/useLiveQuery';
+
+const LAST_CLEARED_ID_KEY = '@sms_audit_log_last_cleared_id';
 
 function SectionCard({ title, children, colors }: { title?: string; children: React.ReactNode; colors: any }) {
   return (
@@ -185,16 +187,29 @@ export function SmsImportHealthScreen() {
   const [loading, setLoading] = useState(true);
   const [reconciling, setReconciling] = useState(false);
   const [retrying, setRetrying] = useState(false);
+  const [lastClearedId, setLastClearedId] = useState(0);
   // Subscribe to the global dataVersion so this screen refreshes automatically
   // when another surface (Finance import, real-time SmsReceiver, retry) bumps it.
   const dataVersion = useDataVersion((s) => s.version);
+
+  // Load the last "cleared" audit ID once on mount. Entries at or below this
+  // ID are hidden from the Import Log view without deleting them from the DB,
+  // so lifetime stats and future imports keep working.
+  useEffect(() => {
+    AsyncStorage.getItem(LAST_CLEARED_ID_KEY)
+      .then((raw) => {
+        const id = raw ? parseInt(raw, 10) : 0;
+        setLastClearedId(Number.isNaN(id) ? 0 : id);
+      })
+      .catch(() => setLastClearedId(0));
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
       const [s, entries, recentRejections, receiverStatus, exempt, queueStatus] = await Promise.all([
         getStats(),
-        getAuditLog(10),
+        getAuditLog(100),
         getRecentRejections(20),
         getReceiverStatus(),
         isIgnoringBatteryOptimizations(),
@@ -202,10 +217,13 @@ export function SmsImportHealthScreen() {
       ]);
       setStats(s);
       setIngestQueue(queueStatus);
-      // Enrich imported audit rows with the real SMS date from the transactions
-      // table so the health screen shows the message timestamp, not the import
-      // processing time.
-      setAuditEntries(await enrichAuditWithSmsDates(db, entries));
+      // Hide entries the user has previously cleared. We fetch more than the
+      // display limit so that, after filtering, the latest 10 visible entries
+      // still surface correctly.
+      const visible = (await enrichAuditWithSmsDates(db, entries)).filter(
+        (e) => (e.id ?? 0) > lastClearedId
+      );
+      setAuditEntries(visible.slice(0, 10));
       setRejections(recentRejections);
       setReceiverEnabled(receiverStatus.enabled);
       setLastFireMs(receiverStatus.lastFireMs);
@@ -222,7 +240,7 @@ export function SmsImportHealthScreen() {
     } finally {
       setLoading(false);
     }
-  }, [db]);
+  }, [db, lastClearedId]);
 
   // Mount, focus-with-new-data, and realtime-bump reloads.
   useLiveQuery(load);
@@ -271,8 +289,8 @@ export function SmsImportHealthScreen() {
 
   const handleClearAudit = () => {
     Alert.alert(
-      'Clear import log?',
-      'This removes the audit history shown here. Your imported transactions are not affected.',
+      'Clear import log view?',
+      'This hides the current log entries from view. Lifetime counters stay the same, and new M-Pesa imports will still appear here.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -280,9 +298,12 @@ export function SmsImportHealthScreen() {
           style: 'destructive',
           onPress: async () => {
             try {
-              await clearAuditLog();
-              useDataVersion.getState().bump();
-              await load();
+              // Fetch the latest batch so we can compute the highest visible ID.
+              const entries = await getAuditLog(100);
+              const maxId = entries.reduce((max, e) => Math.max(max, e.id ?? 0), 0);
+              await AsyncStorage.setItem(LAST_CLEARED_ID_KEY, String(maxId));
+              setLastClearedId(maxId);
+              setAuditEntries([]);
             } catch (e: any) {
               Alert.alert('Clear failed', e?.message ?? 'Unknown error');
             }
