@@ -253,6 +253,45 @@ class SmsReceiverModule : Module() {
             )
         }
 
+        // ── Battery optimization ──────────────────────────────────────────────
+        // The background receiver toggle doubles as the "run reliably in the
+        // background" switch. OEM battery optimization (Doze, app standby,
+        // aggressive OEM killers) can delay or drop WorkManager jobs for
+        // optimized apps, so the JS side checks/requests an exemption when
+        // the user turns the toggle on.
+
+        AsyncFunction("isIgnoringBatteryOptimizations") {
+            val ctx = appContext.reactContext ?: return@AsyncFunction false
+            val pm = ctx.getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
+            pm.isIgnoringBatteryOptimizations(ctx.packageName)
+        }
+
+        AsyncFunction("requestIgnoreBatteryOptimizations") {
+            val ctx = appContext.reactContext ?: return@AsyncFunction false
+            val pm = ctx.getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
+            if (pm.isIgnoringBatteryOptimizations(ctx.packageName)) return@AsyncFunction true
+            return@AsyncFunction try {
+                val intent = android.content.Intent(
+                    android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+                    android.net.Uri.parse("package:${ctx.packageName}"),
+                ).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                ctx.startActivity(intent)
+                true // dialog shown — actual grant is re-checked via isIgnoringBatteryOptimizations
+            } catch (e: Exception) {
+                Log.w(TAG, "Battery optimization request failed: ${e.message}")
+                // Fall back to the app's battery settings page
+                try {
+                    val fallback = android.content.Intent(
+                        android.provider.Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS,
+                    ).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                    ctx.startActivity(fallback)
+                    true
+                } catch (e2: Exception) {
+                    false
+                }
+            }
+        }
+
         // ── setFulizaLimit ────────────────────────────────────────────────────
 
         AsyncFunction("setFulizaLimit") { limitKes: Double ->

@@ -16,6 +16,7 @@ import { formatCurrency, formatDateTime } from '../../utils/formatters';
 import { spacing, typography, borderRadius } from '../../theme';
 import { animateLayout } from '../../utils/animation';
 import { checkBudgetThresholds } from '../../services/budgetAlertService';
+import { useDataVersion } from '../../store/dataVersion';
 
 interface MerchantGroup {
   merchant: string;
@@ -80,6 +81,9 @@ export function CategorizeScreen() {
       await merchantRepo.setCategory(merchant, category);
       await loadTransactions(repo, true);
       await checkBudgetThresholds(db, category);
+      // Notify every other subscribed surface (Finance dashboard, Budgets,
+      // Analytics) that transaction categories changed.
+      useDataVersion.getState().bump();
       setMessage({ tone: 'success', text: `Saved for ${merchant}` });
     } catch (error) {
       setMessage({ tone: 'error', text: 'Failed to save category' });

@@ -259,6 +259,8 @@ export interface AppSettings {
   pinCode: string;
   fingerprintEnabled: boolean;
   assistantQuickSuggestions: boolean;
+  /** Swipe left/right on the month grid to change months. Default: true. */
+  calendarSwipe: boolean;
   budgetThresholdAlerts: boolean;
   alertThresholds: { high: number; medium: number; low: number };
   dailyDigestMorningSummary: boolean;

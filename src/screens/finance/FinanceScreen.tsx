@@ -11,6 +11,7 @@ import {
   PanResponder,
   Alert,
   ActivityIndicator,
+  AppState,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -149,6 +150,16 @@ export function FinanceScreen() {
     refreshSmsPermissionState();
   }, [refreshSmsPermissionState]);
 
+  // Re-check when the app returns to the foreground — covers the user
+  // granting SMS access from the OS permission dialog or system Settings,
+  // so the "Tap to enable" banner disappears immediately.
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') refreshSmsPermissionState();
+    });
+    return () => sub.remove();
+  }, [refreshSmsPermissionState]);
+
   useFocusEffect(
     useCallback(() => {
       refreshSmsPermissionState();
@@ -157,8 +168,11 @@ export function FinanceScreen() {
         loadTransactions(repo, true);
         loadDashboard(db);
         loadBudgets(db);
+        // Also refresh planner data (loans → Fuliza outstanding card) so
+        // imports/edits elsewhere reflect here without a remount.
+        loadPlanner(db);
       }
-    }, [repo, db, loadTransactions, loadDashboard, loadBudgets, dataVersion, refreshSmsPermissionState])
+    }, [repo, db, loadTransactions, loadDashboard, loadBudgets, loadPlanner, dataVersion, refreshSmsPermissionState])
   );
 
   const handleLoadMore = useCallback(() => {
@@ -198,8 +212,15 @@ export function FinanceScreen() {
       );
       setTimeout(() => setSmsImportBanner(null), 5000);
     } catch (e: any) {
-      setSmsImportBanner(`Import failed: ${e?.message ?? 'unknown error'}`);
-      setTimeout(() => setSmsImportBanner(null), 5000);
+      const msg: string = e?.message ?? 'unknown error';
+      setSmsImportBanner(
+        msg.includes('sms_permission_denied')
+          ? 'SMS permission denied · grant SMS access and try again'
+          : msg.includes('module_unavailable')
+          ? 'SMS import needs a development build (not Expo Go) · rebuild with expo run:android'
+          : `Import failed: ${msg}`
+      );
+      setTimeout(() => setSmsImportBanner(null), 6000);
     } finally {
       setSmsImporting(false);
     }
@@ -368,33 +389,6 @@ export function FinanceScreen() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.bgPrimary }]} edges={['top']}>
-      {!smsPermissionsGranted && (
-        <TouchableOpacity
-          style={[styles.smsPermBanner, { backgroundColor: colors.warning + '16', borderColor: colors.warning }]}
-          onPress={handleRequestSmsPermissions}
-          disabled={requestingSmsPerms}
-          activeOpacity={0.8}
-        >
-          <Ionicons name="chatbubble-outline" size={16} color={colors.warning} />
-          <Text style={[styles.smsPermBannerText, { color: colors.warning }]} numberOfLines={2}>
-            {requestingSmsPerms
-              ? 'Requesting SMS access…'
-              : 'Tap to enable SMS access for M-Pesa imports'}
-          </Text>
-          {!requestingSmsPerms && <Ionicons name="chevron-forward" size={16} color={colors.warning} />}
-        </TouchableOpacity>
-      )}
-      {smsImportBanner && (
-        <View style={[
-          styles.smsBanner,
-          { backgroundColor: smsImporting ? colors.accentPrimary : colors.bgSecondary },
-        ]}>
-          {smsImporting && <ActivityIndicator size="small" color="#fff" style={{ marginRight: 8 }} />}
-          <Text style={[styles.smsBannerText, { color: smsImporting ? '#fff' : colors.textPrimary }]} numberOfLines={2}>
-            {smsImportBanner}
-          </Text>
-        </View>
-      )}
       <FlatList
         data={flatData}
         keyExtractor={(item, index) =>
@@ -622,6 +616,35 @@ export function FinanceScreen() {
               search={filters.search}
               onSearchChange={(search) => setFilters({ search })}
             />
+
+            {/* SMS permission + import banners sit directly under the search bar */}
+            {!smsPermissionsGranted && (
+              <TouchableOpacity
+                style={[styles.smsPermBanner, { backgroundColor: colors.warning + '16', borderColor: colors.warning }]}
+                onPress={handleRequestSmsPermissions}
+                disabled={requestingSmsPerms}
+                activeOpacity={0.8}
+              >
+                <Ionicons name="chatbubble-outline" size={16} color={colors.warning} />
+                <Text style={[styles.smsPermBannerText, { color: colors.warning }]} numberOfLines={2}>
+                  {requestingSmsPerms
+                    ? 'Requesting SMS access…'
+                    : 'Tap to enable SMS access for M-Pesa imports'}
+                </Text>
+                {!requestingSmsPerms && <Ionicons name="chevron-forward" size={16} color={colors.warning} />}
+              </TouchableOpacity>
+            )}
+            {smsImportBanner && (
+              <View style={[
+                styles.smsBanner,
+                { backgroundColor: smsImporting ? colors.accentPrimary : colors.bgSecondary },
+              ]}>
+                {smsImporting && <ActivityIndicator size="small" color="#fff" style={{ marginRight: 8 }} />}
+                <Text style={[styles.smsBannerText, { color: smsImporting ? '#fff' : colors.textPrimary }]} numberOfLines={2}>
+                  {smsImportBanner}
+                </Text>
+              </View>
+            )}
 
             <View style={styles.transactionsHeader}>
               <Text style={[styles.transactionsTitle, { color: colors.textPrimary }]} numberOfLines={1}>

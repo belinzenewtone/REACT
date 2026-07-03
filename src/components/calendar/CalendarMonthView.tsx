@@ -22,6 +22,8 @@ interface CalendarMonthViewProps {
   onPrevMonth: () => void;
   onNextMonth: () => void;
   onGoToToday?: () => void;
+  /** Swipe left/right to change months (user preference). Default: true. */
+  swipeEnabled?: boolean;
 }
 
 const WEEKDAYS = ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'];
@@ -30,7 +32,12 @@ const MONTH_NAMES = [
   'July', 'August', 'September', 'October', 'November', 'December',
 ];
 
-const SWIPE_THRESHOLD = 50;
+// Deliberate-swipe tuning: the gesture must clearly be horizontal AND travel
+// far (or fast) before a month change triggers, so scroll wobbles and stray
+// touches never flip the page accidentally.
+const SWIPE_DISTANCE = 70;        // px of horizontal travel for a slow drag
+const SWIPE_FLICK_DISTANCE = 40;  // px minimum even for a fast flick
+const SWIPE_FLICK_VELOCITY = 0.9; // px/ms — a decisive flick
 
 export function CalendarMonthView({
   year,
@@ -41,28 +48,50 @@ export function CalendarMonthView({
   onPrevMonth,
   onNextMonth,
   onGoToToday,
+  swipeEnabled = true,
 }: CalendarMonthViewProps) {
   const colors = useThemeColors();
   const fade = useRef(new Animated.Value(1)).current;
+  const slide = useRef(new Animated.Value(0)).current;
 
-  const runTransition = (action: () => void) => {
-    Animated.sequence([
-      Animated.timing(fade, { toValue: 0.3, duration: 90, useNativeDriver: true }),
-      Animated.timing(fade, { toValue: 1, duration: 150, useNativeDriver: true }),
+  // Live refs so the stable PanResponder always reads current props.
+  const liveRef = useRef({ swipeEnabled, onPrevMonth, onNextMonth });
+  liveRef.current = { swipeEnabled, onPrevMonth, onNextMonth };
+
+  const runTransition = (action: () => void, direction: -1 | 0 | 1 = 0) => {
+    // Fade + a short native-driven slide in the swipe direction — smooth,
+    // no layout work on the JS thread.
+    slide.setValue(direction * 24);
+    Animated.parallel([
+      Animated.sequence([
+        Animated.timing(fade, { toValue: 0.3, duration: 90, useNativeDriver: true }),
+        Animated.timing(fade, { toValue: 1, duration: 160, useNativeDriver: true }),
+      ]),
+      Animated.timing(slide, { toValue: 0, duration: 220, useNativeDriver: true }),
     ]).start();
     action();
   };
 
   const panResponder = useRef(
     PanResponder.create({
+      // Claim the gesture only once it's unmistakably horizontal: ≥20px of
+      // travel and at least twice as horizontal as vertical.
       onMoveShouldSetPanResponder: (_, gesture) =>
-        Math.abs(gesture.dx) > 12 && Math.abs(gesture.dx) > Math.abs(gesture.dy) * 1.5,
+        liveRef.current.swipeEnabled &&
+        Math.abs(gesture.dx) > 20 &&
+        Math.abs(gesture.dx) > Math.abs(gesture.dy) * 2,
       onPanResponderRelease: (_, gesture) => {
-        if (gesture.dx <= -SWIPE_THRESHOLD) {
-          runTransition(onNextMonth);
-        } else if (gesture.dx >= SWIPE_THRESHOLD) {
-          runTransition(onPrevMonth);
-        }
+        if (!liveRef.current.swipeEnabled) return;
+        const dx = gesture.dx;
+        const adx = Math.abs(dx);
+        // Must still be predominantly horizontal at release.
+        if (adx <= Math.abs(gesture.dy)) return;
+        const deliberate =
+          adx >= SWIPE_DISTANCE ||
+          (adx >= SWIPE_FLICK_DISTANCE && Math.abs(gesture.vx) >= SWIPE_FLICK_VELOCITY);
+        if (!deliberate) return;
+        if (dx < 0) runTransition(liveRef.current.onNextMonth, -1);
+        else runTransition(liveRef.current.onPrevMonth, 1);
       },
     })
   ).current;
@@ -164,7 +193,10 @@ export function CalendarMonthView({
         ))}
       </View>
 
-      <Animated.View style={[styles.daysGrid, { opacity: fade }]} {...panResponder.panHandlers}>
+      <Animated.View
+        style={[styles.daysGrid, { opacity: fade, transform: [{ translateX: slide }] }]}
+        {...panResponder.panHandlers}
+      >
         {days.map((day, index) => {
           const dayStr = toDateString(new Date(day.fullDate));
           const isSelected = dayStr === selectedDateStr;
@@ -268,10 +300,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 2,
   },
+  // Fixed pixel size + explicit radius + overflow:hidden keeps the squircle
+  // shape deterministic. The previous %-width + aspectRatio sizing let the
+  // radius render inconsistently (squircle → square) after month-change
+  // re-layouts (LayoutAnimation on Android can drop fractional radii).
   dayCircle: {
-    width: '100%',
-    aspectRatio: 1,
-    borderRadius: borderRadius.lg,
+    width: 38,
+    height: 38,
+    borderRadius: 13,
+    overflow: 'hidden',
     justifyContent: 'center',
     alignItems: 'center',
   },

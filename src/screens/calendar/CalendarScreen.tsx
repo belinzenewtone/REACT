@@ -16,7 +16,7 @@ import { useSQLiteContext } from 'expo-sqlite';
 import { useNavigation } from '@react-navigation/native';
 import { format } from 'date-fns';
 import { useThemeColors } from '../../hooks/useThemeColors';
-import { useCalendarStore } from '../../store';
+import { useCalendarStore, useAppStore } from '../../store';
 import { useDataVersion } from '../../store/dataVersion';
 import { CalendarMonthView } from '../../components/calendar/CalendarMonthView';
 import { spacing, typography, borderRadius, BOTTOM_NAV_SAFE_AREA } from '../../theme';
@@ -112,6 +112,9 @@ export function CalendarScreen() {
     goToToday,
     loadCalendar,
   } = useCalendarStore();
+
+  // Missing key on already-persisted stores means undefined → treated as ON.
+  const calendarSwipe = useAppStore((s) => s.settings.calendarSwipe);
 
   const dataVersion = useDataVersion((s) => s.version);
   useEffect(() => {
@@ -240,6 +243,7 @@ export function CalendarScreen() {
               onPrevMonth={goToPrevMonth}
               onNextMonth={goToNextMonth}
               onGoToToday={goToToday}
+              swipeEnabled={calendarSwipe !== false}
             />
 
             <Text style={[styles.dateLabel, { color: colors.textPrimary }]}>{selectedDateLabel}</Text>

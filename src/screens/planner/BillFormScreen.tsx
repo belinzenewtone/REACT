@@ -77,25 +77,51 @@ export function BillFormScreen() {
       return;
     }
 
+    // For repeating cycles, "Paid" means "done for THIS cycle" — advance the
+    // due date one cycle and reset paid so the next cycle's reminder arms.
+    // Previously a paid recurring bill froze forever: reminders were cancelled
+    // (sync skips paid bills) and next_due_date never advanced.
+    let effectiveDueIso = new Date(`${nextDueDate}T00:00:00.000Z`).toISOString();
+    let effectivePaid = paidStatus;
+    if (paidStatus && cycle !== 'one_time') {
+      const d = new Date(effectiveDueIso);
+      const day = d.getUTCDate();
+      switch (cycle) {
+        case 'daily':   d.setUTCDate(d.getUTCDate() + 1); break;
+        case 'weekly':  d.setUTCDate(d.getUTCDate() + 7); break;
+        case 'monthly': {
+          d.setUTCDate(1);
+          d.setUTCMonth(d.getUTCMonth() + 1);
+          const lastDay = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).getUTCDate();
+          d.setUTCDate(Math.min(day, lastDay));
+          break;
+        }
+        case 'yearly':  d.setUTCFullYear(d.getUTCFullYear() + 1); break;
+      }
+      effectiveDueIso = d.toISOString();
+      effectivePaid = false; // next cycle is now upcoming/unpaid
+    }
+
     const data = {
       title: title.trim(),
       amount: numAmount,
       cycle,
-      nextDueDate: new Date(`${nextDueDate}T00:00:00.000Z`).toISOString(),
+      nextDueDate: effectiveDueIso,
       notes: notes.trim() || undefined,
-      paidStatus,
+      paidStatus: effectivePaid,
       isActive,
       lastPaidAt: paidStatus ? new Date().toISOString() : undefined,
       recordSource: 'manual' as const,
     };
 
     try {
+      const advanced = paidStatus && cycle !== 'one_time';
       if (isEditing && billId) {
         await updateBill(db, billId, data);
-        setSuccessMsg('Bill updated');
+        setSuccessMsg(advanced ? 'Paid — next cycle scheduled' : 'Bill updated');
       } else {
         await createBill(db, data);
-        setSuccessMsg('Bill added');
+        setSuccessMsg(advanced ? 'Bill added — next cycle scheduled' : 'Bill added');
       }
       setTimeout(() => navigation.goBack(), 900);
     } catch (error) {

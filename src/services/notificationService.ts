@@ -22,6 +22,7 @@ try {
 }
 
 export const NOTIFICATION_CHANNEL_ID = 'lifeos-reminders';
+export const ALARM_CHANNEL_ID = 'lifeos-alarms';
 const DAILY_DIGEST_ID = 'lifeos-daily-digest';
 
 export async function createNotificationChannel(): Promise<void> {
@@ -32,7 +33,24 @@ export async function createNotificationChannel(): Promise<void> {
       importance: Notifications.AndroidImportance.HIGH,
       vibrationPattern: [0, 250, 250, 250],
     });
+    // Alarm-style reminders. On Android, sound/vibration/priority are
+    // CHANNEL-level properties — a per-notification `sound` flag on the
+    // reminders channel can't produce alarm behaviour. Notifications with
+    // alarmEnabled route here instead.
+    await Notifications.setNotificationChannelAsync(ALARM_CHANNEL_ID, {
+      name: 'LifeOS Alarms',
+      importance: Notifications.AndroidImportance.MAX,
+      sound: 'default',
+      vibrationPattern: [0, 500, 250, 500, 250, 500],
+      bypassDnd: true,
+      lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+    });
   } catch {}
+}
+
+/** Pick the Android channel based on whether the alarm toggle is on. */
+function channelFor(alarmEnabled: boolean): string {
+  return alarmEnabled ? ALARM_CHANNEL_ID : NOTIFICATION_CHANNEL_ID;
 }
 
 export async function requestNotificationPermissions(): Promise<boolean> {
@@ -100,7 +118,7 @@ export async function scheduleTaskReminders(
         },
         trigger: {
           type: Notifications.SchedulableTriggerInputTypes.DATE,
-          channelId: NOTIFICATION_CHANNEL_ID,
+          channelId: channelFor(alarmEnabled),
           date: new Date(fireMs),
         },
       });
@@ -172,7 +190,7 @@ export async function scheduleEventReminders(
         },
         trigger: {
           type: Notifications.SchedulableTriggerInputTypes.DATE,
-          channelId: NOTIFICATION_CHANNEL_ID,
+          channelId: channelFor(alarmEnabled),
           date: new Date(fireMs),
         },
       });
@@ -236,7 +254,7 @@ export async function scheduleRecurringReminder(
       },
       trigger: {
         type: Notifications.SchedulableTriggerInputTypes.DATE,
-        channelId: NOTIFICATION_CHANNEL_ID,
+        channelId: channelFor(alarmEnabled),
         date: new Date(fireMs),
       },
     });
@@ -261,22 +279,31 @@ export async function scheduleBillReminder(
   if (!Notifications) return;
   try {
     await cancelByPrefix(`bill-${billId}-`);
-    // Fire at 9am local on the due date.
+    // Fire at 9am local on the due date. If that moment has already passed
+    // and the bill is still unpaid, nudge at the NEXT 9am instead of going
+    // silent (previously an overdue unpaid bill never reminded again).
     const due = new Date(nextDueDateIso);
     due.setHours(9, 0, 0, 0);
-    if (due.getTime() <= Date.now()) return;
+    let overdue = false;
+    if (due.getTime() <= Date.now()) {
+      overdue = true;
+      const next = new Date();
+      next.setHours(9, 0, 0, 0);
+      if (next.getTime() <= Date.now()) next.setDate(next.getDate() + 1);
+      due.setTime(next.getTime());
+    }
     const amt = amountKes.toLocaleString('en-KE', { maximumFractionDigits: 2 });
     await Notifications.scheduleNotificationAsync({
       identifier: `bill-${billId}-due`,
       content: {
-        title: `Bill due: ${title}`,
-        body: `Ksh ${amt} — due today`,
+        title: overdue ? `Bill overdue: ${title}` : `Bill due: ${title}`,
+        body: overdue ? `Ksh ${amt} — still unpaid` : `Ksh ${amt} — due today`,
         sound: alarmEnabled,
         data: { type: 'bill', id: billId },
       },
       trigger: {
         type: Notifications.SchedulableTriggerInputTypes.DATE,
-        channelId: NOTIFICATION_CHANNEL_ID,
+        channelId: channelFor(alarmEnabled),
         date: due,
       },
     });
@@ -336,6 +363,37 @@ export async function fireBudgetAlert(
       trigger: { channelId: NOTIFICATION_CHANNEL_ID },
     });
   } catch {}
+}
+
+export type NotificationData = { type?: string; id?: string; [k: string]: unknown };
+
+/**
+ * Fires when a notification is DELIVERED while the app is foregrounded.
+ * Used to immediately reschedule the next occurrence of repeating
+ * events / recurring rules / bills instead of waiting for an app relaunch.
+ */
+export function addNotificationDeliveredListener(
+  listener: (data: NotificationData) => void,
+): { remove: () => void } {
+  if (!Notifications) return { remove: () => {} };
+  const sub = Notifications.addNotificationReceivedListener((n) => {
+    listener((n.request.content.data ?? {}) as NotificationData);
+  });
+  return { remove: () => sub.remove() };
+}
+
+/**
+ * Fires when the user TAPS a notification (works from background/killed →
+ * app launch). Same reschedule purpose as the delivered listener.
+ */
+export function addNotificationTappedListener(
+  listener: (data: NotificationData) => void,
+): { remove: () => void } {
+  if (!Notifications) return { remove: () => {} };
+  const sub = Notifications.addNotificationResponseReceivedListener((r) => {
+    listener((r.notification.request.content.data ?? {}) as NotificationData);
+  });
+  return { remove: () => sub.remove() };
 }
 
 function describeDuration(minutes: number): string {

@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<incidents format="6" by="lint 8.12.0" type="incidents">
+
+    <incident
+        id="SpecifyForegroundServiceType"
+        severity="fatal"
+        message="Missing dataSync foregroundServiceType in the AndroidManifest.xml">
+        <location
+            file="${:lifeos-sms*release*MAIN*sourceProvider*0*javaDir*0}/com/lifeos/sms/SmsImportWorker.kt"
+            line="282"
+            column="13"
+            startOffset="13555"
+            endLine="286"
+            endColumn="14"
+            endOffset="13729"/>
+    </incident>
+
+</incidents>

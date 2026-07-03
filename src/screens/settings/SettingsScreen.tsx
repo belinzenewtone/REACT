@@ -9,7 +9,14 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import * as Updates from 'expo-updates';
-import { enableBackgroundReceiver, setFulizaLimit, checkPermissions, requestSmsPermissions } from '../../../modules/lifeos-sms';
+import {
+  enableBackgroundReceiver,
+  setFulizaLimit,
+  checkPermissions,
+  requestSmsPermissions,
+  isIgnoringBatteryOptimizations,
+  requestIgnoreBatteryOptimizations,
+} from '../../../modules/lifeos-sms';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
@@ -194,6 +201,22 @@ export function SettingsScreen() {
           />
         </GlassCard>
 
+        <SectionLabel label="Calendar" />
+        <GlassCard>
+          <SettingsRow
+            icon="swap-horizontal-outline"
+            label="Swipe to change month"
+            subtitle="Swipe left/right on the calendar grid to move between months."
+            toggle
+            toggleValue={settings.calendarSwipe !== false}
+            onToggleChange={(value) => {
+              updateSettings({ calendarSwipe: value });
+              setInfoMessage(value ? 'Calendar swipe on' : 'Calendar swipe off');
+            }}
+            isLast
+          />
+        </GlassCard>
+
         <SectionLabel label="Security" />
         <GlassCard>
           <SettingsRow
@@ -286,9 +309,36 @@ export function SettingsScreen() {
             toggle
             toggleValue={settings.smsBackgroundReceiver}
             onToggleChange={(value) => {
-              updateSettings({ smsBackgroundReceiver: value });
-              enableBackgroundReceiver(value).catch(() => null);
-              setInfoMessage(value ? 'Background receiver on' : 'Background receiver off');
+              // Persist to native SharedPreferences FIRST — the BroadcastReceiver
+              // reads that flag, not JS state. Only reflect the toggle in app
+              // settings once the native write succeeds; otherwise the UI would
+              // show "on" while the receiver stays off.
+              enableBackgroundReceiver(value)
+                .then(async () => {
+                  updateSettings({ smsBackgroundReceiver: value });
+                  if (value) {
+                    // The toggle doubles as the "run reliably in background"
+                    // switch: without a battery-optimization exemption, Doze /
+                    // OEM killers can delay or drop the SMS worker when the
+                    // app is backgrounded or killed.
+                    try {
+                      const exempt = await isIgnoringBatteryOptimizations();
+                      if (!exempt) {
+                        setInfoMessage('Allow "unrestricted battery" so SMS capture works when the app is closed');
+                        await requestIgnoreBatteryOptimizations();
+                      } else {
+                        setInfoMessage('Background receiver on');
+                      }
+                    } catch {
+                      setInfoMessage('Background receiver on');
+                    }
+                  } else {
+                    setInfoMessage('Background receiver off');
+                  }
+                })
+                .catch(() => {
+                  setInfoMessage('Could not update background receiver — rebuild the app (expo run:android)');
+                });
             }}
           />
           <SettingsRow
@@ -374,8 +424,12 @@ export function SettingsScreen() {
         currentLimit={settings.fulizaLimit}
         onCancel={() => setFulizaVisible(false)}
         onSave={(limit) => {
-          updateSettings({ fulizaLimit: limit });
-          setFulizaLimit(limit).catch(() => null);
+          // Native first — the background SMS worker computes Fuliza
+          // outstanding from SharedPreferences, not JS state. JS setting is
+          // updated regardless; bootstrap re-pushes JS → native on launch.
+          setFulizaLimit(limit)
+            .catch(() => setInfoMessage('Saved — will sync to background worker on next launch'))
+            .finally(() => updateSettings({ fulizaLimit: limit }));
           setFulizaVisible(false);
           setInfoMessage(
             limit > 0 ? `Fuliza limit set to ${formatCurrency(limit, { currency: settings.currency })}` : 'Fuliza credit limit cleared'

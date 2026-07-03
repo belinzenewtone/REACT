@@ -53,6 +53,9 @@ function nextOccurrenceISO(
   if (now > endMs) return baseIso; // series ended — don't roll forward
   const HARD_CAP = 400;
   let cursor = new Date(base);
+  // Anchor the intended day-of-month so "31st monthly" doesn't drift after
+  // passing through a short month (Jan 31 → Feb 28 → Mar 31, not Mar 3).
+  const anchorDay = base.getUTCDate();
   for (let i = 0; i < HARD_CAP; i++) {
     if (cursor.getTime() > now) {
       return cursor.getTime() > endMs ? baseIso : cursor.toISOString();
@@ -60,12 +63,69 @@ function nextOccurrenceISO(
     switch (rule) {
       case 'daily':   cursor.setUTCDate(cursor.getUTCDate() + 1); break;
       case 'weekly':  cursor.setUTCDate(cursor.getUTCDate() + 7); break;
-      case 'monthly': cursor.setUTCMonth(cursor.getUTCMonth() + 1); break;
-      case 'yearly':  cursor.setUTCFullYear(cursor.getUTCFullYear() + 1); break;
+      case 'monthly': cursor = addMonthsClamped(cursor, 1, anchorDay); break;
+      case 'yearly': {
+        // Feb 29 birthdays: clamp to Feb 28 on non-leap years.
+        const y = cursor.getUTCFullYear() + 1;
+        cursor = new Date(cursor);
+        cursor.setUTCFullYear(y, cursor.getUTCMonth(), 1);
+        cursor.setUTCDate(Math.min(anchorDay, daysInUTCMonth(y, cursor.getUTCMonth())));
+        break;
+      }
       default:        return baseIso;
     }
   }
   return baseIso;
+}
+
+function daysInUTCMonth(year: number, month: number): number {
+  return new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+}
+
+/**
+ * Add months preserving the anchored day-of-month, clamped to the target
+ * month's length. Prevents JS Date overflow (Jan 31 + 1mo → Mar 3).
+ */
+function addMonthsClamped(d: Date, months: number, anchorDay: number): Date {
+  const next = new Date(d);
+  const targetMonth = next.getUTCMonth() + months;
+  next.setUTCDate(1); // avoid overflow while changing month
+  next.setUTCMonth(targetMonth);
+  next.setUTCDate(Math.min(anchorDay, daysInUTCMonth(next.getUTCFullYear(), next.getUTCMonth())));
+  return next;
+}
+
+/**
+ * Advance a recurring rule's `next_run_at` past "now" by its cadence.
+ * Returns null when the timestamp is already in the future (nothing to do)
+ * or invalid.
+ */
+export function advanceCadencePastNow(iso: string, cadence: string): string | null {
+  const base = new Date(iso);
+  if (isNaN(base.getTime())) return null;
+  const now = Date.now();
+  if (base.getTime() > now) return null;
+  const anchorDay = base.getUTCDate();
+  let cursor = new Date(base);
+  for (let i = 0; i < 5000 && cursor.getTime() <= now; i++) {
+    switch (cadence) {
+      case 'hourly':   cursor.setTime(cursor.getTime() + 3_600_000); break;
+      case 'daily':    cursor.setUTCDate(cursor.getUTCDate() + 1); break;
+      case 'weekly':   cursor.setUTCDate(cursor.getUTCDate() + 7); break;
+      case 'biweekly': cursor.setUTCDate(cursor.getUTCDate() + 14); break;
+      case 'mon_fri': {
+        // Next weekday (Mon–Fri) at the same time.
+        do {
+          cursor.setUTCDate(cursor.getUTCDate() + 1);
+        } while (cursor.getUTCDay() === 0 || cursor.getUTCDay() === 6);
+        break;
+      }
+      case 'monthly':  cursor = addMonthsClamped(cursor, 1, anchorDay); break;
+      case 'yearly':   cursor = addMonthsClamped(cursor, 12, anchorDay); break;
+      default:         return null; // unknown cadence — leave untouched
+    }
+  }
+  return cursor.getTime() > now ? cursor.toISOString() : null;
 }
 
 function getSettings() {
@@ -233,13 +293,25 @@ export async function syncRecurringReminders(
   const repo = new RecurringRuleRepository(db);
   const rules = await repo.findAll();
 
+  // If a rule's next_run_at is already in the past (it fired — or should
+  // have — while the app was closed), roll it forward by its cadence and
+  // persist, so the next occurrence is always scheduled. Without this, a
+  // rule went silent after firing once until the user manually edited it.
+  const rollForward = async (rule: (typeof rules)[number]): Promise<string> => {
+    const advanced = advanceCadencePastNow(rule.next_run_at, rule.cadence);
+    if (!advanced) return rule.next_run_at;
+    await repo.update(rule.id, { nextRunAt: advanced });
+    return advanced;
+  };
+
   if (ruleId) {
     const rule = rules.find((r) => r.id === ruleId);
     if (!rule || rule.enabled !== 1) {
       await cancelRecurringReminder(ruleId);
       return;
     }
-    await scheduleRecurringReminder(rule.id, rule.title, rule.next_run_at, rule.amount);
+    const nextRunAt = await rollForward(rule);
+    await scheduleRecurringReminder(rule.id, rule.title, nextRunAt, rule.amount);
     return;
   }
 
@@ -248,7 +320,10 @@ export async function syncRecurringReminders(
   await Promise.all(
     rules
       .filter((r) => r.enabled === 1)
-      .map((r) => scheduleRecurringReminder(r.id, r.title, r.next_run_at, r.amount))
+      .map(async (r) => {
+        const nextRunAt = await rollForward(r);
+        await scheduleRecurringReminder(r.id, r.title, nextRunAt, r.amount);
+      })
   );
 }
 

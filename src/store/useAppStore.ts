@@ -65,6 +65,7 @@ const defaultSettings: AppSettings = {
   pinCode: '',
   fingerprintEnabled: false,
   assistantQuickSuggestions: true,
+  calendarSwipe: true,
   budgetThresholdAlerts: true,
   alertThresholds: { high: 90, medium: 75, low: 50 },
   dailyDigestMorningSummary: true,

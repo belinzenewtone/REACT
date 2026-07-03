@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.lifeos.sms.SmsParserTest" tests="73" skipped="0" failures="0" errors="0" timestamp="2026-07-03T07:15:23.852Z" hostname="BELINZE_NEWTONE" time="0.465">
+  <properties/>
+  <testcase name="semanticHash differs for different amounts" classname="com.lifeos.sms.SmsParserTest" time="0.368"/>
+  <testcase name="truncated receipt without time or balance still parses" classname="com.lifeos.sms.SmsParserTest" time="0.002"/>
+  <testcase name="isMpesaSms true for lowercase mpesa" classname="com.lifeos.sms.SmsParserTest" time="0.0"/>
+  <testcase name="isMpesaSms true for code plus amount without keyword" classname="com.lifeos.sms.SmsParserTest" time="0.0"/>
+  <testcase name="PAYBILL extracts merchant name" classname="com.lifeos.sms.SmsParserTest" time="0.005"/>
+  <testcase name="parse returns error not_mpesa for unrelated SMS" classname="com.lifeos.sms.SmsParserTest" time="0.005"/>
+  <testcase name="old format RECEIVED You have received parses and routes DIRECT" classname="com.lifeos.sms.SmsParserTest" time="0.001"/>
+  <testcase name="parse correctly classifies REVERSAL of received payment" classname="com.lifeos.sms.SmsParserTest" time="0.002"/>
+  <testcase name="till number buy goods parses as BUY_GOODS" classname="com.lifeos.sms.SmsParserTest" time="0.001"/>
+  <testcase name="missing time falls back to start of day" classname="com.lifeos.sms.SmsParserTest" time="0.001"/>
+  <testcase name="SENT isExpense true isIncome false and transactionType transfer" classname="com.lifeos.sms.SmsParserTest" time="0.002"/>
+  <testcase name="SENT customer transfer format classified as SENT" classname="com.lifeos.sms.SmsParserTest" time="0.001"/>
+  <testcase name="sourceHash is stable across whitespace differences" classname="com.lifeos.sms.SmsParserTest" time="0.001"/>
+  <testcase name="parse rejects Fuliza service notice with fuliza_notice error" classname="com.lifeos.sms.SmsParserTest" time="0.0"/>
+  <testcase name="WITHDRAW isExpense true and transactionType expense" classname="com.lifeos.sms.SmsParserTest" time="0.002"/>
+  <testcase name="parse does not reject Fuliza charge notice with total outstanding" classname="com.lifeos.sms.SmsParserTest" time="0.001"/>
+  <testcase name="RECEIVED isIncome true isExpense false and transactionType income" classname="com.lifeos.sms.SmsParserTest" time="0.001"/>
+  <testcase name="date format dd-MMM-yy parses" classname="com.lifeos.sms.SmsParserTest" time="0.005"/>
+  <testcase name="sourceHash differs for different raw SMS" classname="com.lifeos.sms.SmsParserTest" time="0.002"/>
+  <testcase name="AIRTIME sent to phone format classified correctly" classname="com.lifeos.sms.SmsParserTest" time="0.001"/>
+  <testcase name="SENT to compact phone number classified as SENT" classname="com.lifeos.sms.SmsParserTest" time="0.001"/>
+  <testcase name="future date routes to REVIEW" classname="com.lifeos.sms.SmsParserTest" time="0.001"/>
+  <testcase name="date format MMM dd yyyy parses" classname="com.lifeos.sms.SmsParserTest" time="0.001"/>
+  <testcase name="Kopokopo paybill with account number parses as PAYBILL" classname="com.lifeos.sms.SmsParserTest" time="0.001"/>
+  <testcase name="AIRTIME isExpense true and transactionType expense" classname="com.lifeos.sms.SmsParserTest" time="0.001"/>
+  <testcase name="Paybill with account number and token strips metadata" classname="com.lifeos.sms.SmsParserTest" time="0.001"/>
+  <testcase name="isMpesaSms true for MPESA uppercase" classname="com.lifeos.sms.SmsParserTest" time="0.0"/>
+  <testcase name="old format SENT You have sent parses and routes DIRECT" classname="com.lifeos.sms.SmsParserTest" time="0.001"/>
+  <testcase name="parse correctly classifies BUY_GOODS transaction" classname="com.lifeos.sms.SmsParserTest" time="0.001"/>
+  <testcase name="Swahili fragment umepokea received parses" classname="com.lifeos.sms.SmsParserTest" time="0.0"/>
+  <testcase name="RECEIVED has HIGH confidence and DIRECT route" classname="com.lifeos.sms.SmsParserTest" time="0.001"/>
+  <testcase name="BUY_GOODS via Kopokopo extracts merchant" classname="com.lifeos.sms.SmsParserTest" time="0.001"/>
+  <testcase name="parse quarantines unrecognised M-Pesa SMS with code and amount" classname="com.lifeos.sms.SmsParserTest" time="0.001"/>
+  <testcase name="parse correctly classifies PAYBILL transaction" classname="com.lifeos.sms.SmsParserTest" time="0.0"/>
+  <testcase name="parse does not reject valid Fuliza repayment SMS" classname="com.lifeos.sms.SmsParserTest" time="0.001"/>
+  <testcase name="semanticHash is deterministic for identical transactions" classname="com.lifeos.sms.SmsParserTest" time="0.002"/>
+  <testcase name="parse returns error ambiguous_receipt for success-only SMS" classname="com.lifeos.sms.SmsParserTest" time="0.0"/>
+  <testcase name="implausible amount and unknown category quarantines" classname="com.lifeos.sms.SmsParserTest" time="0.001"/>
+  <testcase name="agent float deposit classified as DEPOSIT" classname="com.lifeos.sms.SmsParserTest" time="0.0"/>
+  <testcase name="PAYBILL isExpense true and transactionType expense" classname="com.lifeos.sms.SmsParserTest" time="0.001"/>
+  <testcase name="parse correctly classifies AIRTIME transaction" classname="com.lifeos.sms.SmsParserTest" time="0.001"/>
+  <testcase name="parse returns error no_amount when amount is missing" classname="com.lifeos.sms.SmsParserTest" time="0.0"/>
+  <testcase name="parse correctly classifies LOAN repayment" classname="com.lifeos.sms.SmsParserTest" time="0.001"/>
+  <testcase name="parse correctly classifies RECEIVED transaction" classname="com.lifeos.sms.SmsParserTest" time="0.001"/>
+  <testcase name="isFulizaServiceNotice true for access fee message" classname="com.lifeos.sms.SmsParserTest" time="0.0"/>
+  <testcase name="parse correctly classifies FULIZA_CHARGE notice" classname="com.lifeos.sms.SmsParserTest" time="0.001"/>
+  <testcase name="SENT extracts counterparty name excluding phone suffix" classname="com.lifeos.sms.SmsParserTest" time="0.001"/>
+  <testcase name="DEPOSIT isIncome true and transactionType income" classname="com.lifeos.sms.SmsParserTest" time="0.0"/>
+  <testcase name="parse correctly classifies WITHDRAW transaction" classname="com.lifeos.sms.SmsParserTest" time="0.0"/>
+  <testcase name="compact old format Received from parses" classname="com.lifeos.sms.SmsParserTest" time="0.001"/>
+  <testcase name="rejection ambiguous_receipt for generic success message" classname="com.lifeos.sms.SmsParserTest" time="0.0"/>
+  <testcase name="BUY_GOODS extracts merchant name" classname="com.lifeos.sms.SmsParserTest" time="0.001"/>
+  <testcase name="parse correctly classifies SENT transaction" classname="com.lifeos.sms.SmsParserTest" time="0.001"/>
+  <testcase name="parse includes non-empty ruleId and sourceHash" classname="com.lifeos.sms.SmsParserTest" time="0.001"/>
+  <testcase name="rejection not_mpesa for unrelated OTP SMS" classname="com.lifeos.sms.SmsParserTest" time="0.0"/>
+  <testcase name="RECEIVED alternative format Ksh received from" classname="com.lifeos.sms.SmsParserTest" time="0.001"/>
+  <testcase name="missing balance on high value routes to REVIEW" classname="com.lifeos.sms.SmsParserTest" time="0.001"/>
+  <testcase name="parse correctly classifies DEPOSIT transaction" classname="com.lifeos.sms.SmsParserTest" time="0.0"/>
+  <testcase name="parse returns error no_code when no 10-char code present" classname="com.lifeos.sms.SmsParserTest" time="0.0"/>
+  <testcase name="isMpesaSms true for M-PESA with hyphen" classname="com.lifeos.sms.SmsParserTest" time="0.0"/>
+  <testcase name="parse extracts balance and fee when present" classname="com.lifeos.sms.SmsParserTest" time="0.0"/>
+  <testcase name="parser is thread-safe under concurrent load" classname="com.lifeos.sms.SmsParserTest" time="0.021"/>
+  <testcase name="phone only counterparty routes to REVIEW" classname="com.lifeos.sms.SmsParserTest" time="0.0"/>
+  <testcase name="Kopokopo till payment extracts merchant and strips till number" classname="com.lifeos.sms.SmsParserTest" time="0.001"/>
+  <testcase name="parse extracts date without time" classname="com.lifeos.sms.SmsParserTest" time="0.001"/>
+  <testcase name="isMpesaSms false for unrelated SMS" classname="com.lifeos.sms.SmsParserTest" time="0.0"/>
+  <testcase name="LOAN isExpense false and transactionType fuliza" classname="com.lifeos.sms.SmsParserTest" time="0.0"/>
+  <testcase name="agent float withdrawal classified as WITHDRAW" classname="com.lifeos.sms.SmsParserTest" time="0.001"/>
+  <testcase name="parse extracts four-digit year date" classname="com.lifeos.sms.SmsParserTest" time="0.001"/>
+  <testcase name="reversed received transaction marks isReceivedReversal" classname="com.lifeos.sms.SmsParserTest" time="0.001"/>
+  <testcase name="parse classifies REVERSAL of sent payment" classname="com.lifeos.sms.SmsParserTest" time="0.0"/>
+  <testcase name="RECEIVED from bank extracts institution name" classname="com.lifeos.sms.SmsParserTest" time="0.001"/>
+  <testcase name="FULIZA_CHARGE isExpense false and transactionType fuliza" classname="com.lifeos.sms.SmsParserTest" time="0.001"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

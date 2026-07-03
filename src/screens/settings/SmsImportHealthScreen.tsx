@@ -22,6 +22,8 @@ import {
   getReceiverStatus,
   importHistoricalSms,
   retryQuarantined,
+  isIgnoringBatteryOptimizations,
+  requestIgnoreBatteryOptimizations,
   type SmsStats,
   type AuditEntry,
   type RejectionEntry,
@@ -119,6 +121,7 @@ export function SmsImportHealthScreen() {
   const [rejections, setRejections] = useState<RejectionEntry[]>([]);
   const [receiverEnabled, setReceiverEnabled] = useState(true);
   const [lastFireMs, setLastFireMs] = useState(0);
+  const [batteryExempt, setBatteryExempt] = useState(true);
   const [loading, setLoading] = useState(true);
   const [reconciling, setReconciling] = useState(false);
   const [retrying, setRetrying] = useState(false);
@@ -130,17 +133,19 @@ export function SmsImportHealthScreen() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [s, entries, recentRejections, receiverStatus] = await Promise.all([
+      const [s, entries, recentRejections, receiverStatus, exempt] = await Promise.all([
         getStats(),
         getAuditLog(100),
         getRecentRejections(20),
         getReceiverStatus(),
+        isIgnoringBatteryOptimizations(),
       ]);
       setStats(s);
       setAuditEntries(entries);
       setRejections(recentRejections);
       setReceiverEnabled(receiverStatus.enabled);
       setLastFireMs(receiverStatus.lastFireMs);
+      setBatteryExempt(exempt);
     } catch (e) {
       console.warn('SmsHealth load error', e);
     } finally {
@@ -295,6 +300,23 @@ export function SmsImportHealthScreen() {
               </Text>
             </View>
           </View>
+          {receiverEnabled && !batteryExempt && (
+            <TouchableOpacity
+              style={[styles.batteryWarn, { borderColor: colors.warning }]}
+              onPress={async () => {
+                try {
+                  await requestIgnoreBatteryOptimizations();
+                  setBatteryExempt(await isIgnoringBatteryOptimizations());
+                } catch {}
+              }}
+            >
+              <Ionicons name="battery-half-outline" size={16} color={colors.warning} />
+              <Text style={[styles.batteryWarnText, { color: colors.warning }]}>
+                Battery optimization is restricting background capture — tap to allow unrestricted battery
+              </Text>
+              <Ionicons name="chevron-forward" size={14} color={colors.warning} />
+            </TouchableOpacity>
+          )}
         </SectionCard>
 
         {/* Lifetime Counters */}
@@ -504,6 +526,17 @@ const styles = StyleSheet.create({
   statusBadge: { paddingHorizontal: spacing.sm, paddingVertical: 2, borderRadius: borderRadius.full },
   statusBadgeText: { fontSize: typography.sizes.xs, fontWeight: typography.weights.semibold },
   statusSub: { fontSize: typography.sizes.sm, marginTop: 2 },
+  batteryWarn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    borderWidth: 1,
+    borderRadius: borderRadius.md,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.sm,
+    marginTop: spacing.sm,
+  },
+  batteryWarnText: { flex: 1, fontSize: typography.sizes.xs, fontWeight: typography.weights.medium },
   countersRow: { flexDirection: 'row', justifyContent: 'space-around' },
   counterCell: { alignItems: 'center', gap: 4 },
   counterValue: { fontSize: typography.sizes.xl, fontWeight: typography.weights.bold },

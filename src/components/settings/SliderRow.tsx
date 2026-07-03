@@ -1,4 +1,4 @@
-import React, { useMemo, useRef } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { View, Text, StyleSheet, PanResponder } from 'react-native';
 import { useThemeColors } from '../../hooks/useThemeColors';
 import { spacing, typography, borderRadius } from '../../theme';
@@ -9,6 +9,11 @@ interface SliderRowProps {
   minimumValue: number;
   maximumValue: number;
   step?: number;
+  /**
+   * Called with the final value when the drag ENDS (or on tap). During the
+   * drag the slider renders from internal state, so consumers can safely do
+   * heavy work here (persist settings, DB scans) without causing drag jank.
+   */
   onValueChange: (value: number) => void;
   suffix?: string;
 }
@@ -24,52 +29,79 @@ export function SliderRow({
 }: SliderRowProps) {
   const colors = useThemeColors();
   const widthRef = useRef(0);
+  // pageX of the track's left edge, captured at gesture start so moves can be
+  // computed from gesture.moveX — event.locationX is unreliable mid-drag on
+  // Android (it's relative to whichever child view the finger is over).
+  const trackPageXRef = useRef(0);
+
+  // Internal value shown while dragging. Null when idle → render the prop.
+  const [dragValue, setDragValue] = useState<number | null>(null);
+  const dragValueRef = useRef<number | null>(null);
 
   const dots = useMemo(() => {
     const count = Math.round((maximumValue - minimumValue) / step) + 1;
     return Array.from({ length: count }, (_, i) => minimumValue + i * step);
   }, [minimumValue, maximumValue, step]);
 
-  const ratio = (value - minimumValue) / (maximumValue - minimumValue);
-
-  // PanResponder is created once and must stay stable across renders so an in-progress
-  // drag never gets interrupted, but that means its callbacks close over whatever props
-  // existed on the first render. Routing every read through this ref (updated on every
-  // render, not just once) keeps the gesture reading live props instead of stale ones —
-  // that mismatch was the source of the janky/"glitchy" drag behavior.
+  // Live props for the stable PanResponder callbacks.
   const liveRef = useRef({ value, minimumValue, maximumValue, step, onValueChange });
   liveRef.current = { value, minimumValue, maximumValue, step, onValueChange };
 
-  const updateFromLocationX = (x: number) => {
+  const valueFromPageX = (pageX: number): number => {
     const trackWidth = widthRef.current;
-    if (!trackWidth) return;
-    const { value: currentValue, minimumValue: min, maximumValue: max, step: s, onValueChange: emit } =
-      liveRef.current;
-    const clampedX = Math.max(0, Math.min(trackWidth, x));
-    const raw = min + (clampedX / trackWidth) * (max - min);
-    const stepped = Math.max(min, Math.min(max, Math.round(raw / s) * s));
-    if (stepped !== currentValue) emit(stepped);
+    const { minimumValue: min, maximumValue: max, step: s } = liveRef.current;
+    if (!trackWidth) return min;
+    const x = Math.max(0, Math.min(trackWidth, pageX - trackPageXRef.current));
+    const raw = min + (x / trackWidth) * (max - min);
+    return Math.max(min, Math.min(max, Math.round(raw / s) * s));
   };
 
   const panResponder = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
       onStartShouldSetPanResponderCapture: () => true,
-      onMoveShouldSetPanResponder: (_, gesture) => Math.abs(gesture.dx) > 4,
-      onMoveShouldSetPanResponderCapture: (_, gesture) => Math.abs(gesture.dx) > 4,
-      onPanResponderGrant: (event) => updateFromLocationX(event.nativeEvent.locationX),
-      onPanResponderMove: (event) => updateFromLocationX(event.nativeEvent.locationX),
+      onMoveShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponderCapture: () => true,
+      onPanResponderGrant: (event) => {
+        // locationX is reliable for the initial touch (it's relative to the
+        // view owning the responder). Derive the track's pageX from it once.
+        trackPageXRef.current = event.nativeEvent.pageX - event.nativeEvent.locationX;
+        const v = valueFromPageX(event.nativeEvent.pageX);
+        dragValueRef.current = v;
+        setDragValue(v);
+      },
+      onPanResponderMove: (_event, gesture) => {
+        const v = valueFromPageX(gesture.moveX);
+        if (v !== dragValueRef.current) {
+          dragValueRef.current = v;
+          setDragValue(v); // local state only — cheap re-render of this row
+        }
+      },
+      onPanResponderRelease: () => {
+        const v = dragValueRef.current;
+        dragValueRef.current = null;
+        setDragValue(null);
+        if (v != null && v !== liveRef.current.value) liveRef.current.onValueChange(v);
+      },
+      onPanResponderTerminate: () => {
+        // Gesture stolen (e.g. parent scroll) — discard without committing.
+        dragValueRef.current = null;
+        setDragValue(null);
+      },
       onPanResponderTerminationRequest: () => false,
       onShouldBlockNativeResponder: () => true,
     })
   ).current;
+
+  const shownValue = dragValue ?? value;
+  const ratio = (shownValue - minimumValue) / (maximumValue - minimumValue);
 
   return (
     <View style={styles.container}>
       <View style={styles.header}>
         <Text style={[styles.label, { color: colors.textPrimary }]}>{label}</Text>
         <Text style={[styles.value, { color: colors.accentPrimary }]}>
-          {value}
+          {shownValue}
           {suffix}
         </Text>
       </View>
@@ -89,11 +121,12 @@ export function SliderRow({
               backgroundColor: colors.accentPrimary,
             },
           ]}
+          pointerEvents="none"
         />
         <View style={styles.dotsRow} pointerEvents="none">
           {dots.map((dotValue) => {
-            const isActive = dotValue === value;
-            const isFilled = dotValue <= value;
+            const isActive = dotValue === shownValue;
+            const isFilled = dotValue <= shownValue;
             return (
               <View
                 key={dotValue}

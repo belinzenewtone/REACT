@@ -135,6 +135,24 @@ export function SearchScreen() {
 
   const isIdle = !debouncedQuery.trim();
 
+  // Auto-save to history once the query SETTLES (1.5s of no typing) and has
+  // results on screen — previously history was only saved if the user pressed
+  // the keyboard's search key, which almost never happens with live results.
+  // The long settle window avoids polluting history with partials ("c", "ca").
+  const historyQuery = useDebounce(query, 1500);
+  useEffect(() => {
+    if (
+      historyQuery.trim().length >= 2 &&
+      historyQuery === query && // still the current query
+      hasAnyResults &&
+      !hasAddedRecent.current
+    ) {
+      addRecentSearch(historyQuery);
+      hasAddedRecent.current = true;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [historyQuery, hasAnyResults]);
+
   function renderResultCard({
     icon,
     iconBg,
@@ -200,11 +218,13 @@ export function SearchScreen() {
         </View>
       </View>
 
-      {/* Filter chips */}
+      {/* Filter chips — flexGrow:0 pins the row directly under the search bar;
+          without it this ScrollView flex-expands and the chips float mid-screen */}
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
         nestedScrollEnabled
+        style={styles.chipsBar}
         contentContainerStyle={styles.chips}
       >
         {FILTERS.map((f) => {
@@ -715,6 +735,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.base, height: 48, gap: spacing.sm,
   },
   input: { flex: 1, fontSize: typography.sizes.base, height: '100%' },
+  chipsBar: { flexGrow: 0, flexShrink: 0 },
   chips: {
     paddingHorizontal: spacing.screenHorizontal,
     paddingTop: spacing.xs,

@@ -101,13 +101,16 @@ export function AssistantScreen() {
   const tabBarSafeInset =
     Math.max(insets.bottom, spacing.sm) + spacing.sm + FLOATING_TAB_BAR_HEIGHT + TAB_BAR_HAIRLINE_GAP;
 
-  // iOS needs KeyboardAvoidingView padding + zero bottom inset when the keyboard
-  // is open so the input rests on the keyboard. Android relies on
-  // windowSoftInputMode=adjustResize, so we keep a constant tab-bar inset and
-  // disable KeyboardAvoidingView behavior there to avoid the input staying
-  // slightly above its rest position after the keyboard closes.
+  // Keyboard OPEN  → the input must rest immediately ON the keyboard:
+  //   iOS: KeyboardAvoidingView pads the view; inset drops to 0.
+  //   Android: adjustResize shrinks the window to the keyboard top; keeping
+  //   the tab-bar inset here left the input floating ~80px above the
+  //   keyboard, so drop to a small breathing gap instead.
+  // Keyboard CLOSED → back to resting immediately above the floating tab bar.
   const isIos = Platform.OS === 'ios';
-  const inputBottomInset = isIos ? (isKeyboardVisible ? 0 : tabBarSafeInset) : tabBarSafeInset;
+  const inputBottomInset = isKeyboardVisible
+    ? (isIos ? 0 : spacing.sm)
+    : tabBarSafeInset;
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.bgPrimary }]} edges={['top']}>
