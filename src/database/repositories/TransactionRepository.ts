@@ -212,8 +212,11 @@ export class TransactionRepository extends BaseRepository<TransactionRecord> {
     let income = 0;
     let expense = 0;
     for (const row of rows) {
-      if (row.transaction_type === 'income') income = row.total;
-      else if (row.transaction_type === 'expense') expense = row.total;
+      if (row.transaction_type === 'income') {
+        income = row.total;
+      } else if (row.transaction_type === 'expense' || row.transaction_type === 'transfer' || row.transaction_type === 'fuliza') {
+        expense += row.total;
+      }
     }
     return { income, expense };
   }
@@ -273,8 +276,11 @@ export class TransactionRepository extends BaseRepository<TransactionRecord> {
     let income = 0;
     let expense = 0;
     for (const row of rows) {
-      if (row.transaction_type === 'income') income = row.total;
-      else if (row.transaction_type === 'expense') expense = row.total;
+      if (row.transaction_type === 'income') {
+        income = row.total;
+      } else if (row.transaction_type === 'expense' || row.transaction_type === 'transfer' || row.transaction_type === 'fuliza') {
+        expense += row.total;
+      }
     }
     return { income, expense };
   }

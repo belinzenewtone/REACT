@@ -81,7 +81,7 @@ export async function computeAnalytics(
   const merchantMap = new Map<string, number>();
 
   for (const tx of transactions) {
-    if (tx.transaction_type === 'expense') {
+    if (tx.transaction_type === 'expense' || tx.transaction_type === 'transfer' || tx.transaction_type === 'fuliza') {
       totalSpend += tx.amount;
       categoryMap.set(tx.category, (categoryMap.get(tx.category) ?? 0) + tx.amount);
       merchantMap.set(tx.merchant, (merchantMap.get(tx.merchant) ?? 0) + tx.amount);
@@ -236,7 +236,7 @@ function computeWeeklyCategorySpend(
 
     for (const tx of transactions) {
       if (
-        tx.transaction_type === 'expense' &&
+        (tx.transaction_type === 'expense' || tx.transaction_type === 'transfer' || tx.transaction_type === 'fuliza') &&
         new Date(tx.date) >= weekStart &&
         new Date(tx.date) <= weekEnd
       ) {
@@ -279,7 +279,7 @@ function computeWeeklyTrend(transactions: { date: string; transaction_type: stri
     const amount = transactions
       .filter(
         (tx) =>
-          tx.transaction_type === 'expense' &&
+          (tx.transaction_type === 'expense' || tx.transaction_type === 'transfer' || tx.transaction_type === 'fuliza') &&
           new Date(tx.date) >= weekStart &&
           new Date(tx.date) <= weekEnd
       )
@@ -310,7 +310,7 @@ function computeMonthlyTrend(transactions: { date: string; transaction_type: str
 
     for (const tx of transactions) {
       if (tx.date.startsWith(monthKey)) {
-        if (tx.transaction_type === 'expense') expense += tx.amount;
+        if (tx.transaction_type === 'expense' || tx.transaction_type === 'transfer' || tx.transaction_type === 'fuliza') expense += tx.amount;
         else if (tx.transaction_type === 'income') income += tx.amount;
       }
     }

@@ -84,15 +84,13 @@ export function WeekReviewScreen() {
       const taskWeekStart = weekStart.toISOString();
 
       // `transaction_type` is one of: 'expense' | 'income' | 'transfer' | 'fuliza'.
-      // We only sum EXPENSES for the "spend" figure — the prior filter
-      // ("NOT IN ('RECEIVED','DEPOSIT')") never matched anything since those
-      // are M-Pesa category values, not transaction_type values, so income
-      // was being counted as spend.
+      // Spend includes all outflows (expenses, transfers and Fuliza draws) so
+      // the weekly total matches the Today/Week/Month cards elsewhere.
       const [spendRow, topCatRow, completedRow, pendingRow] = await Promise.all([
         db.getFirstAsync<{ total: number }>(
           `SELECT SUM(amount) as total FROM transactions
              WHERE date >= ? AND date <= ?
-               AND transaction_type = 'expense'
+               AND transaction_type IN ('expense', 'transfer', 'fuliza')
                AND status = 'completed'
                AND deleted_at IS NULL`,
           [txWeekStart, txWeekEnd]
@@ -100,7 +98,7 @@ export function WeekReviewScreen() {
         db.getFirstAsync<{ category: string }>(
           `SELECT category, SUM(amount) as total FROM transactions
              WHERE date >= ? AND date <= ?
-               AND transaction_type = 'expense'
+               AND transaction_type IN ('expense', 'transfer', 'fuliza')
                AND status = 'completed'
                AND deleted_at IS NULL
              GROUP BY category ORDER BY total DESC LIMIT 1`,
@@ -128,7 +126,7 @@ export function WeekReviewScreen() {
       const prevSpendRow = await db.getFirstAsync<{ total: number }>(
         `SELECT SUM(amount) as total FROM transactions
            WHERE date >= ? AND date <= ?
-             AND transaction_type = 'expense'
+             AND transaction_type IN ('expense', 'transfer', 'fuliza')
              AND status = 'completed'
              AND deleted_at IS NULL`,
         [toLocalIso(prevStart), toLocalIso(prevEnd)]

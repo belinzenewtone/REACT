@@ -16,7 +16,12 @@ import { useThemeColors } from '../../hooks/useThemeColors';
 import { useAppStore, type OnboardingGoal } from '../../store';
 import { requestNotificationPermissions } from '../../services/notificationService';
 import { syncAllNotifications } from '../../services/notificationSyncService';
-import { requestSmsPermissions, checkPermissions } from '../../../modules/lifeos-sms';
+import {
+  requestSmsPermissions,
+  enableBackgroundReceiver,
+  isIgnoringBatteryOptimizations,
+  requestIgnoreBatteryOptimizations,
+} from '../../../modules/lifeos-sms';
 import { useSQLiteContext } from 'expo-sqlite';
 import { generateId, nowIso } from '../../database';
 import { HeroSurface } from '../../components/common/HeroSurface';
@@ -24,7 +29,7 @@ import { InlineBanner } from '../../components/common/InlineBanner';
 import { GlassCard } from '../../components/common/GlassCard';
 import { spacing, typography, borderRadius, motion } from '../../theme';
 
-const TOTAL_STEPS = 6;
+const TOTAL_STEPS = 7;
 
 const STEP_SUBTITLES: Record<number, string> = {
   1: 'A calm setup to personalize your planning and finance workspace.',
@@ -32,7 +37,8 @@ const STEP_SUBTITLES: Record<number, string> = {
   3: 'Tell us your name and what you want to focus on.',
   4: 'Allow notifications so timers and reminders always reach you.',
   5: 'Allow SMS access so M-Pesa imports and Fuliza tracking work automatically.',
-  6: 'Final checks before launching into your dashboard.',
+  6: 'Allow background capture so M-Pesa messages are imported even when the app is closed.',
+  7: 'Final checks before launching into your dashboard.',
 };
 
 const GOALS: Array<{ key: OnboardingGoal; title: string; description: string; icon: keyof typeof Ionicons.glyphMap }> = [
@@ -53,6 +59,7 @@ export function OnboardingScreen() {
   const setProfile = useAppStore((state) => state.setProfile);
   const updateProfile = useAppStore((state) => state.updateProfile);
   const updateSettings = useAppStore((state) => state.updateSettings);
+  const settings = useAppStore((state) => state.settings);
 
   const [fullName, setFullName] = useState(profile?.name ?? '');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -60,6 +67,7 @@ export function OnboardingScreen() {
   const [notificationsAllowed, setNotificationsAllowed] = useState(false);
   const [smsAllowed, setSmsAllowed] = useState(false);
   const [smsChecked, setSmsChecked] = useState(false);
+  const [backgroundReceiverEnabled, setBackgroundReceiverEnabled] = useState(settings.smsBackgroundReceiver ?? false);
 
   const stepFade = useRef(new Animated.Value(1)).current;
   const stepSlide = useRef(new Animated.Value(0)).current;
@@ -199,6 +207,31 @@ export function OnboardingScreen() {
                         onSkip={() => {
                           setSmsAllowed(false);
                           setSmsChecked(true);
+                        }}
+                      />
+                    );
+                  case 6:
+                    return (
+                      <BackgroundReceiverStep
+                        enabled={backgroundReceiverEnabled}
+                        onEnable={async () => {
+                          try {
+                            await enableBackgroundReceiver(true);
+                            updateSettings({ smsBackgroundReceiver: true });
+                            setBackgroundReceiverEnabled(true);
+                            const exempt = await isIgnoringBatteryOptimizations();
+                            if (!exempt) {
+                              await requestIgnoreBatteryOptimizations();
+                            }
+                          } catch {
+                            // Still record the user's intent; bootstrap re-pushes on launch.
+                            updateSettings({ smsBackgroundReceiver: true });
+                            setBackgroundReceiverEnabled(true);
+                          }
+                        }}
+                        onSkip={() => {
+                          updateSettings({ smsBackgroundReceiver: false });
+                          setBackgroundReceiverEnabled(false);
                         }}
                       />
                     );
@@ -432,6 +465,44 @@ function SmsPermissionStep({
         <>
           <TouchableOpacity style={[styles.allowButton, { backgroundColor: colors.accentPrimary }]} onPress={onAllow}>
             <Text style={[styles.allowButtonText, { color: colors.textInverse }]}>Allow SMS Access</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={onSkip} style={styles.skipButton}>
+            <Text style={[styles.skipText, { color: colors.textSecondary }]}>Skip for now</Text>
+          </TouchableOpacity>
+        </>
+      )}
+    </View>
+  );
+}
+
+function BackgroundReceiverStep({
+  enabled,
+  onEnable,
+  onSkip,
+}: {
+  enabled: boolean;
+  onEnable: () => void;
+  onSkip: () => void;
+}) {
+  const colors = useThemeColors();
+  return (
+    <View style={styles.stepCol}>
+      <Text style={[styles.stepTitle, { color: colors.textPrimary }]}>Capture M-Pesa in the background</Text>
+      <Text style={[styles.stepSubtitle, { color: colors.textSecondary }]}>
+        Even when the app is closed, new M-Pesa messages can be imported automatically.
+      </Text>
+      <PillarCard icon="radio-outline" title="Automatic imports" description="Receive money or buy airtime — the transaction appears without opening the app." />
+      <PillarCard icon="battery-half-outline" title="Keep it running" description="You may need to allow unrestricted battery use so Android does not block the receiver." />
+
+      {enabled ? (
+        <View style={styles.allowedRow}>
+          <Ionicons name="checkmark-circle" size={20} color={colors.accentPrimary} />
+          <Text style={[styles.allowedText, { color: colors.accentPrimary }]}>Background capture enabled</Text>
+        </View>
+      ) : (
+        <>
+          <TouchableOpacity style={[styles.allowButton, { backgroundColor: colors.accentPrimary }]} onPress={onEnable}>
+            <Text style={[styles.allowButtonText, { color: colors.textInverse }]}>Enable Background Capture</Text>
           </TouchableOpacity>
           <TouchableOpacity onPress={onSkip} style={styles.skipButton}>
             <Text style={[styles.skipText, { color: colors.textSecondary }]}>Skip for now</Text>

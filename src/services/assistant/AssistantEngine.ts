@@ -273,7 +273,7 @@ export class AssistantEngine {
     const txs = await this.txRepo.findAll({ limit: 500, orderBy: 'date_desc' });
     const inRange = txs.filter((t) => {
       const ms = new Date(t.date).getTime();
-      return ms >= period.startMs && ms <= period.endMs && t.transaction_type === 'expense';
+      return ms >= period.startMs && ms <= period.endMs && (t.transaction_type === 'expense' || t.transaction_type === 'transfer' || t.transaction_type === 'fuliza');
     });
 
     if (inRange.length === 0) {

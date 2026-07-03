@@ -40,6 +40,7 @@ import { importHistoricalSms, checkPermissions, requestSmsPermissions } from '..
 import { CATEGORY_COLORS } from '../../constants';
 import { checkAllBudgetThresholds, checkBudgetThresholds } from '../../services/budgetAlertService';
 import { formatCurrency, formatDate, formatRelativeDay, toLocalIso } from '../../utils/formatters';
+import { isOutflow, isInflow } from '../../utils/transactionType';
 import { spacing, typography, borderRadius, BOTTOM_NAV_SAFE_AREA } from '../../theme';
 import { animateLayout } from '../../utils/animation';
 import type { TransactionListItemData } from '../../components/finance/TransactionListItem';
@@ -198,6 +199,9 @@ export function FinanceScreen() {
       // subscribed to dataVersion to reload from disk so the imported rows appear.
       useDataVersion.getState().bump();
       await loadTransactions(repo, true);
+      await loadDashboard(db);
+      await loadBudgets(db);
+      await loadPlanner(db);
       await checkAllBudgetThresholds(db);
       const imported = result?.imported ?? 0;
       const dupes = result?.duplicates ?? 0;
@@ -224,7 +228,7 @@ export function FinanceScreen() {
     } finally {
       setSmsImporting(false);
     }
-  }, [repo, loadTransactions, db]);
+  }, [repo, loadTransactions, loadDashboard, loadBudgets, loadPlanner, db]);
 
   const activeBudgets = useMemo(() => budgets.filter((b) => b.isActive), [budgets]);
 
@@ -236,8 +240,8 @@ export function FinanceScreen() {
     let expense = 0;
     for (const t of transactions) {
       if (t.date >= monthStart && t.date <= monthEnd && t.status === 'completed') {
-        if (t.transaction_type === 'income') income += t.amount;
-        else if (t.transaction_type === 'expense') expense += t.amount;
+        if (isInflow(t.transaction_type)) income += t.amount;
+        else if (isOutflow(t.transaction_type)) expense += t.amount;
       }
     }
     return { income, expense };
@@ -267,8 +271,8 @@ export function FinanceScreen() {
     let expense = 0;
     for (const t of transactions) {
       if (t.date >= start && t.date <= end && t.status === 'completed') {
-        if (t.transaction_type === 'income') income += t.amount;
-        else if (t.transaction_type === 'expense') expense += t.amount;
+        if (isInflow(t.transaction_type)) income += t.amount;
+        else if (isOutflow(t.transaction_type)) expense += t.amount;
       }
     }
     return { income, expense };
