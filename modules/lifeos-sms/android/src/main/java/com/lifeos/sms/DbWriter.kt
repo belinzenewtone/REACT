@@ -58,7 +58,17 @@ internal class DbWriter private constructor(context: Context) {
         // PRAGMAs return a result row on Android's SQLite wrapper, so they must be
         // executed via rawQuery. Using execSQL throws:
         // "Queries can be performed using SQLiteDatabase query or rawQuery methods only."
-        db.rawQuery("PRAGMA journal_mode=WAL", null).use { it.moveToFirst() }
+        // Only switch to WAL if it isn't already enabled; this avoids an exclusive-lock
+        // race when expo-sqlite already has the database open.
+        val currentMode = db.rawQuery("PRAGMA journal_mode", null).use { c ->
+            if (c.moveToFirst()) c.getString(0)?.lowercase() else null
+        }
+        if (currentMode != "wal") {
+            val newMode = db.rawQuery("PRAGMA journal_mode=WAL", null).use { c ->
+                if (c.moveToFirst()) c.getString(0)?.lowercase() else null
+            }
+            Log.i(TAG, "Set journal_mode to $newMode (was $currentMode)")
+        }
         db.rawQuery("PRAGMA synchronous=NORMAL", null).use { it.moveToFirst() }
         db.rawQuery("PRAGMA foreign_keys=ON", null).use { it.moveToFirst() }
         ensureImportAuditTable()

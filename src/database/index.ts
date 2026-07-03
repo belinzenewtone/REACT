@@ -12,6 +12,16 @@ export * from './schema';
 export async function migrateDatabaseAsync(db: SQLiteDatabase): Promise<void> {
   await db.execAsync(CREATE_TABLES_SQL);
 
+  // WAL mode lets the native SMS worker write from a separate SQLite connection
+  // without corrupting the database when the JS layer also has it open.
+  // If the native side already set WAL this is a no-op.
+  try {
+    await db.execAsync('PRAGMA journal_mode=WAL;');
+    await db.execAsync('PRAGMA synchronous=NORMAL;');
+  } catch (e) {
+    console.warn('Failed to set WAL mode:', e);
+  }
+
   // Future migrations can be gated by PRAGMA user_version.
   // const version = await db.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
   // if ((version?.user_version ?? 0) < 2) { ...; await db.execAsync('PRAGMA user_version = 2'); }

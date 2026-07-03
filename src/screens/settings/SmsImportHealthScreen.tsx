@@ -188,6 +188,9 @@ export function SmsImportHealthScreen() {
     oldestPendingAt: null,
   });
   const [dbIntegrityOk, setDbIntegrityOk] = useState(true);
+  const [dbIntegrityMessage, setDbIntegrityMessage] = useState<string | null>(null);
+  const [txCount, setTxCount] = useState(0);
+  const [repairing, setRepairing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [reconciling, setReconciling] = useState(false);
   const [retrying, setRetrying] = useState(false);
@@ -235,9 +238,20 @@ export function SmsImportHealthScreen() {
       // Cheap SQLite self-check — surfaces file corruption before it bites.
       try {
         const integ = await db.getFirstAsync<{ integrity_check: string }>('PRAGMA integrity_check');
-        setDbIntegrityOk((integ?.integrity_check ?? 'ok') === 'ok');
+        const message = integ?.integrity_check ?? 'ok';
+        setDbIntegrityMessage(message === 'ok' ? null : message);
+        setDbIntegrityOk(message === 'ok');
       } catch {
+        setDbIntegrityMessage(null);
         setDbIntegrityOk(true); // inconclusive — don't alarm
+      }
+      try {
+        const txRow = await db.getFirstAsync<{ c: number }>(
+          'SELECT COUNT(*) as c FROM transactions WHERE deleted_at IS NULL'
+        );
+        setTxCount(txRow?.c ?? 0);
+      } catch {
+        setTxCount(0);
       }
     } catch (e) {
       console.warn('SmsHealth load error', e);
@@ -315,6 +329,35 @@ export function SmsImportHealthScreen() {
         },
       ]
     );
+  };
+
+  const handleRepairDb = async () => {
+    setRepairing(true);
+    try {
+      // Try a truncating checkpoint first — many "integrity" failures on WAL
+      // databases are actually unflushed WAL frames that the check trips over.
+      try {
+        await db.execAsync('PRAGMA wal_checkpoint(TRUNCATE);');
+      } catch {
+        // ignore — integrity_check will still report the real state
+      }
+      const integ = await db.getFirstAsync<{ integrity_check: string }>('PRAGMA integrity_check');
+      const message = integ?.integrity_check ?? 'ok';
+      setDbIntegrityMessage(message === 'ok' ? null : message);
+      setDbIntegrityOk(message === 'ok');
+      if (message === 'ok') {
+        Alert.alert('Database repaired', 'The integrity check is now passing.');
+      } else {
+        Alert.alert(
+          'Still corrupted',
+          `Integrity check result: ${message}\n\nExport your data from Finance → Export, then reinstall the app.`
+        );
+      }
+    } catch (e: any) {
+      Alert.alert('Repair check failed', e?.message ?? 'Unknown error');
+    } finally {
+      setRepairing(false);
+    }
   };
 
   const totalProcessed = (stats?.totalImported ?? 0) + (stats?.totalDuplicates ?? 0) + (stats?.totalFailed ?? 0) + (stats?.totalQuarantined ?? 0);
@@ -413,12 +456,23 @@ export function SmsImportHealthScreen() {
             </TouchableOpacity>
           )}
           {!dbIntegrityOk && (
-            <View style={[styles.batteryWarn, { borderColor: colors.danger }]}>
+            <TouchableOpacity
+              style={[styles.batteryWarn, { borderColor: colors.danger }]}
+              onPress={handleRepairDb}
+              disabled={repairing}
+            >
               <Ionicons name="warning-outline" size={16} color={colors.danger} />
               <Text style={[styles.batteryWarnText, { color: colors.danger }]}>
-                Database integrity check failed — export your data now (Finance → Export) and reinstall
+                Database integrity check failed
+                {dbIntegrityMessage ? ` — ${dbIntegrityMessage}` : ''}
+                {'\n'}Tap to try a WAL checkpoint repair.
               </Text>
-            </View>
+              {repairing ? (
+                <ActivityIndicator size="small" color={colors.danger} />
+              ) : (
+                <Ionicons name="chevron-forward" size={14} color={colors.danger} />
+              )}
+            </TouchableOpacity>
           )}
           {(ingestQueue.pending > 0 || ingestQueue.failed > 0) && (
             <TouchableOpacity
@@ -487,6 +541,12 @@ export function SmsImportHealthScreen() {
           <TimestampRow icon="download-outline" label="Last batch import" value={formatTimestamp(auditDisplayTimestamp(lastBatch) ?? stats?.lastImportAt)} colors={colors} />
           <View style={[styles.divider, { backgroundColor: colors.border }]} />
           <TimestampRow icon="checkmark-circle-outline" label="Last successful import" value={formatTimestamp(auditDisplayTimestamp(lastImported))} colors={colors} />
+          <View style={[styles.divider, { backgroundColor: colors.border }]} />
+          <View style={styles.tsRow}>
+            <Ionicons name="wallet-outline" size={16} color={colors.accentPrimary} />
+            <Text style={[styles.tsLabel, { color: colors.textSecondary }]}>Transactions in DB</Text>
+            <Text style={[styles.tsValue, { color: colors.textPrimary }]}>{txCount}</Text>
+          </View>
         </SectionCard>
 
         {/* Actions */}

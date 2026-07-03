@@ -22,6 +22,7 @@ import {
   type AuditEntry,
 } from '../../../modules/lifeos-sms';
 import { useDataVersion } from '../../store/dataVersion';
+import { nowIso } from '../../database';
 
 // Outcomes that indicate this entry needs review / recovery
 const PENDING_OUTCOMES = new Set([
@@ -146,19 +147,53 @@ export function ReviewQueueScreen() {
     return () => clearTimeout(t);
   }, [message]);
 
+  const approveReviewEntry = async (entry: AuditEntry) => {
+    const now = nowIso();
+    if (entry.mpesaCode) {
+      await db.runAsync(
+        `UPDATE transactions SET sync_state = 'pending', updated_at = ? WHERE mpesa_code = ? AND deleted_at IS NULL`,
+        [now, entry.mpesaCode]
+      );
+    }
+    await db.runAsync(`UPDATE import_audit SET outcome = 'imported_review_approved' WHERE id = ?`, [entry.id]);
+  };
+
+  const dismissEntry = async (entry: AuditEntry) => {
+    const now = nowIso();
+    if (entry.mpesaCode) {
+      // For review items, dismissing also removes the tentative transaction from the ledger.
+      await db.runAsync(
+        `UPDATE transactions SET deleted_at = ?, updated_at = ? WHERE mpesa_code = ? AND deleted_at IS NULL`,
+        [now, now, entry.mpesaCode]
+      );
+    }
+    await db.runAsync(`UPDATE import_audit SET outcome = 'dismissed' WHERE id = ?`, [entry.id]);
+  };
+
   const handleRecover = async (entry: AuditEntry) => {
     setProcessingId(entry.id);
     try {
-      const result = await retrySingle(entry.id);
-      if (result.ok || result.note === 'already_exists') {
+      if (entry.outcome.includes('quarantine')) {
+        const result = await retrySingle(entry.id);
+        if (result.ok || result.note === 'already_exists') {
+          setEntries((prev) => prev.filter((e) => e.id !== entry.id));
+          useDataVersion.getState().bump();
+          setMessage({ text: result.note === 'already_exists' ? 'Already in ledger — marked complete.' : 'Transaction recovered.', ok: true });
+        } else {
+          setMessage({ text: `Could not recover: ${result.error ?? 'still quarantined'}`, ok: false });
+        }
+      } else if (entry.outcome.includes('review')) {
+        await approveReviewEntry(entry);
         setEntries((prev) => prev.filter((e) => e.id !== entry.id));
         useDataVersion.getState().bump();
-        setMessage({ text: result.note === 'already_exists' ? 'Already in ledger — marked complete.' : 'Transaction recovered.', ok: true });
+        setMessage({ text: 'Transaction approved.', ok: true });
       } else {
-        setMessage({ text: `Could not recover: ${result.error ?? 'still quarantined'}`, ok: false });
+        await dismissEntry(entry);
+        setEntries((prev) => prev.filter((e) => e.id !== entry.id));
+        setMessage({ text: 'Entry dismissed.', ok: true });
       }
     } catch (e: any) {
-      setMessage({ text: e?.message ?? 'Recovery failed.', ok: false });
+      setMessage({ text: e?.message ?? 'Action failed.', ok: false });
     } finally {
       setProcessingId(null);
     }
@@ -167,30 +202,43 @@ export function ReviewQueueScreen() {
   const handleDismiss = async (entry: AuditEntry) => {
     setProcessingId(entry.id);
     try {
-      // Mark dismissed in the audit table via direct SQLite (no native API needed for dismiss)
-      await db.runAsync(`UPDATE import_audit SET outcome = 'dismissed' WHERE id = ?`, [entry.id]);
+      await dismissEntry(entry);
       setEntries((prev) => prev.filter((e) => e.id !== entry.id));
-    } catch {
-      setMessage({ text: 'Dismiss failed.', ok: false });
+      useDataVersion.getState().bump();
+      setMessage({ text: 'Dismissed.', ok: true });
+    } catch (e: any) {
+      setMessage({ text: e?.message ?? 'Dismiss failed.', ok: false });
     } finally {
       setProcessingId(null);
     }
   };
 
   const handleRecoverAll = () => {
-    Alert.alert('Recover all?', `Re-parse all ${entries.length} entries and import those that pass the confidence threshold.`, [
+    Alert.alert('Recover all?', `Re-parse all ${entries.length} entries and import/approve those that pass the confidence threshold.`, [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Recover all',
         onPress: async () => {
           setBulkProcessing(true);
           try {
-            const result = await retryQuarantined();
+            const quarantined = entries.filter((e) => e.outcome.includes('quarantine'));
+            const review = entries.filter((e) => e.outcome.includes('review'));
+            let recovered = 0;
+            if (quarantined.length > 0) {
+              const result = await retryQuarantined();
+              recovered += result.imported;
+            }
+            if (review.length > 0) {
+              for (const entry of review) {
+                await approveReviewEntry(entry);
+                recovered++;
+              }
+            }
             useDataVersion.getState().bump();
             await load();
-            setMessage({ text: `Reprocessed ${result.retried} · ${result.imported} recovered`, ok: true });
-          } catch {
-            setMessage({ text: 'Bulk recover failed.', ok: false });
+            setMessage({ text: `${recovered} entries approved/recovered`, ok: true });
+          } catch (e: any) {
+            setMessage({ text: e?.message ?? 'Bulk recover failed.', ok: false });
           } finally {
             setBulkProcessing(false);
           }
@@ -208,14 +256,14 @@ export function ReviewQueueScreen() {
         onPress: async () => {
           setBulkProcessing(true);
           try {
-            await db.runAsync(
-              `UPDATE import_audit SET outcome = 'dismissed'
-               WHERE outcome IN ('quarantined','imported_review','batch_pending','pending')`
-            );
+            for (const entry of entries) {
+              await dismissEntry(entry);
+            }
             setEntries([]);
+            useDataVersion.getState().bump();
             setMessage({ text: 'All entries dismissed.', ok: true });
-          } catch {
-            setMessage({ text: 'Bulk dismiss failed.', ok: false });
+          } catch (e: any) {
+            setMessage({ text: e?.message ?? 'Bulk dismiss failed.', ok: false });
           } finally {
             setBulkProcessing(false);
           }
