@@ -119,10 +119,13 @@ export class BudgetRepository extends BaseRepository<BudgetRecord> {
   }
 
   async getSpentByCategory(year: number, month: number): Promise<BudgetSpentRow[]> {
-    const start = `${year}-${String(month).padStart(2, '0')}-01T00:00:00.000Z`;
+    // Transactions imported from SMS are stored as local ISO-like strings
+    // (YYYY-MM-DDTHH:MM:SS without a Z suffix). Use local month boundaries so
+    // the comparison aligns with the user's wall-clock calendar.
+    const start = `${year}-${String(month).padStart(2, '0')}-01T00:00:00`;
     const end = month === 12
-      ? `${year + 1}-01-01T00:00:00.000Z`
-      : `${year}-${String(month + 1).padStart(2, '0')}-01T00:00:00.000Z`;
+      ? `${year + 1}-01-01T00:00:00`
+      : `${year}-${String(month + 1).padStart(2, '0')}-01T00:00:00`;
 
     return await this.db.getAllAsync<BudgetSpentRow>(
       `SELECT category, SUM(amount) as spent FROM transactions

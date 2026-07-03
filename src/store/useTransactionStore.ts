@@ -12,6 +12,7 @@ import type { TransactionRecord } from '../database/repositories/TransactionRepo
 import type { TransactionRepository } from '../database/repositories/TransactionRepository';
 import { useDataVersion } from './dataVersion';
 import { checkBudgetThresholds } from '../services/budgetAlertService';
+import { toLocalIso } from '../utils/formatters';
 import { haptic } from '../utils/haptics';
 
 export type TransactionPeriod = 'all' | 'today' | 'week' | 'month';
@@ -79,16 +80,16 @@ export const useTransactionStore = create<TransactionState>((set, get) => ({
       const now = new Date();
       switch (filters.period) {
         case 'today':
-          startDate = startOfDay(now).toISOString();
-          endDate = endOfDay(now).toISOString();
+          startDate = toLocalIso(startOfDay(now));
+          endDate = toLocalIso(endOfDay(now));
           break;
         case 'week':
-          startDate = startOfWeek(now, { weekStartsOn: 1 }).toISOString();
-          endDate = endOfWeek(now, { weekStartsOn: 1 }).toISOString();
+          startDate = toLocalIso(startOfWeek(now, { weekStartsOn: 1 }));
+          endDate = toLocalIso(endOfWeek(now, { weekStartsOn: 1 }));
           break;
         case 'month':
-          startDate = startOfMonth(now).toISOString();
-          endDate = endOfMonth(now).toISOString();
+          startDate = toLocalIso(startOfMonth(now));
+          endDate = toLocalIso(endOfMonth(now));
           break;
       }
 

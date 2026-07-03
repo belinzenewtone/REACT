@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type { SQLiteDatabase } from 'expo-sqlite';
+import { toLocalIso } from '../utils/formatters';
 import { computeAnalytics, type AnalyticsData } from '../services/analyticsService';
 
 export type DateRange = 'this_week' | 'this_month';
@@ -32,7 +33,8 @@ function getDateRange(range: DateRange): { start: string; end: string } {
       break;
   }
 
-  return { start: start.toISOString(), end: end.toISOString() };
+  // Local datetime strings to match SMS-imported transaction date storage.
+  return { start: toLocalIso(start), end: toLocalIso(end) };
 }
 
 export const useAnalyticsStore = create<AnalyticsState>((set, get) => ({

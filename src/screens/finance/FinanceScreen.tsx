@@ -39,7 +39,7 @@ import { ImportSmsSheet, type SmsScanPeriod } from '../../components/finance/Imp
 import { importHistoricalSms, checkPermissions, requestSmsPermissions } from '../../../modules/lifeos-sms';
 import { CATEGORY_COLORS } from '../../constants';
 import { checkAllBudgetThresholds, checkBudgetThresholds } from '../../services/budgetAlertService';
-import { formatCurrency, formatDate, formatRelativeDay } from '../../utils/formatters';
+import { formatCurrency, formatDate, formatRelativeDay, toLocalIso } from '../../utils/formatters';
 import { spacing, typography, borderRadius, BOTTOM_NAV_SAFE_AREA } from '../../theme';
 import { animateLayout } from '../../utils/animation';
 import type { TransactionListItemData } from '../../components/finance/TransactionListItem';
@@ -230,8 +230,8 @@ export function FinanceScreen() {
 
   const monthTotals = useMemo(() => {
     const now = new Date();
-    const monthStart = startOfMonth(now).toISOString();
-    const monthEnd = endOfMonth(now).toISOString();
+    const monthStart = toLocalIso(startOfMonth(now));
+    const monthEnd = toLocalIso(endOfMonth(now));
     let income = 0;
     let expense = 0;
     for (const t of transactions) {
@@ -249,16 +249,16 @@ export function FinanceScreen() {
     let end: string;
     switch (filters.period) {
       case 'today':
-        start = startOfDay(now).toISOString();
-        end = endOfDay(now).toISOString();
+        start = toLocalIso(startOfDay(now));
+        end = toLocalIso(endOfDay(now));
         break;
       case 'week':
-        start = startOfWeek(now, { weekStartsOn: 1 }).toISOString();
-        end = endOfWeek(now, { weekStartsOn: 1 }).toISOString();
+        start = toLocalIso(startOfWeek(now, { weekStartsOn: 1 }));
+        end = toLocalIso(endOfWeek(now, { weekStartsOn: 1 }));
         break;
       case 'month':
-        start = startOfMonth(now).toISOString();
-        end = endOfMonth(now).toISOString();
+        start = toLocalIso(startOfMonth(now));
+        end = toLocalIso(endOfMonth(now));
         break;
       default:
         return { income: monthTotals.income, expense: monthTotals.expense };

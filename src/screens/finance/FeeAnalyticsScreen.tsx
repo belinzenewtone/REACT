@@ -82,7 +82,8 @@ export function FeeAnalyticsScreen() {
   async function load() {
     try {
       const now = new Date();
-      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+      // Local month start to match SMS-imported transaction date storage.
+      const startOfMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01T00:00:00`;
 
       const feeCategories = ['AIRTIME', 'FULIZA', 'WITHDRAWAL', 'SUBSCRIPTION', 'Fee'];
       const placeholders = feeCategories.map(() => '?').join(',');

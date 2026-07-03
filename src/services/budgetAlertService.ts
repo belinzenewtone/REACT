@@ -5,7 +5,9 @@ import { fireBudgetAlert } from './notificationService';
 
 function currentYearMonth(): string {
   const now = new Date();
-  return `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}`;
+  // Use local wall-clock month so budget alerts align with the user's calendar
+  // and the local datetime strings stored for SMS-imported transactions.
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 }
 
 function shouldCheck(): boolean {
@@ -97,7 +99,7 @@ export async function checkAllBudgetThresholds(
     const budgetRepo = new BudgetRepository(db);
     const now = new Date();
     const budgets = await budgetRepo.findAllActive();
-    const spent = await budgetRepo.getSpentByCategory(now.getUTCFullYear(), now.getUTCMonth() + 1);
+    const spent = await budgetRepo.getSpentByCategory(now.getFullYear(), now.getMonth() + 1);
     const spentMap = new Map(spent.map((s) => [s.category.toLowerCase(), s.spent]));
     for (const budget of budgets) {
       const spentAmount = spentMap.get(budget.category.toLowerCase()) ?? 0;

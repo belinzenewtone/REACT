@@ -32,7 +32,8 @@ export const useBudgetStore = create<BudgetState>((set, get) => ({
       const repo = new BudgetRepository(db);
       const now = new Date();
       const budgets = await repo.findAll();
-      const spent = await repo.getSpentByCategory(now.getUTCFullYear(), now.getUTCMonth() + 1);
+      // Match the user's local calendar month (used by dashboard and analytics).
+      const spent = await repo.getSpentByCategory(now.getFullYear(), now.getMonth() + 1);
       const spentMap = new Map(spent.map((s) => [s.category, s.spent]));
 
       const withProgress: BudgetProgress[] = budgets.map((b) => {

@@ -73,6 +73,7 @@ import {
 } from '../../modules/lifeos-sms';
 import { FulizaLimitModal } from '../components/settings/FulizaLimitModal';
 import { useDataVersion } from '../store/dataVersion';
+import { useGlobalDataSync } from '../hooks/useGlobalDataSync';
 import type { RootStackParamList } from './types';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -103,6 +104,7 @@ export function AppNavigator() {
     setIsAppLocked,
   } = useAppStore();
   const [dbReady, setDbReady] = useState(false);
+  useGlobalDataSync(dbReady ? db : null);
   const [fulizaModalVisible, setFulizaModalVisible] = useState(false);
   // Once the user has seen and acted on the Fuliza prompt in this session,
   // ignore further native events so a long-running import doesn't reopen it.

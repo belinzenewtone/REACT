@@ -196,10 +196,11 @@ export class TransactionRepository extends BaseRepository<TransactionRecord> {
   }
 
   async getMonthlyTotals(year: number, month: number): Promise<{ income: number; expense: number }> {
-    const start = `${year}-${String(month).padStart(2, '0')}-01T00:00:00.000Z`;
+    // Local month boundaries to match SMS-imported transaction date storage.
+    const start = `${year}-${String(month).padStart(2, '0')}-01T00:00:00`;
     const end = month === 12
-      ? `${year + 1}-01-01T00:00:00.000Z`
-      : `${year}-${String(month + 1).padStart(2, '0')}-01T00:00:00.000Z`;
+      ? `${year + 1}-01-01T00:00:00`
+      : `${year}-${String(month + 1).padStart(2, '0')}-01T00:00:00`;
 
     const rows = await this.db.getAllAsync<{ transaction_type: TransactionType; total: number }>(
       `SELECT transaction_type, SUM(amount) as total FROM transactions
@@ -218,10 +219,11 @@ export class TransactionRepository extends BaseRepository<TransactionRecord> {
   }
 
   async getCategoryTotals(year: number, month: number, type: TransactionType = 'expense'): Promise<{ category: string; total: number }[]> {
-    const start = `${year}-${String(month).padStart(2, '0')}-01T00:00:00.000Z`;
+    // Local month boundaries to match SMS-imported transaction date storage.
+    const start = `${year}-${String(month).padStart(2, '0')}-01T00:00:00`;
     const end = month === 12
-      ? `${year + 1}-01-01T00:00:00.000Z`
-      : `${year}-${String(month + 1).padStart(2, '0')}-01T00:00:00.000Z`;
+      ? `${year + 1}-01-01T00:00:00`
+      : `${year}-${String(month + 1).padStart(2, '0')}-01T00:00:00`;
 
     return await this.db.getAllAsync<{ category: string; total: number }>(
       `SELECT category, SUM(amount) as total FROM transactions
@@ -234,7 +236,8 @@ export class TransactionRepository extends BaseRepository<TransactionRecord> {
 
   async getFeesTotalForMonth(): Promise<number> {
     const now = new Date();
-    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+    // Local month start to match SMS-imported transaction date storage.
+    const startOfMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01T00:00:00`;
     const feeCategories = ['AIRTIME', 'FULIZA', 'WITHDRAWAL', 'SUBSCRIPTION', 'Fee'];
     const placeholders = feeCategories.map(() => '?').join(',');
     const row = await this.db.getFirstAsync<{ total: number | null }>(

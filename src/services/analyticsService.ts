@@ -132,9 +132,10 @@ export async function computeAnalytics(
   // Budget vs actual
   const start = new Date(startDate);
   const budgets = await budgetRepo.findAll();
+  // Use local wall-clock month to match SMS-imported transaction storage.
   const spentByCategory = await budgetRepo.getSpentByCategory(
-    start.getUTCFullYear(),
-    start.getUTCMonth() + 1
+    start.getFullYear(),
+    start.getMonth() + 1
   );
   const spentMap = new Map(spentByCategory.map((s) => [s.category, s.spent]));
 
@@ -299,7 +300,9 @@ function computeMonthlyTrend(transactions: { date: string; transaction_type: str
 
   for (let i = 11; i >= 0; i--) {
     const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-    const monthKey = d.toISOString().slice(0, 7);
+    // Local YYYY-MM key so it matches the local datetime strings stored by
+    // the SMS parser.
+    const monthKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
     const monthName = d.toLocaleString('default', { month: 'short' });
 
     let expense = 0;

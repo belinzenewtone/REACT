@@ -12,6 +12,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
+import { useSQLiteContext } from 'expo-sqlite';
 import { useThemeColors } from '../../hooks/useThemeColors';
 import { spacing, typography, borderRadius } from '../../theme';
 import { GlassCard } from '../../components/common/GlassCard';
@@ -61,6 +62,16 @@ function CounterCell({ value, label, valueColor, colors }: { value: string; labe
   );
 }
 
+/** Pick the most authoritative timestamp to display for an audit entry. */
+function auditDisplayTimestamp(entry?: AuditEntry): string | null | undefined {
+  if (!entry) return undefined;
+  // For imported transactions, the transactions table holds the real SMS date.
+  if (entry.smsDate && (entry.outcome.startsWith('imported_') || entry.outcome.startsWith('retry_imported'))) {
+    return entry.smsDate;
+  }
+  return entry.createdAt;
+}
+
 function formatTimestamp(iso: string | null | undefined): string {
   if (!iso) return 'Never';
   try {
@@ -74,6 +85,44 @@ function formatTimestamp(iso: string | null | undefined): string {
   } catch {
     return iso;
   }
+}
+
+/**
+ * Resolve the authoritative SMS timestamp for audit entries that resulted in
+ * an imported transaction. The audit row's `createdAt` records when the
+ * message was processed (UTC), which can be hours behind the real SMS date
+ * for historical imports. The transactions table stores the actual SMS date
+ * parsed from the message, so use that as the source of truth.
+ */
+async function enrichAuditWithSmsDates(
+  db: any,
+  entries: AuditEntry[],
+): Promise<AuditEntry[]> {
+  if (entries.length === 0) return entries;
+  const codes = entries
+    .map((e) => e.mpesaCode)
+    .filter((c): c is string => !!c);
+  const dateByCode = new Map<string, string>();
+  if (codes.length > 0) {
+    const placeholders = codes.map(() => '?').join(',');
+    try {
+      const rows = (await db.getAllAsync(
+        `SELECT mpesa_code, date FROM transactions WHERE mpesa_code IN (${placeholders}) AND deleted_at IS NULL`,
+        codes,
+      )) as { mpesa_code: string; date: string }[];
+      for (const row of rows) {
+        if (row.mpesa_code && row.date) {
+          dateByCode.set(row.mpesa_code, row.date);
+        }
+      }
+    } catch (e) {
+      console.warn('enrichAuditWithSmsDates lookup failed', e);
+    }
+  }
+  return entries.map((e) => ({
+    ...e,
+    smsDate: dateByCode.get(e.mpesaCode ?? '') ?? undefined,
+  }));
 }
 
 function outcomeColor(outcome: string, colors: any): string {
@@ -117,6 +166,7 @@ function rejectionReasonLabel(reason: string): string {
 export function SmsImportHealthScreen() {
   const colors = useThemeColors();
   const navigation = useNavigation<any>();
+  const db = useSQLiteContext();
   const [stats, setStats] = useState<SmsStats | null>(null);
   const [auditEntries, setAuditEntries] = useState<AuditEntry[]>([]);
   const [rejections, setRejections] = useState<RejectionEntry[]>([]);
@@ -142,7 +192,10 @@ export function SmsImportHealthScreen() {
         isIgnoringBatteryOptimizations(),
       ]);
       setStats(s);
-      setAuditEntries(entries);
+      // Enrich imported audit rows with the real SMS date from the transactions
+      // table so the health screen shows the message timestamp, not the import
+      // processing time.
+      setAuditEntries(await enrichAuditWithSmsDates(db, entries));
       setRejections(recentRejections);
       setReceiverEnabled(receiverStatus.enabled);
       setLastFireMs(receiverStatus.lastFireMs);
@@ -152,7 +205,7 @@ export function SmsImportHealthScreen() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [db]);
 
   // Reload whenever the screen gains focus AND the global data version has
   // advanced (avoids redundant reloads on every focus change).
@@ -377,13 +430,13 @@ export function SmsImportHealthScreen() {
 
         {/* Activity */}
         <SectionCard title="Activity" colors={colors}>
-          <TimestampRow icon="mail-outline" label="Last SMS activity" value={formatTimestamp(lastEntry?.createdAt)} colors={colors} />
+          <TimestampRow icon="mail-outline" label="Last SMS activity" value={formatTimestamp(auditDisplayTimestamp(lastEntry))} colors={colors} />
           <View style={[styles.divider, { backgroundColor: colors.border }]} />
-          <TimestampRow icon="flash-outline" label="Last realtime capture" value={formatTimestamp(lastRealtime?.createdAt)} colors={colors} />
+          <TimestampRow icon="flash-outline" label="Last realtime capture" value={formatTimestamp(auditDisplayTimestamp(lastRealtime))} colors={colors} />
           <View style={[styles.divider, { backgroundColor: colors.border }]} />
-          <TimestampRow icon="download-outline" label="Last batch import" value={formatTimestamp(lastBatch?.createdAt ?? stats?.lastImportAt)} colors={colors} />
+          <TimestampRow icon="download-outline" label="Last batch import" value={formatTimestamp(auditDisplayTimestamp(lastBatch) ?? stats?.lastImportAt)} colors={colors} />
           <View style={[styles.divider, { backgroundColor: colors.border }]} />
-          <TimestampRow icon="checkmark-circle-outline" label="Last successful import" value={formatTimestamp(lastImported?.createdAt)} colors={colors} />
+          <TimestampRow icon="checkmark-circle-outline" label="Last successful import" value={formatTimestamp(auditDisplayTimestamp(lastImported))} colors={colors} />
         </SectionCard>
 
         {/* Actions */}
@@ -513,7 +566,7 @@ export function SmsImportHealthScreen() {
                         </Text>
                       )}
                       <Text style={[styles.auditTime, { color: colors.textTertiary }]}>
-                        {formatTimestamp(entry.createdAt)}
+                        {formatTimestamp(auditDisplayTimestamp(entry))}
                       </Text>
                     </View>
                   </View>

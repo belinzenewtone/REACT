@@ -69,6 +69,8 @@ export interface AuditEntry {
   failureReason: string | null;
   confidence: string | null;
   createdAt: string;
+  /** Authoritative SMS date for imported entries (enriched from transactions table). */
+  smsDate?: string;
 }
 
 export interface RejectionEntry {

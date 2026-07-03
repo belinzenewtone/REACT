@@ -7,7 +7,7 @@ import { useSQLiteContext } from 'expo-sqlite';
 import { format, startOfWeek, endOfWeek } from 'date-fns';
 import { useThemeColors } from '../../hooks/useThemeColors';
 import { spacing, typography, borderRadius } from '../../theme';
-import { formatCurrency } from '../../utils/formatters';
+import { formatCurrency, toLocalIso } from '../../utils/formatters';
 import { GlassCard } from '../../components/common/GlassCard';
 import { useDataVersion } from '../../store/dataVersion';
 import { useAppStore } from '../../store';
@@ -76,8 +76,12 @@ export function WeekReviewScreen() {
   const load = useCallback(async () => {
     setIsLoading(true);
     try {
-      const weekStartISO = weekStart.toISOString();
-      const weekEndISO = weekEnd.toISOString();
+      // Transactions imported from SMS are stored as local wall-clock strings,
+      // so query them with local datetime boundaries.
+      const txWeekStart = toLocalIso(weekStart);
+      const txWeekEnd = toLocalIso(weekEnd);
+      // Tasks/events are stored as UTC ISO strings from JS `nowIso()`.
+      const taskWeekStart = weekStart.toISOString();
 
       // `transaction_type` is one of: 'expense' | 'income' | 'transfer' | 'fuliza'.
       // We only sum EXPENSES for the "spend" figure — the prior filter
@@ -91,7 +95,7 @@ export function WeekReviewScreen() {
                AND transaction_type = 'expense'
                AND status = 'completed'
                AND deleted_at IS NULL`,
-          [weekStartISO, weekEndISO]
+          [txWeekStart, txWeekEnd]
         ),
         db.getFirstAsync<{ category: string }>(
           `SELECT category, SUM(amount) as total FROM transactions
@@ -100,14 +104,14 @@ export function WeekReviewScreen() {
                AND status = 'completed'
                AND deleted_at IS NULL
              GROUP BY category ORDER BY total DESC LIMIT 1`,
-          [weekStartISO, weekEndISO]
+          [txWeekStart, txWeekEnd]
         ),
         db.getFirstAsync<{ count: number }>(
           `SELECT COUNT(*) as count FROM tasks
              WHERE status = 'completed'
                AND (completed_at >= ? OR (completed_at IS NULL AND updated_at >= ?))
                AND deleted_at IS NULL`,
-          [weekStartISO, weekStartISO]
+          [taskWeekStart, taskWeekStart]
         ),
         db.getFirstAsync<{ count: number }>(
           `SELECT COUNT(*) as count FROM tasks
@@ -127,7 +131,7 @@ export function WeekReviewScreen() {
              AND transaction_type = 'expense'
              AND status = 'completed'
              AND deleted_at IS NULL`,
-        [prevStart.toISOString(), prevEnd.toISOString()]
+        [toLocalIso(prevStart), toLocalIso(prevEnd)]
       );
 
       const totalSpend = spendRow?.total ?? 0;

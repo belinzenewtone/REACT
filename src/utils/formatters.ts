@@ -92,6 +92,25 @@ export function formatRelativeDay(date: string | Date | number): string {
   return format(d, 'dd MMM');
 }
 
+/**
+ * Convert a local Date to an ISO-like string without timezone suffix.
+ *
+ * SMS-imported transactions are stored as local wall-clock strings
+ * (YYYY-MM-DDTHH:MM:SS). Comparing them with UTC ISO strings works for fixed
+ * offsets but can drift across DST. This helper produces a local datetime
+ * string so period-boundary comparisons align with the stored values.
+ */
+export function toLocalIso(date: Date): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  const h = String(date.getHours()).padStart(2, '0');
+  const min = String(date.getMinutes()).padStart(2, '0');
+  const s = String(date.getSeconds()).padStart(2, '0');
+  const ms = String(date.getMilliseconds()).padStart(3, '0');
+  return `${y}-${m}-${d}T${h}:${min}:${s}.${ms}`;
+}
+
 export function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
