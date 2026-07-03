@@ -269,9 +269,9 @@ const styles = StyleSheet.create({
     padding: 2,
   },
   dayCircle: {
-    flex: 1,
     width: '100%',
-    borderRadius: 999,
+    aspectRatio: 1,
+    borderRadius: borderRadius.lg,
     justifyContent: 'center',
     alignItems: 'center',
   },

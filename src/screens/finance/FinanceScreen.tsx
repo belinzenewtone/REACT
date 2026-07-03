@@ -35,7 +35,7 @@ import { TransactionListItem } from '../../components/finance/TransactionListIte
 import { GlassCard } from '../../components/common/GlassCard';
 import { ImportCsvSheet } from '../../components/finance/ImportCsvSheet';
 import { ImportSmsSheet, type SmsScanPeriod } from '../../components/finance/ImportSmsSheet';
-import { importHistoricalSms } from '../../../modules/lifeos-sms';
+import { importHistoricalSms, checkPermissions, requestSmsPermissions } from '../../../modules/lifeos-sms';
 import { CATEGORY_COLORS } from '../../constants';
 import { checkAllBudgetThresholds, checkBudgetThresholds } from '../../services/budgetAlertService';
 import { formatCurrency, formatDate, formatRelativeDay } from '../../utils/formatters';
@@ -94,6 +94,8 @@ export function FinanceScreen() {
   const [smsSheetVisible, setSmsSheetVisible] = useState(false);
   const [smsImporting, setSmsImporting] = useState(false);
   const [smsImportBanner, setSmsImportBanner] = useState<string | null>(null);
+  const [smsPermissionsGranted, setSmsPermissionsGranted] = useState(true);
+  const [requestingSmsPerms, setRequestingSmsPerms] = useState(false);
 
   useEffect(() => {
     loadTransactions(repo, true);
@@ -114,15 +116,49 @@ export function FinanceScreen() {
     repo.getUncategorized().then((rows) => setUncategorizedCount(rows.length));
   }, [db, loadDashboard, loadBudgets, loadPlanner, repo]);
 
+  const refreshSmsPermissionState = useCallback(async () => {
+    try {
+      const { receive, read } = await checkPermissions();
+      setSmsPermissionsGranted(receive && read);
+    } catch {
+      setSmsPermissionsGranted(false);
+    }
+  }, []);
+
+  const handleRequestSmsPermissions = useCallback(async () => {
+    setRequestingSmsPerms(true);
+    try {
+      const { granted } = await requestSmsPermissions();
+      await refreshSmsPermissionState();
+      if (granted) {
+        setSmsImportBanner('SMS access granted · ready to import');
+        setTimeout(() => setSmsImportBanner(null), 3000);
+      } else {
+        setSmsImportBanner('SMS permission denied · enable it in device Settings');
+        setTimeout(() => setSmsImportBanner(null), 3000);
+      }
+    } catch {
+      setSmsImportBanner('Could not request SMS permissions');
+      setTimeout(() => setSmsImportBanner(null), 3000);
+    } finally {
+      setRequestingSmsPerms(false);
+    }
+  }, [refreshSmsPermissionState]);
+
+  useEffect(() => {
+    refreshSmsPermissionState();
+  }, [refreshSmsPermissionState]);
+
   useFocusEffect(
     useCallback(() => {
+      refreshSmsPermissionState();
       if (dataVersion > loadedVersion.current) {
         loadedVersion.current = dataVersion;
         loadTransactions(repo, true);
         loadDashboard(db);
         loadBudgets(db);
       }
-    }, [repo, db, loadTransactions, loadDashboard, loadBudgets, dataVersion])
+    }, [repo, db, loadTransactions, loadDashboard, loadBudgets, dataVersion, refreshSmsPermissionState])
   );
 
   const handleLoadMore = useCallback(() => {
@@ -332,6 +368,22 @@ export function FinanceScreen() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.bgPrimary }]} edges={['top']}>
+      {!smsPermissionsGranted && (
+        <TouchableOpacity
+          style={[styles.smsPermBanner, { backgroundColor: colors.warning + '16', borderColor: colors.warning }]}
+          onPress={handleRequestSmsPermissions}
+          disabled={requestingSmsPerms}
+          activeOpacity={0.8}
+        >
+          <Ionicons name="chatbubble-outline" size={16} color={colors.warning} />
+          <Text style={[styles.smsPermBannerText, { color: colors.warning }]} numberOfLines={2}>
+            {requestingSmsPerms
+              ? 'Requesting SMS access…'
+              : 'Tap to enable SMS access for M-Pesa imports'}
+          </Text>
+          {!requestingSmsPerms && <Ionicons name="chevron-forward" size={16} color={colors.warning} />}
+        </TouchableOpacity>
+      )}
       {smsImportBanner && (
         <View style={[
           styles.smsBanner,
@@ -845,6 +897,22 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
   },
   smsBannerText: {
+    flex: 1,
+    fontSize: typography.sizes.sm,
+    fontWeight: typography.weights.medium,
+  },
+  smsPermBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginHorizontal: spacing.screenHorizontal,
+    marginTop: spacing.sm,
+    paddingHorizontal: spacing.base,
+    paddingVertical: spacing.sm,
+    borderRadius: borderRadius.lg,
+    borderWidth: 1,
+  },
+  smsPermBannerText: {
     flex: 1,
     fontSize: typography.sizes.sm,
     fontWeight: typography.weights.medium,

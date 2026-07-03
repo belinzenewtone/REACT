@@ -55,10 +55,12 @@ export function SliderRow({
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
       onStartShouldSetPanResponderCapture: () => true,
-      onMoveShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponderCapture: () => true,
+      onMoveShouldSetPanResponder: (_, gesture) => Math.abs(gesture.dx) > 4,
+      onMoveShouldSetPanResponderCapture: (_, gesture) => Math.abs(gesture.dx) > 4,
       onPanResponderGrant: (event) => updateFromLocationX(event.nativeEvent.locationX),
       onPanResponderMove: (event) => updateFromLocationX(event.nativeEvent.locationX),
+      onPanResponderTerminationRequest: () => false,
+      onShouldBlockNativeResponder: () => true,
     })
   ).current;
 

@@ -16,6 +16,7 @@ import { useThemeColors } from '../../hooks/useThemeColors';
 import { useAppStore, type OnboardingGoal } from '../../store';
 import { requestNotificationPermissions } from '../../services/notificationService';
 import { syncAllNotifications } from '../../services/notificationSyncService';
+import { requestSmsPermissions, checkPermissions } from '../../../modules/lifeos-sms';
 import { useSQLiteContext } from 'expo-sqlite';
 import { generateId, nowIso } from '../../database';
 import { HeroSurface } from '../../components/common/HeroSurface';
@@ -23,14 +24,15 @@ import { InlineBanner } from '../../components/common/InlineBanner';
 import { GlassCard } from '../../components/common/GlassCard';
 import { spacing, typography, borderRadius, motion } from '../../theme';
 
-const TOTAL_STEPS = 5;
+const TOTAL_STEPS = 6;
 
 const STEP_SUBTITLES: Record<number, string> = {
   1: 'A calm setup to personalize your planning and finance workspace.',
   2: 'Understand the core pillars that shape your daily flow.',
   3: 'Tell us your name and what you want to focus on.',
   4: 'Allow notifications so timers and reminders always reach you.',
-  5: 'Final checks before launching into your dashboard.',
+  5: 'Allow SMS access so M-Pesa imports and Fuliza tracking work automatically.',
+  6: 'Final checks before launching into your dashboard.',
 };
 
 const GOALS: Array<{ key: OnboardingGoal; title: string; description: string; icon: keyof typeof Ionicons.glyphMap }> = [
@@ -56,6 +58,8 @@ export function OnboardingScreen() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [notificationsAllowed, setNotificationsAllowed] = useState(false);
+  const [smsAllowed, setSmsAllowed] = useState(false);
+  const [smsChecked, setSmsChecked] = useState(false);
 
   const stepFade = useRef(new Animated.Value(1)).current;
   const stepSlide = useRef(new Animated.Value(0)).current;
@@ -180,6 +184,21 @@ export function OnboardingScreen() {
                         onSkip={() => {
                           updateSettings({ notificationsEnabled: false });
                           setNotificationsAllowed(false);
+                        }}
+                      />
+                    );
+                  case 5:
+                    return (
+                      <SmsPermissionStep
+                        allowed={smsAllowed}
+                        onAllow={async () => {
+                          const { granted } = await requestSmsPermissions();
+                          setSmsAllowed(granted);
+                          setSmsChecked(true);
+                        }}
+                        onSkip={() => {
+                          setSmsAllowed(false);
+                          setSmsChecked(true);
                         }}
                       />
                     );
@@ -375,6 +394,44 @@ function PermissionStep({
         <>
           <TouchableOpacity style={[styles.allowButton, { backgroundColor: colors.accentPrimary }]} onPress={onAllow}>
             <Text style={[styles.allowButtonText, { color: colors.textInverse }]}>Allow Notifications</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={onSkip} style={styles.skipButton}>
+            <Text style={[styles.skipText, { color: colors.textSecondary }]}>Skip for now</Text>
+          </TouchableOpacity>
+        </>
+      )}
+    </View>
+  );
+}
+
+function SmsPermissionStep({
+  allowed,
+  onAllow,
+  onSkip,
+}: {
+  allowed: boolean;
+  onAllow: () => void;
+  onSkip: () => void;
+}) {
+  const colors = useThemeColors();
+  return (
+    <View style={styles.stepCol}>
+      <Text style={[styles.stepTitle, { color: colors.textPrimary }]}>Smart finance imports</Text>
+      <Text style={[styles.stepSubtitle, { color: colors.textSecondary }]}>
+        Allow SMS access so M-Pesa transactions and Fuliza activity can be imported automatically.
+      </Text>
+      <PillarCard icon="cash-outline" title="Automatic M-Pesa imports" description="Spending, income, and Fuliza draws appear without manual entry." />
+      <PillarCard icon="shield-checkmark-outline" title="On-device only" description="Your messages are read and parsed locally — nothing is uploaded." />
+
+      {allowed ? (
+        <View style={styles.allowedRow}>
+          <Ionicons name="checkmark-circle" size={20} color={colors.accentPrimary} />
+          <Text style={[styles.allowedText, { color: colors.accentPrimary }]}>SMS access allowed</Text>
+        </View>
+      ) : (
+        <>
+          <TouchableOpacity style={[styles.allowButton, { backgroundColor: colors.accentPrimary }]} onPress={onAllow}>
+            <Text style={[styles.allowButtonText, { color: colors.textInverse }]}>Allow SMS Access</Text>
           </TouchableOpacity>
           <TouchableOpacity onPress={onSkip} style={styles.skipButton}>
             <Text style={[styles.skipText, { color: colors.textSecondary }]}>Skip for now</Text>
