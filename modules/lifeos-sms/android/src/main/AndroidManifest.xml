@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
   <!-- SMS permissions — user must grant at runtime (Android 6+) -->
   <uses-permission android:name="android.permission.RECEIVE_SMS" />
@@ -29,6 +30,18 @@
         <action android:name="android.provider.Telephony.SMS_RECEIVED" />
       </intent-filter>
     </receiver>
+
+    <!--
+      Android 14 (API 34) requires the WorkManager foreground service to
+      declare its foregroundServiceType. WorkManager's own manifest doesn't
+      include "dataSync", so calling setForeground(...DATA_SYNC) crashes with
+      MissingForegroundServiceTypeException and the import call is rejected.
+      Merge the type into the library's service declaration.
+    -->
+    <service
+      android:name="androidx.work.impl.foreground.SystemForegroundService"
+      android:foregroundServiceType="dataSync"
+      tools:node="merge" />
   </application>
 
 </manifest>

@@ -11,6 +11,7 @@ import androidx.work.ExistingWorkPolicy
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
+import expo.modules.kotlin.exception.CodedException
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
 import kotlinx.coroutines.Dispatchers
@@ -65,7 +66,9 @@ class SmsReceiverModule : Module() {
         // ── importHistoricalSms ───────────────────────────────────────────────
 
         AsyncFunction("importHistoricalSms") { fromMs: Double, toMs: Double ->
-            val ctx = appContext.reactContext ?: throw Error("No context")
+            // CodedException (not java.lang.Error) so JS receives the actual
+            // reason instead of a generic "has been rejected".
+            val ctx = appContext.reactContext ?: throw CodedException("no_context")
 
             val workData = Data.Builder()
                 .putLong(SmsImportWorker.KEY_FROM_MS, fromMs.toLong())
@@ -86,11 +89,14 @@ class SmsReceiverModule : Module() {
 
             // Block until work completes (max 5 minutes) — AsyncFunction is already suspending
             val info = awaitWork(ctx, request.id)
-                ?: throw Error("SMS import worker did not complete in time")
+                ?: throw CodedException("import_timeout: SMS import worker did not complete in time")
 
             if (info.state == WorkInfo.State.FAILED) {
                 val error = info.outputData.getString("error") ?: "import_failed"
-                throw Error(error)
+                throw CodedException(error)
+            }
+            if (info.state == WorkInfo.State.CANCELLED) {
+                throw CodedException("import_cancelled")
             }
 
             val output = info.outputData
@@ -107,14 +113,14 @@ class SmsReceiverModule : Module() {
         // ── getStats ──────────────────────────────────────────────────────────
 
         AsyncFunction("getStats") {
-            val ctx = appContext.reactContext ?: throw Error("No context")
+            val ctx = appContext.reactContext ?: throw CodedException("no_context")
             DbWriter.getInstance(ctx).getStats()
         }
 
         // ── getAuditLog ───────────────────────────────────────────────────────
 
         AsyncFunction("getAuditLog") { limit: Int ->
-            val ctx = appContext.reactContext ?: throw Error("No context")
+            val ctx = appContext.reactContext ?: throw CodedException("no_context")
             DbWriter.getInstance(ctx).getAuditLog(limit.coerceIn(1, 500))
         }
 
@@ -133,7 +139,7 @@ class SmsReceiverModule : Module() {
         // ── retryQuarantined ─────────────────────────────────────────────────
 
         AsyncFunction("retryQuarantined") {
-            val ctx = appContext.reactContext ?: throw Error("No context")
+            val ctx = appContext.reactContext ?: throw CodedException("no_context")
             val db = DbWriter.getInstance(ctx)
             val quarantined = db.getQuarantinedMessages()
             var importedCount = 0
@@ -169,7 +175,7 @@ class SmsReceiverModule : Module() {
         // the transaction if it now passes the confidence threshold.
 
         AsyncFunction("retrySingle") { id: Double ->
-            val ctx = appContext.reactContext ?: throw Error("No context")
+            val ctx = appContext.reactContext ?: throw CodedException("no_context")
             val db = DbWriter.getInstance(ctx)
             val entry = db.getQuarantinedById(id.toLong())
                 ?: return@AsyncFunction mapOf("ok" to false, "error" to "not_found")
@@ -354,20 +360,4 @@ class SmsReceiverModule : Module() {
             if (info != null && (info.state == WorkInfo.State.SUCCEEDED || info.state == WorkInfo.State.FAILED || info.state == WorkInfo.State.CANCELLED)) {
                 return info
             }
-            Thread.sleep(400)
-        }
-        return null
-    }
-
-    companion object {
-        const val TAG = "LifeOS/SmsReceiverModule"
-
-        /**
-         * Singleton handle so WorkManager workers can emit events to JS.
-         * Null when no JS context is attached (app killed or not yet started).
-         */
-        @Volatile
-        var instance: SmsReceiverModule? = null
-            internal set
-    }
-}
+            Thread.sleep(400

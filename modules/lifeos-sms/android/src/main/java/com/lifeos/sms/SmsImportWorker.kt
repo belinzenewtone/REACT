@@ -47,8 +47,15 @@ class SmsImportWorker(
             var total = 0       // M-Pesa candidate bodies (matches reference semantics)
             var imported = 0; var duplicates = 0; var quarantined = 0; var failed = 0
 
-        // Notify foreground immediately (required before long work begins)
-        setForeground(buildForegroundInfo("Scanning M-Pesa messages…"))
+        // Try to promote to a foreground service so long imports survive OS
+        // pressure. NON-FATAL: on some devices/OS versions (background start
+        // restrictions, missing FGS type) this throws — the import must still
+        // run as a regular worker instead of rejecting the whole call.
+        try {
+            setForeground(buildForegroundInfo("Scanning M-Pesa messages…"))
+        } catch (e: Exception) {
+            Log.w(TAG, "setForeground unavailable, continuing as background worker: ${e.message}")
+        }
 
         try {
             // Require READ_SMS up front — without it the content resolver returns an
@@ -231,9 +238,11 @@ class SmsImportWorker(
                         failed++
                     }
 
-                    // Update notification every 25 records
+                    // Update notification every 25 records (best effort)
                     if (total % 25 == 0) {
-                        setForeground(buildForegroundInfo("Imported $imported of ~$total M-Pesa messages…"))
+                        try {
+                            setForeground(buildForegroundInfo("Imported $imported of ~$total M-Pesa messages…"))
+                        } catch (_: Exception) {}
                     }
                 }
 
@@ -295,20 +304,4 @@ class SmsImportWorker(
                 as android.app.NotificationManager
             if (nm.getNotificationChannel(SmsProcessWorker.NOTIF_CHANNEL_ID) == null) {
                 nm.createNotificationChannel(
-                    android.app.NotificationChannel(
-                        SmsProcessWorker.NOTIF_CHANNEL_ID,
-                        "SMS Import",
-                        android.app.NotificationManager.IMPORTANCE_LOW,
-                    )
-                )
-            }
-        }
-    }
-
-    companion object {
-        const val KEY_FROM_MS  = "from_ms"
-        const val KEY_TO_MS    = "to_ms"
-        const val NOTIF_ID_IMPORT = 9002
-        const val TAG = "LifeOS/SmsImportWorker"
-    }
-}
+        
