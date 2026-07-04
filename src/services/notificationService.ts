@@ -21,8 +21,8 @@ try {
   // Native module unavailable (Expo Go) — notifications are silently skipped
 }
 
-export const NOTIFICATION_CHANNEL_ID = 'lifeos-reminders';
-export const ALARM_CHANNEL_ID = 'lifeos-alarms';
+const NOTIFICATION_CHANNEL_ID = 'lifeos-reminders';
+const ALARM_CHANNEL_ID = 'lifeos-alarms';
 const DAILY_DIGEST_ID = 'lifeos-daily-digest';
 
 export async function createNotificationChannel(): Promise<void> {

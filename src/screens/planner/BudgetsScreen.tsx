@@ -1,11 +1,12 @@
 import React, { useCallback, useMemo, useRef } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, RefreshControl, Alert } from 'react-native';
+import { View, StyleSheet, RefreshControl, Alert } from 'react-native';
+import { FlashList } from '@shopify/flash-list';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
+import { Text, IconButton, Button, useTheme } from 'react-native-paper';
 import { useDataVersion } from '../../store/dataVersion';
 import { useSQLiteContext } from 'expo-sqlite';
-import { useThemeColors } from '../../hooks/useThemeColors';
 import { useBudgetStore } from '../../store';
 import { BudgetRepository } from '../../database/repositories/BudgetRepository';
 import { checkBudgetThresholds } from '../../services/budgetAlertService';
@@ -13,11 +14,17 @@ import { GlassCard } from '../../components/common/GlassCard';
 import { LifeOSSwitch } from '../../components/common/LifeOSSwitch';
 import { CATEGORY_COLORS, CATEGORY_ICONS } from '../../constants';
 import { formatCurrency, clamp } from '../../utils/formatters';
-import { spacing, typography, borderRadius } from '../../theme';
+import { spacing, borderRadius, BOTTOM_NAV_SAFE_AREA } from '../../theme';
 import { animateLayout } from '../../utils/animation';
 
+const SEMANTIC = {
+  success: '#7BC47B',
+  warning: '#F5CB5C',
+  danger: '#FF6B6B',
+};
+
 export function BudgetsScreen() {
-  const colors = useThemeColors();
+  const theme = useTheme();
   const db = useSQLiteContext();
   const navigation = useNavigation<any>();
   const { budgets, isLoading, loadBudgets } = useBudgetStore();
@@ -73,9 +80,13 @@ export function BudgetsScreen() {
     }
   };
 
+  const summaryStatus =
+    summary.percent > 100 ? 'danger' : summary.percent > 80 ? 'warning' : 'success';
+  const summaryColor = SEMANTIC[summaryStatus];
+
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.bgPrimary }]} edges={['top']}>
-      <FlatList
+    <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]} edges={['top']}>
+      <FlashList
         data={budgets}
         keyExtractor={(item) => item.budget.id}
         contentContainerStyle={styles.listContent}
@@ -83,32 +94,40 @@ export function BudgetsScreen() {
           <RefreshControl
             refreshing={isLoading}
             onRefresh={() => loadBudgets(db)}
-            tintColor={colors.accentPrimary}
-            colors={[colors.accentPrimary]}
+            tintColor={theme.colors.primary}
+            colors={[theme.colors.primary]}
           />
         }
         ListHeaderComponent={
           <>
             <View style={styles.header}>
-              <TouchableOpacity onPress={() => navigation.goBack()}>
-                <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
-              </TouchableOpacity>
+              <IconButton
+                icon={() => <Ionicons name="arrow-back" size={22} color={theme.colors.onSurface} />}
+                onPress={() => navigation.goBack()}
+              />
               <View style={styles.headerText}>
-                <Text style={[styles.overline, { color: colors.textSecondary }]}>Spending Guardrails</Text>
-                <Text style={[styles.title, { color: colors.textPrimary }]} numberOfLines={1}>Budgets</Text>
+                <Text variant="labelSmall" style={{ color: theme.colors.primary }}>
+                  SPENDING GUARDRAILS
+                </Text>
+                <Text variant="titleLarge" style={{ color: theme.colors.onSurface }} numberOfLines={1}>
+                  Budgets
+                </Text>
               </View>
-              <TouchableOpacity onPress={() => navigation.navigate('BudgetForm')}>
-                <Ionicons name="add" size={24} color={colors.accentPrimary} />
-              </TouchableOpacity>
+              <IconButton
+                icon={() => <Ionicons name="add" size={22} color={theme.colors.primary} />}
+                onPress={() => navigation.navigate('BudgetForm')}
+              />
             </View>
 
             <GlassCard variant="elevated" style={styles.summaryCard}>
               <View style={styles.summaryTop}>
                 <View>
-                  <Text style={[styles.summaryLabel, { color: colors.textSecondary }]}>This Month</Text>
-                  <Text style={[styles.summaryAmount, { color: colors.textPrimary }]} numberOfLines={1}>
+                  <Text variant="bodyMedium" style={{ color: theme.colors.onSurfaceVariant }}>
+                    This Month
+                  </Text>
+                  <Text variant="headlineMedium" style={{ color: theme.colors.onSurface }} numberOfLines={1}>
                     {formatCurrency(summary.totalSpent)}
-                    <Text style={[styles.summarySlash, { color: colors.textTertiary }]}>
+                    <Text variant="bodyLarge" style={{ color: theme.colors.onSurfaceVariant }}>
                       {' '}
                       / {formatCurrency(summary.totalLimit)}
                     </Text>
@@ -117,38 +136,26 @@ export function BudgetsScreen() {
                 <View
                   style={[
                     styles.badge,
-                    {
-                      backgroundColor:
-                        summary.percent > 100 ? colors.danger + '20' : summary.percent > 80 ? colors.warning + '20' : colors.success + '20',
-                    },
+                    { backgroundColor: `${summaryColor}20` },
                   ]}
                 >
-                  <Text
-                    style={[
-                      styles.badgeText,
-                      {
-                        color:
-                          summary.percent > 100 ? colors.danger : summary.percent > 80 ? colors.warning : colors.success,
-                      },
-                    ]}
-                  >
+                  <Text variant="labelSmall" style={{ color: summaryColor }}>
                     {summary.percent > 100 ? 'Over budget' : summary.percent > 80 ? 'Nearing limit' : 'On track'}
                   </Text>
                 </View>
               </View>
-              <View style={[styles.track, { backgroundColor: colors.border }]}>
+              <View style={[styles.track, { backgroundColor: theme.colors.outlineVariant }]}>
                 <View
                   style={[
                     styles.fill,
                     {
                       width: `${clamp(summary.percent, 0, 100)}%`,
-                      backgroundColor:
-                        summary.percent > 100 ? colors.danger : summary.percent > 80 ? colors.warning : colors.success,
+                      backgroundColor: summaryColor,
                     },
                   ]}
                 />
               </View>
-              <Text style={[styles.summaryMeta, { color: colors.textTertiary }]}>
+              <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant, marginTop: spacing.sm }}>
                 {summary.overBudgetCount > 0
                   ? `${summary.overBudgetCount} category${summary.overBudgetCount > 1 ? 'ies' : 'y'} over budget`
                   : summary.totalCount === 0
@@ -158,7 +165,9 @@ export function BudgetsScreen() {
             </GlassCard>
 
             {summary.totalCount > 0 && (
-              <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>Categories</Text>
+              <Text variant="titleLarge" style={{ color: theme.colors.onSurface, marginBottom: spacing.base }}>
+                Categories
+              </Text>
             )}
           </>
         }
@@ -172,11 +181,11 @@ export function BudgetsScreen() {
         )}
         ListEmptyComponent={
           <View style={styles.empty}>
-            <View style={[styles.emptyIcon, { backgroundColor: colors.glassWhite }]}>
-              <Ionicons name="wallet-outline" size={32} color={colors.accentPrimary} />
+            <View style={[styles.emptyIcon, { backgroundColor: theme.colors.surfaceVariant }]}>
+              <Ionicons name="wallet-outline" size={32} color={theme.colors.primary} />
             </View>
-            <Text style={[styles.emptyTitle, { color: colors.textPrimary }]}>No budgets yet</Text>
-            <Text style={[styles.emptyText, { color: colors.textTertiary }]}>
+            <Text variant="titleLarge" style={{ color: theme.colors.onSurface }}>No budgets yet</Text>
+            <Text variant="bodyMedium" style={{ color: theme.colors.onSurfaceVariant, textAlign: 'center', marginTop: spacing.xs }}>
               Tap + to create a spending guardrail for a category.
             </Text>
           </View>
@@ -197,13 +206,13 @@ function BudgetCard({
   onDelete: () => void;
   onToggleActive: (active: boolean) => void;
 }) {
-  const colors = useThemeColors();
-  const categoryColor = CATEGORY_COLORS[item.budget.category] ?? colors.textTertiary;
+  const theme = useTheme();
+  const categoryColor = CATEGORY_COLORS[item.budget.category] ?? theme.colors.onSurfaceVariant;
   const iconName = CATEGORY_ICONS[item.budget.category] ?? 'help-circle';
   const percent = clamp(item.percent, 0, 100);
   const isOver = item.spent > item.budget.limit_amount;
   const isWarning = !isOver && item.percent > 80;
-  const statusColor = isOver ? colors.danger : isWarning ? colors.warning : colors.success;
+  const statusColor = isOver ? SEMANTIC.danger : isWarning ? SEMANTIC.warning : SEMANTIC.success;
   const statusLabel = isOver ? 'Over' : isWarning ? 'Close' : 'On track';
 
   return (
@@ -215,43 +224,56 @@ function BudgetCard({
         <View style={styles.budgetTitleCol}>
           <View style={styles.categoryRow}>
             <View style={[styles.statusDot, { backgroundColor: statusColor }]} />
-            <Text style={[styles.category, { color: colors.textPrimary }]} numberOfLines={1}>{item.budget.category}</Text>
+            <Text variant="bodyLarge" style={{ color: theme.colors.onSurface }} numberOfLines={1}>
+              {item.budget.category}
+            </Text>
           </View>
-          <Text style={[styles.budgetLimit, { color: colors.textTertiary }]} numberOfLines={1}>
+          <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }} numberOfLines={1}>
             {item.budget.period.charAt(0).toUpperCase() + item.budget.period.slice(1).toLowerCase()} · Limit{' '}
             {formatCurrency(item.budget.limit_amount)}
           </Text>
         </View>
         <View style={styles.budgetHeaderActions}>
           <View style={[styles.statusBadge, { backgroundColor: `${statusColor}20` }]}>
-            <Text style={[styles.statusText, { color: statusColor }]}>{statusLabel}</Text>
+            <Text variant="labelSmall" style={{ color: statusColor }}>{statusLabel}</Text>
           </View>
           <LifeOSSwitch value={item.isActive} onValueChange={onToggleActive} />
         </View>
       </View>
 
-      <View style={[styles.track, { backgroundColor: colors.border }]}>
+      <View style={[styles.track, { backgroundColor: theme.colors.outlineVariant }]}>
         <View style={[styles.fill, { width: `${percent}%`, backgroundColor: statusColor }]} />
       </View>
 
       <View style={styles.amounts}>
-        <Text style={[styles.spent, { color: colors.textSecondary }]}>
+        <Text variant="bodyMedium" style={{ color: theme.colors.onSurfaceVariant }}>
           {formatCurrency(item.spent)} spent ({item.percent.toFixed(0)}%)
         </Text>
-        <Text style={[styles.remaining, { color: isOver ? colors.danger : colors.textSecondary }]}>
+        <Text variant="bodyMedium" style={{ color: isOver ? SEMANTIC.danger : theme.colors.onSurfaceVariant, fontWeight: '500' }}>
           {isOver ? `+${formatCurrency(item.spent - item.budget.limit_amount)}` : `${formatCurrency(item.budget.limit_amount - item.spent)} left`}
         </Text>
       </View>
 
-      <View style={[styles.actions, { borderTopColor: colors.border }]}>
-        <TouchableOpacity style={styles.actionButton} onPress={onEdit}>
-          <Ionicons name="create-outline" size={18} color={colors.accentPrimary} />
-          <Text style={[styles.actionText, { color: colors.accentPrimary }]}>Edit</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.actionButton} onPress={onDelete}>
-          <Ionicons name="trash-outline" size={18} color={colors.danger} />
-          <Text style={[styles.actionText, { color: colors.danger }]}>Delete</Text>
-        </TouchableOpacity>
+      <View style={[styles.actions, { borderTopColor: theme.colors.outlineVariant }]}>
+        <Button
+          mode="text"
+          compact
+          icon={() => <Ionicons name="create-outline" size={16} color={theme.colors.primary} />}
+          onPress={onEdit}
+          textColor={theme.colors.primary}
+          style={{ marginRight: spacing.sm }}
+        >
+          Edit
+        </Button>
+        <Button
+          mode="text"
+          compact
+          icon={() => <Ionicons name="trash-outline" size={16} color={theme.colors.error} />}
+          onPress={onDelete}
+          textColor={theme.colors.error}
+        >
+          Delete
+        </Button>
       </View>
     </GlassCard>
   );
@@ -270,20 +292,11 @@ const styles = StyleSheet.create({
   headerText: {
     alignItems: 'center',
   },
-  overline: {
-    fontSize: typography.sizes.xs,
-    fontWeight: typography.weights.medium,
-    textTransform: 'uppercase',
-    letterSpacing: 0.8,
-  },
-  title: {
-    fontSize: typography.sizes.lg,
-    fontWeight: typography.weights.semibold,
-    marginTop: 2,
-  },
   listContent: {
-    paddingHorizontal: spacing.screenHorizontal, paddingVertical: spacing.lg,
+    paddingHorizontal: spacing.screenHorizontal,
+    paddingVertical: spacing.lg,
     paddingTop: spacing.sm,
+    paddingBottom: BOTTOM_NAV_SAFE_AREA,
   },
   summaryCard: {
     marginBottom: spacing.xl,
@@ -294,27 +307,10 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     marginBottom: spacing.base,
   },
-  summaryLabel: {
-    fontSize: typography.sizes.sm,
-    fontWeight: typography.weights.medium,
-  },
-  summaryAmount: {
-    fontSize: typography.sizes['2xl'],
-    fontWeight: typography.weights.bold,
-    marginTop: spacing.xs,
-  },
-  summarySlash: {
-    fontSize: typography.sizes.base,
-    fontWeight: typography.weights.regular,
-  },
   badge: {
     paddingHorizontal: spacing.base,
     paddingVertical: spacing.xs,
     borderRadius: borderRadius.lg,
-  },
-  badgeText: {
-    fontSize: typography.sizes.xs,
-    fontWeight: typography.weights.semibold,
   },
   track: {
     height: 8,
@@ -324,15 +320,6 @@ const styles = StyleSheet.create({
   fill: {
     height: '100%',
     borderRadius: borderRadius.full,
-  },
-  summaryMeta: {
-    fontSize: typography.sizes.sm,
-    marginTop: spacing.sm,
-  },
-  sectionTitle: {
-    fontSize: typography.sizes.lg,
-    fontWeight: typography.weights.semibold,
-    marginBottom: spacing.base,
   },
   budgetCard: {
     marginBottom: spacing.base,
@@ -368,51 +355,21 @@ const styles = StyleSheet.create({
     height: 8,
     borderRadius: borderRadius.full,
   },
-  category: {
-    fontSize: typography.sizes.base,
-    fontWeight: typography.weights.medium,
-    textTransform: 'capitalize',
-  },
-  budgetLimit: {
-    fontSize: typography.sizes.xs,
-    marginTop: 2,
-  },
   statusBadge: {
     paddingHorizontal: spacing.base,
     paddingVertical: spacing.xs,
     borderRadius: borderRadius.lg,
-  },
-  statusText: {
-    fontSize: typography.sizes.xs,
-    fontWeight: typography.weights.semibold,
   },
   amounts: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     marginTop: spacing.sm,
   },
-  spent: {
-    fontSize: typography.sizes.sm,
-  },
-  remaining: {
-    fontSize: typography.sizes.sm,
-    fontWeight: typography.weights.medium,
-  },
   actions: {
     flexDirection: 'row',
     marginTop: spacing.base,
     paddingTop: spacing.base,
     borderTopWidth: 1,
-  },
-  actionButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-    marginRight: spacing.lg,
-  },
-  actionText: {
-    fontSize: typography.sizes.sm,
-    fontWeight: typography.weights.medium,
   },
   empty: {
     paddingVertical: spacing['3xl'],
@@ -425,14 +382,5 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: spacing.base,
-  },
-  emptyTitle: {
-    fontSize: typography.sizes.lg,
-    fontWeight: typography.weights.semibold,
-  },
-  emptyText: {
-    fontSize: typography.sizes.sm,
-    marginTop: spacing.xs,
-    textAlign: 'center',
   },
 });

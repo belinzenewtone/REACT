@@ -1,15 +1,8 @@
 import React, { useEffect, useCallback, useMemo, useRef, useState } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
-  FlatList,
-  RefreshControl,
-  TouchableOpacity,
   ScrollView,
-  Animated,
-  PanResponder,
-  Alert,
   ActivityIndicator,
   AppState,
 } from 'react-native';
@@ -17,6 +10,15 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
+import {
+  Card,
+  Text,
+  Chip,
+  FAB,
+  Button,
+  IconButton,
+  useTheme,
+} from 'react-native-paper';
 import { useDataVersion } from '../../store/dataVersion';
 import {
   startOfDay,
@@ -25,30 +27,22 @@ import {
   endOfWeek,
   startOfMonth,
   endOfMonth,
-  getDate,
-  getDaysInMonth,
 } from 'date-fns';
-import { useThemeColors } from '../../hooks/useThemeColors';
 import { useTransactionStore, useDashboardStore, useBudgetStore, usePlannerStore, useAppStore } from '../../store';
 import { TransactionRepository } from '../../database/repositories/TransactionRepository';
 import { SearchFilterBar } from '../../components/finance/SearchFilterBar';
 import { TransactionListItem } from '../../components/finance/TransactionListItem';
-import { GlassCard } from '../../components/common/GlassCard';
+import { Dropdown } from '../../components/common/Dropdown';
 import { ImportCsvSheet } from '../../components/finance/ImportCsvSheet';
 import { ImportSmsSheet, type SmsScanPeriod } from '../../components/finance/ImportSmsSheet';
 import { importHistoricalSms, checkPermissions, requestSmsPermissions } from '../../../modules/lifeos-sms';
-import { CATEGORY_COLORS } from '../../constants';
-import { checkAllBudgetThresholds, checkBudgetThresholds } from '../../services/budgetAlertService';
-import { formatCurrency, formatDate, formatRelativeDay, toLocalIso } from '../../utils/formatters';
+import { checkAllBudgetThresholds } from '../../services/budgetAlertService';
+import { formatCurrency, formatRelativeDay, toLocalIso } from '../../utils/formatters';
 import { isOutflow, isInflow } from '../../utils/transactionType';
-import { spacing, typography, borderRadius, BOTTOM_NAV_SAFE_AREA } from '../../theme';
-import { animateLayout } from '../../utils/animation';
+import { spacing, borderRadius, BOTTOM_NAV_SAFE_AREA } from '../../theme';
+
 import type { TransactionListItemData } from '../../components/finance/TransactionListItem';
 import type { TransactionPeriod } from '../../store/useTransactionStore';
-
-const CATEGORIES = Object.keys(CATEGORY_COLORS).filter(
-  (c) => c !== 'income' && c !== 'uncategorized'
-);
 
 const PERIODS: { key: TransactionPeriod; label: string }[] = [
   { key: 'all', label: 'All' },
@@ -57,19 +51,13 @@ const PERIODS: { key: TransactionPeriod; label: string }[] = [
   { key: 'month', label: 'Month' },
 ];
 
-interface ActionChip {
-  icon: keyof typeof Ionicons.glyphMap;
-  label: string;
-  onPress: () => void;
-}
-
 interface DateGroup {
   title: string;
   data: TransactionListItemData[];
 }
 
-export function FinanceScreen() {
-  const colors = useThemeColors();
+function FinanceScreenContent() {
+  const theme = useTheme();
   const db = useSQLiteContext();
   const navigation = useNavigation<any>();
   const repo = React.useMemo(() => new TransactionRepository(db), [db]);
@@ -84,7 +72,7 @@ export function FinanceScreen() {
   } = useTransactionStore();
 
   const { todaySpend, weekSpend, loadDashboard } = useDashboardStore();
-  const { budgets, loadBudgets } = useBudgetStore();
+  const { budgets, isLoading: budgetsLoading, loadBudgets } = useBudgetStore();
   const { loans, loadAll: loadPlanner } = usePlannerStore();
   const fulizaLimit = useAppStore((state) => state.settings.fulizaLimit);
 
@@ -151,9 +139,6 @@ export function FinanceScreen() {
     refreshSmsPermissionState();
   }, [refreshSmsPermissionState]);
 
-  // Re-check when the app returns to the foreground — covers the user
-  // granting SMS access from the OS permission dialog or system Settings,
-  // so the "Tap to enable" banner disappears immediately.
   useEffect(() => {
     const sub = AppState.addEventListener('change', (state) => {
       if (state === 'active') refreshSmsPermissionState();
@@ -169,8 +154,6 @@ export function FinanceScreen() {
         loadTransactions(repo, true);
         loadDashboard(db);
         loadBudgets(db);
-        // Also refresh planner data (loans → Fuliza outstanding card) so
-        // imports/edits elsewhere reflect here without a remount.
         loadPlanner(db);
       }
     }, [repo, db, loadTransactions, loadDashboard, loadBudgets, loadPlanner, dataVersion, refreshSmsPermissionState])
@@ -195,8 +178,6 @@ export function FinanceScreen() {
     setSmsImportBanner('Scanning M-Pesa messages…');
     try {
       const result = await importHistoricalSms(now - periodMs[period], now);
-      // Native module writes SQLite from its own connection; force every store
-      // subscribed to dataVersion to reload from disk so the imported rows appear.
       useDataVersion.getState().bump();
       await loadTransactions(repo, true);
       await loadDashboard(db);
@@ -284,29 +265,10 @@ export function FinanceScreen() {
     return sorted.find((b) => b.percent >= 80) ?? sorted[0];
   }, [activeBudgets]);
 
-  const monthEndForecast = useMemo(() => {
-    const now = new Date();
-    const day = getDate(now);
-    const daysInMonth = getDaysInMonth(now);
-    if (day === 0 || daysInMonth === 0) return 0;
-    return Math.round((monthTotals.expense / day) * daysInMonth);
-  }, [monthTotals.expense]);
-
   const totalMonthBudget = useMemo(
     () => activeBudgets.reduce((sum, b) => sum + (b.budget.limit_amount ?? 0), 0),
     [activeBudgets]
   );
-
-  const spendingVelocity = useMemo(() => {
-    if (totalMonthBudget <= 0) return null;
-    const now = new Date();
-    const dayOfMonth = now.getDate();
-    if (dayOfMonth < 3) return null;
-    const dailyRate = monthTotals.expense / dayOfMonth;
-    const projected = dailyRate * getDaysInMonth(now);
-    const overshoot = projected - totalMonthBudget;
-    return overshoot > 0 ? { projected, overshoot } : null;
-  }, [monthTotals.expense, totalMonthBudget]);
 
   const activeBudgetsCount = activeBudgets.length;
 
@@ -314,38 +276,6 @@ export function FinanceScreen() {
   const fulizaOutstanding = useMemo(
     () => fulizaOpenLoans.reduce((sum, l) => sum + (l.draw_amount_kes - l.total_repaid_kes), 0),
     [fulizaOpenLoans]
-  );
-
-  const actionChips: ActionChip[] = [
-    { icon: 'add', label: 'Add', onPress: () => navigation.navigate('TransactionForm') },
-    { icon: 'grid-outline', label: 'Hub', onPress: () => navigation.navigate('Planner') },
-    { icon: 'chatbubble-outline', label: 'Import SMS', onPress: () => setSmsSheetVisible(true) },
-    { icon: 'document-outline', label: 'Import CSV', onPress: () => setCsvSheetVisible(true) },
-    { icon: 'download-outline', label: 'Export Data', onPress: () => navigation.navigate('Export') },
-  ];
-
-  const handleDeleteTransaction = useCallback(
-    async (id: string) => {
-      Alert.alert('Delete transaction', 'Are you sure?', [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            const tx = await repo.findById(id);
-            await repo.softDelete(id);
-            animateLayout();
-            await loadTransactions(repo, true);
-            await loadDashboard(db);
-            await loadBudgets(db);
-            if (tx?.transaction_type === 'expense' && tx.category) {
-              await checkBudgetThresholds(db, tx.category);
-            }
-          },
-        },
-      ]);
-    },
-    [repo, loadTransactions, loadDashboard, loadBudgets, db]
   );
 
   const data: TransactionListItemData[] = transactions.map((t) => ({
@@ -374,308 +304,216 @@ export function FinanceScreen() {
     }));
   }, [data]);
 
-  const renderSectionHeader = (title: string) => (
-    <View style={styles.dateHeader}>
-      <Text style={[styles.dateHeaderText, { color: colors.textSecondary }]}>{title}</Text>
-    </View>
-  );
-
-  const flatData = useMemo(() => {
-    const items: ({ kind: 'header'; title: string } | { kind: 'item'; item: TransactionListItemData })[] = [];
-    for (const group of grouped) {
-      items.push({ kind: 'header', title: group.title });
-      for (const item of group.data) {
-        items.push({ kind: 'item', item });
-      }
+  const renderList = () => {
+    if (data.length === 0) {
+      return (
+        <View style={styles.empty}>
+          <Text variant="bodyLarge" style={{ color: theme.colors.onSurfaceVariant }}>
+            No transactions found
+          </Text>
+        </View>
+      );
     }
-    return items;
-  }, [grouped]);
+
+    return (
+      <>
+        {grouped.map((group) => (
+          <View key={group.title}>
+            <Text variant="labelMedium" style={[styles.dateHeader, { color: theme.colors.onSurfaceVariant }]}>
+              {group.title}
+            </Text>
+            <Card style={{ backgroundColor: theme.colors.surfaceVariant, marginBottom: spacing.base }} mode="elevated">
+              {group.data.map((item, index) => (
+                <React.Fragment key={item.id}>
+                  <TransactionListItem
+                    item={item}
+                    onPress={(id) => navigation.navigate('TransactionDetail', { transactionId: id })}
+                  />
+                  {index < group.data.length - 1 && (
+                    <View style={[styles.divider, { backgroundColor: theme.colors.outlineVariant }]} />
+                  )}
+                </React.Fragment>
+              ))}
+            </Card>
+          </View>
+        ))}
+      </>
+    );
+  };
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.bgPrimary }]} edges={['top']}>
-      <FlatList
-        data={flatData}
-        keyExtractor={(item, index) =>
-          item.kind === 'header' ? `hdr-${item.title}-${index}` : item.item.id
-        }
-        renderItem={({ item }) => {
-          if (item.kind === 'header') {
-            return renderSectionHeader(item.title);
-          }
-          return (
-            <TransactionListItem
-              item={item.item}
-              onPress={(id) => navigation.navigate('TransactionDetail', { transactionId: id })}
-              onDelete={handleDeleteTransaction}
-            />
-          );
-        }}
+    <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]} edges={['top']}>
+      <ScrollView
         contentContainerStyle={styles.listContent}
-        refreshControl={
-          <RefreshControl
-            refreshing={isLoading}
-            onRefresh={() => {
+        onScroll={({ nativeEvent }) => {
+          const { layoutMeasurement, contentOffset, contentSize } = nativeEvent;
+          if (layoutMeasurement.height + contentOffset.y >= contentSize.height - 50) {
+            handleLoadMore();
+          }
+        }}
+        scrollEventThrottle={400}
+      >
+        <View style={styles.header}>
+          <Text variant="headlineSmall" style={{ color: theme.colors.onSurface }} numberOfLines={1}>
+            Finance
+          </Text>
+          <IconButton
+            icon={() => <Ionicons name="refresh" size={22} color={theme.colors.onSurface} />}
+            onPress={() => {
               loadTransactions(repo, true);
               loadDashboard(db);
               loadBudgets(db);
             }}
-            tintColor={colors.accentPrimary}
-            colors={[colors.accentPrimary]}
           />
-        }
-        onEndReached={handleLoadMore}
-        onEndReachedThreshold={0.5}
-        ListHeaderComponent={
-          <>
-            <View style={styles.header}>
-              <Text style={[styles.title, { color: colors.textPrimary }]} numberOfLines={1}>Finance</Text>
-            </View>
+        </View>
 
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.actionChipsContainer}
-            >
-              {actionChips.map((chip) => (
-                <TouchableOpacity
-                  key={chip.label}
-                  style={[styles.actionChip, { backgroundColor: colors.glassWhite, borderColor: colors.border }]}
-                  onPress={chip.onPress}
-                  activeOpacity={0.7}
-                >
-                  <Ionicons name={chip.icon} size={16} color={colors.accentPrimary} />
-                  <Text style={[styles.actionChipLabel, { color: colors.textPrimary }]} numberOfLines={1}>{chip.label}</Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.actionChipsContainer}>
+          <Chip
+            icon={() => <Ionicons name="add" size={16} color={theme.colors.onSurface} />}
+            onPress={() => navigation.navigate('TransactionForm')}
+            style={{ backgroundColor: theme.colors.surfaceVariant, marginRight: spacing.sm }}
+          >
+            Add
+          </Chip>
+          <Chip
+            icon={() => <Ionicons name="chatbubble-outline" size={16} color={theme.colors.onSurface} />}
+            onPress={() => setSmsSheetVisible(true)}
+            style={{ backgroundColor: theme.colors.surfaceVariant, marginRight: spacing.sm }}
+          >
+            Import SMS
+          </Chip>
+          <Chip
+            icon={() => <Ionicons name="document-outline" size={16} color={theme.colors.onSurface} />}
+            onPress={() => setCsvSheetVisible(true)}
+            style={{ backgroundColor: theme.colors.surfaceVariant, marginRight: spacing.sm }}
+          >
+            Import CSV
+          </Chip>
+          <Chip
+            icon={() => <Ionicons name="download-outline" size={16} color={theme.colors.onSurface} />}
+            onPress={() => navigation.navigate('Export')}
+            style={{ backgroundColor: theme.colors.surfaceVariant }}
+          >
+            Export
+          </Chip>
+        </ScrollView>
 
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.metricsRow}
-            >
-              <MetricCard label="Today" amount={todaySpend} />
-              <MetricCard label="Week" amount={weekSpend} />
-              <MetricCard label="Month" amount={monthTotals.expense} />
-            </ScrollView>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.metricsRow}>
+          <MetricCard label="Today" amount={todaySpend} />
+          <MetricCard label="Week" amount={weekSpend} />
+          <MetricCard label="Month" amount={monthTotals.expense} />
+        </ScrollView>
 
-            {topAlertBudget && (
-              <TouchableOpacity
-                style={[
-                  styles.guardrailBanner,
-                  {
-                    backgroundColor:
-                      topAlertBudget.percent >= 100
-                        ? `${colors.danger}16`
-                        : `${colors.warning}16`,
-                    borderColor:
-                      topAlertBudget.percent >= 100 ? colors.danger : colors.warning,
-                  },
-                ]}
-                onPress={() => navigation.navigate('Budgets')}
-                activeOpacity={0.8}
-              >
-                <Ionicons
-                  name="alert-circle"
-                  size={20}
-                  color={topAlertBudget.percent >= 100 ? colors.danger : colors.warning}
-                />
-                <View style={styles.guardrailText}>
-                  <Text
-                    style={[
-                      styles.guardrailTitle,
-                      { color: topAlertBudget.percent >= 100 ? colors.danger : colors.warning },
-                    ]}
-                    numberOfLines={1}
-                  >
-                    {topAlertBudget.percent >= 100 ? 'Over budget' : 'Approaching budget'}
-                  </Text>
-                  <Text style={[styles.guardrailSubtitle, { color: colors.textSecondary }]} numberOfLines={1}>
-                    {topAlertBudget.budget.category} is {Math.round(topAlertBudget.percent)}% used
-                  </Text>
-                </View>
-                <Ionicons name="chevron-forward" size={18} color={colors.textTertiary} />
-              </TouchableOpacity>
-            )}
-
-            {uncategorizedCount > 0 && (
-              <TouchableOpacity
-                style={[styles.uncategorizedBanner, { borderColor: colors.border, backgroundColor: colors.glassWhite }]}
-                onPress={() => navigation.navigate('Categorize')}
-                activeOpacity={0.8}
-              >
-                <Text style={[styles.uncategorizedText, { color: colors.warning }]} numberOfLines={1}>
-                  {uncategorizedCount} transaction{uncategorizedCount === 1 ? '' : 's'} need a category
+        {topAlertBudget && (
+          <Card
+            style={[
+              styles.guardrailBanner,
+              {
+                backgroundColor: topAlertBudget.percent >= 100 ? theme.colors.errorContainer : theme.colors.primaryContainer,
+                borderColor: topAlertBudget.percent >= 100 ? theme.colors.error : theme.colors.primary,
+              },
+            ]}
+            mode="outlined"
+          >
+            <Card.Content style={styles.guardrailContent}>
+              <Ionicons
+                name="alert-circle"
+                size={20}
+                color={topAlertBudget.percent >= 100 ? theme.colors.error : theme.colors.primary}
+              />
+              <View style={styles.guardrailText}>
+                <Text variant="bodyMedium" style={{ color: topAlertBudget.percent >= 100 ? theme.colors.error : theme.colors.primary }}>
+                  {topAlertBudget.percent >= 100 ? 'Over budget' : 'Approaching budget'}
                 </Text>
-                <Text style={[styles.uncategorizedAction, { color: colors.accentPrimary }]} numberOfLines={1}>Organize</Text>
-              </TouchableOpacity>
-            )}
-
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.insightsRow}
-            >
-              <GlassCard style={styles.insightCard}>
-                <View style={styles.infoCardHeader}>
-                  <Text style={[styles.infoCardLabel, { color: colors.textSecondary }]} numberOfLines={1}>Budget</Text>
-                  <TouchableOpacity onPress={() => navigation.navigate('Budgets')}>
-                    <Text style={[styles.infoCardAction, { color: colors.accentPrimary }]} numberOfLines={1}>View</Text>
-                  </TouchableOpacity>
-                </View>
-                <Text style={[styles.infoCardAmount, { color: colors.textPrimary }]} numberOfLines={1}>
-                  {formatCurrency(totalMonthBudget, { decimals: 0 })}
-                </Text>
-                <Text style={[styles.infoCardSub, { color: colors.textTertiary }]} numberOfLines={1}>
-                  {activeBudgetsCount} guardrail{activeBudgetsCount === 1 ? '' : 's'}
-                </Text>
-              </GlassCard>
-
-              <GlassCard style={styles.insightCard}>
-                <View style={styles.infoCardHeader}>
-                  <Text style={[styles.infoCardLabel, { color: colors.textSecondary }]} numberOfLines={1}>Month-End Forecast</Text>
-                </View>
-                <Text style={[styles.infoCardAmount, { color: colors.textPrimary }]} numberOfLines={1}>
-                  {formatCurrency(monthEndForecast, { decimals: 0 })}
-                </Text>
-                <Text style={[styles.infoCardSub, { color: colors.textTertiary }]} numberOfLines={1}>
-                  based on current pace
-                </Text>
-              </GlassCard>
-
-              {fulizaOpenLoans.length > 0 && (
-                <GlassCard style={styles.insightCard}>
-                  <View style={styles.infoCardHeader}>
-                    <Text style={[styles.infoCardLabel, { color: colors.textSecondary }]} numberOfLines={1}>Fuliza Outstanding</Text>
-                  </View>
-                  <Text style={[styles.infoCardAmount, { color: colors.warning }]} numberOfLines={1}>
-                    {formatCurrency(fulizaOutstanding, { decimals: 0 })}
-                  </Text>
-                  <Text style={[styles.infoCardSub, { color: colors.textTertiary }]} numberOfLines={1}>
-                    {fulizaOpenLoans.length} open loan{fulizaOpenLoans.length === 1 ? '' : 's'}
-                    {fulizaLimit ? ` · Limit ${formatCurrency(fulizaLimit, { decimals: 0 })}` : ''}
-                  </Text>
-                </GlassCard>
-              )}
-
-              {feesTotal > 0 && (
-                <TouchableOpacity onPress={() => navigation.navigate('FeeAnalytics')} activeOpacity={0.8}>
-                  <GlassCard style={styles.insightCard}>
-                    <View style={styles.infoCardHeader}>
-                      <Text style={[styles.infoCardLabel, { color: colors.textSecondary }]} numberOfLines={1}>Service Charges</Text>
-                    </View>
-                    <Text style={[styles.infoCardAmount, { color: colors.warning }]} numberOfLines={1}>
-                      {formatCurrency(feesTotal, { decimals: 0 })}
-                    </Text>
-                    <Text style={[styles.infoCardSub, { color: colors.textTertiary }]} numberOfLines={1}>
-                      Airtime, Fuliza &amp; subscriptions
-                    </Text>
-                  </GlassCard>
-                </TouchableOpacity>
-              )}
-
-              {spendingVelocity && (
-                <GlassCard style={styles.insightCard}>
-                  <Text style={[styles.infoCardLabel, { color: colors.warning }]} numberOfLines={1}>Spending pace</Text>
-                  <Text style={[styles.infoCardAmount, { color: colors.textPrimary }]} numberOfLines={1}>
-                    {formatCurrency(spendingVelocity.projected, { decimals: 0 })} projected
-                  </Text>
-                  <Text style={[styles.infoCardSub, { color: colors.warning }]} numberOfLines={1}>
-                    {formatCurrency(spendingVelocity.overshoot, { decimals: 0 })} over budget
-                  </Text>
-                </GlassCard>
-              )}
-            </ScrollView>
-
-            <View style={styles.periodFilter}>
-              {PERIODS.map((p) => {
-                const isSelected = filters.period === p.key;
-                return (
-                  <TouchableOpacity
-                    key={p.key}
-                    style={[
-                      styles.periodChip,
-                      {
-                        backgroundColor: isSelected ? colors.accentPrimary : colors.glassWhite,
-                        borderColor: isSelected ? colors.accentPrimary : colors.border,
-                      },
-                    ]}
-                    onPress={() => setFilters({ period: p.key })}
-                  >
-                    <Text
-                      style={[
-                        styles.periodChipText,
-                        { color: isSelected ? colors.textInverse : colors.textPrimary },
-                      ]}
-                      numberOfLines={1}
-                    >
-                      {p.label}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-
-            <SearchFilterBar
-              search={filters.search}
-              onSearchChange={(search) => setFilters({ search })}
-            />
-
-            {/* SMS permission + import banners sit directly under the search bar */}
-            {!smsPermissionsGranted && (
-              <TouchableOpacity
-                style={[styles.smsPermBanner, { backgroundColor: colors.warning + '16', borderColor: colors.warning }]}
-                onPress={handleRequestSmsPermissions}
-                disabled={requestingSmsPerms}
-                activeOpacity={0.8}
-              >
-                <Ionicons name="chatbubble-outline" size={16} color={colors.warning} />
-                <Text style={[styles.smsPermBannerText, { color: colors.warning }]} numberOfLines={2}>
-                  {requestingSmsPerms
-                    ? 'Requesting SMS access…'
-                    : 'Tap to enable SMS access for M-Pesa imports'}
-                </Text>
-                {!requestingSmsPerms && <Ionicons name="chevron-forward" size={16} color={colors.warning} />}
-              </TouchableOpacity>
-            )}
-            {smsImportBanner && (
-              <View style={[
-                styles.smsBanner,
-                { backgroundColor: smsImporting ? colors.accentPrimary : colors.bgSecondary },
-              ]}>
-                {smsImporting && <ActivityIndicator size="small" color="#fff" style={{ marginRight: 8 }} />}
-                <Text style={[styles.smsBannerText, { color: smsImporting ? '#fff' : colors.textPrimary }]} numberOfLines={2}>
-                  {smsImportBanner}
+                <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
+                  {topAlertBudget.budget.category} is {Math.round(topAlertBudget.percent)}% used
                 </Text>
               </View>
-            )}
+              <Ionicons name="chevron-forward" size={18} color={theme.colors.onSurfaceVariant} />
+            </Card.Content>
+          </Card>
+        )}
 
-            <View style={styles.transactionsHeader}>
-              <Text style={[styles.transactionsTitle, { color: colors.textPrimary }]} numberOfLines={1}>
-                Transactions
+        {uncategorizedCount > 0 && (
+          <Card
+            style={{ backgroundColor: theme.colors.surfaceVariant, marginHorizontal: spacing.lg, marginBottom: spacing.base }}
+            mode="elevated"
+            onPress={() => navigation.navigate('Categorize')}
+          >
+            <Card.Content style={styles.uncategorizedContent}>
+              <Text variant="bodyMedium" style={{ color: theme.colors.secondary }}>
+                {uncategorizedCount} transaction{uncategorizedCount === 1 ? '' : 's'} need a category
               </Text>
-              <Text style={[styles.transactionsCount, { color: colors.textTertiary }]} numberOfLines={1}>
-                {data.length}
+              <Text variant="labelLarge" style={{ color: theme.colors.primary }}>Organize</Text>
+            </Card.Content>
+          </Card>
+        )}
+
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.insightsRow}>
+          <InsightCard label="Budget" action="View" amount={totalMonthBudget} sub={`${activeBudgetsCount} guardrails`} onAction={() => navigation.navigate('Budgets')} />
+          <InsightCard label="Fuliza Outstanding" amount={fulizaOutstanding} sub={`${fulizaOpenLoans.length} open`} />
+          {feesTotal > 0 && <InsightCard label="Service Charges" amount={feesTotal} sub="Airtime, Fuliza & subs" />}
+        </ScrollView>
+
+        <Dropdown
+          label="Period"
+          value={filters.period}
+          options={PERIODS.map((p) => ({ value: p.key, label: p.label }))}
+          onChange={(value) => setFilters({ period: value as TransactionPeriod })}
+        />
+
+        <SearchFilterBar
+          search={filters.search}
+          onSearchChange={(search) => setFilters({ search })}
+        />
+
+        {!smsPermissionsGranted && (
+          <Card
+            mode="outlined"
+            onPress={requestingSmsPerms ? undefined : handleRequestSmsPermissions}
+            style={[
+              styles.smsPermBanner,
+              { backgroundColor: theme.colors.primaryContainer, borderColor: theme.colors.primary },
+            ]}
+          >
+            <Card.Content style={styles.smsPermBannerContent}>
+              <Ionicons name="chatbubble-outline" size={16} color={theme.colors.primary} />
+              <Text variant="bodyMedium" style={{ flex: 1, color: theme.colors.primary }} numberOfLines={2}>
+                {requestingSmsPerms
+                  ? 'Requesting SMS access…'
+                  : 'Tap to enable SMS access for M-Pesa imports'}
               </Text>
-            </View>
-          </>
-        }
-        ListEmptyComponent={
-          <View style={styles.empty}>
-            <Text style={[styles.emptyText, { color: colors.textTertiary }]}>
-              No transactions found
+              {!requestingSmsPerms && <Ionicons name="chevron-forward" size={16} color={theme.colors.primary} />}
+            </Card.Content>
+          </Card>
+        )}
+
+        {smsImportBanner && (
+          <View style={[styles.smsBanner, { backgroundColor: smsImporting ? theme.colors.primary : theme.colors.surfaceVariant }]}>
+            {smsImporting && <ActivityIndicator size="small" color={theme.colors.onPrimary} style={{ marginRight: 8 }} />}
+            <Text variant="bodyMedium" style={[styles.smsBannerText, { color: smsImporting ? theme.colors.onPrimary : theme.colors.onSurface }]} numberOfLines={2}>
+              {smsImportBanner}
             </Text>
           </View>
-        }
-      />
+        )}
 
-      <TouchableOpacity
-        style={[styles.fab, { backgroundColor: colors.accentPrimary }]}
+        <View style={styles.transactionsHeader}>
+          <Text variant="titleLarge" style={{ color: theme.colors.onSurface }} numberOfLines={1}>
+            Transactions
+          </Text>
+          <Text variant="bodyMedium" style={{ color: theme.colors.onSurfaceVariant }} numberOfLines={1}>
+            {data.length}
+          </Text>
+        </View>
+
+        {renderList()}
+      </ScrollView>
+
+      <FAB
+        icon={() => <Ionicons name="add" size={28} color={theme.colors.onPrimary} />}
+        style={[styles.fab, { backgroundColor: theme.colors.primary }]}
         onPress={() => navigation.navigate('TransactionForm')}
-        activeOpacity={0.8}
-      >
-        <Ionicons name="add" size={28} color={colors.textInverse} />
-      </TouchableOpacity>
+      />
 
       <ImportCsvSheet
         visible={csvSheetVisible}
@@ -692,21 +530,57 @@ export function FinanceScreen() {
   );
 }
 
-function MetricCard({ label, amount }: { label: string; amount: number }) {
-  const colors = useThemeColors();
+export function FinanceScreen() {
+  return <FinanceScreenContent />;
+}
 
+function MetricCard({ label, amount }: { label: string; amount: number }) {
+  const theme = useTheme();
   return (
-    <GlassCard style={styles.metricCard}>
-      <Text style={[styles.metricLabel, { color: colors.textSecondary }]}>{label}</Text>
-      <Text
-        style={[styles.metricAmount, { color: colors.textPrimary }]}
-        numberOfLines={1}
-        ellipsizeMode="tail"
-        adjustsFontSizeToFit
-      >
-        {formatCurrency(amount, { decimals: 0 })}
-      </Text>
-    </GlassCard>
+    <Card style={[styles.metricCard, { backgroundColor: theme.colors.surfaceVariant }]} mode="elevated">
+      <Card.Content>
+        <Text variant="bodyMedium" style={{ color: theme.colors.onSurfaceVariant }}>{label}</Text>
+        <Text variant="headlineMedium" style={{ color: theme.colors.onSurface, marginTop: spacing.sm }} numberOfLines={1}>
+          {formatCurrency(amount, { decimals: 0 })}
+        </Text>
+      </Card.Content>
+    </Card>
+  );
+}
+
+function InsightCard({
+  label,
+  action,
+  amount,
+  sub,
+  onAction,
+}: {
+  label: string;
+  action?: string;
+  amount: number;
+  sub: string;
+  onAction?: () => void;
+}) {
+  const theme = useTheme();
+  return (
+    <Card style={[styles.insightCard, { backgroundColor: theme.colors.surfaceVariant }]} mode="elevated">
+      <Card.Content>
+        <View style={styles.infoCardHeader}>
+          <Text variant="labelMedium" style={{ color: theme.colors.onSurfaceVariant }}>{label}</Text>
+          {action ? (
+            <Button compact mode="text" onPress={onAction} textColor={theme.colors.primary}>
+              {action}
+            </Button>
+          ) : null}
+        </View>
+        <Text variant="headlineSmall" style={{ color: theme.colors.onSurface, marginTop: spacing.sm }} numberOfLines={1}>
+          {formatCurrency(amount, { decimals: 0 })}
+        </Text>
+        <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant, marginTop: 2 }} numberOfLines={1}>
+          {sub}
+        </Text>
+      </Card.Content>
+    </Card>
   );
 }
 
@@ -721,38 +595,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.screenHorizontal,
     paddingVertical: spacing.sm,
   },
-  title: {
-    fontSize: typography.sizes['2xl'],
-    fontWeight: typography.weights.bold,
-  },
-  headerActions: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-  },
-  iconButton: {
-    width: 40,
-    height: 40,
-    borderRadius: borderRadius.lg,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
   actionChipsContainer: {
     paddingHorizontal: spacing.screenHorizontal,
     gap: spacing.sm,
     paddingBottom: spacing.base,
-  },
-  actionChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: spacing.base,
-    paddingVertical: spacing.sm,
-    borderRadius: borderRadius.full,
-    borderWidth: 1,
-    gap: spacing.sm,
-  },
-  actionChipLabel: {
-    fontSize: typography.sizes.sm,
-    fontWeight: typography.weights.medium,
   },
   metricsRow: {
     paddingHorizontal: spacing.screenHorizontal,
@@ -762,58 +608,29 @@ const styles = StyleSheet.create({
   metricCard: {
     minWidth: 140,
     width: 'auto',
-    padding: spacing.lg,
-    paddingRight: spacing.xl,
-  },
-  metricLabel: {
-    fontSize: typography.sizes.sm,
-    fontWeight: typography.weights.medium,
-  },
-  metricAmount: {
-    fontSize: typography.sizes['2xl'],
-    fontWeight: typography.weights.bold,
-    marginTop: spacing.sm,
+    padding: spacing.sm,
+    paddingRight: spacing.lg,
   },
   guardrailBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
     marginHorizontal: spacing.lg,
-    padding: spacing.base,
+    padding: 0,
     borderRadius: borderRadius.xl,
     borderWidth: 1,
     marginBottom: spacing.base,
+  },
+  guardrailContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: spacing.base,
   },
   guardrailText: {
     flex: 1,
     marginLeft: spacing.base,
   },
-  guardrailTitle: {
-    fontSize: typography.sizes.sm,
-    fontWeight: typography.weights.semibold,
-  },
-  guardrailSubtitle: {
-    fontSize: typography.sizes.xs,
-    marginTop: 2,
-  },
-  uncategorizedBanner: {
+  uncategorizedContent: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginHorizontal: spacing.lg,
-    padding: spacing.base,
-    borderRadius: borderRadius.xl,
-    borderWidth: 1,
-    marginBottom: spacing.base,
-  },
-  uncategorizedText: {
-    flex: 1,
-    fontSize: typography.sizes.sm,
-    fontWeight: typography.weights.medium,
-    marginRight: spacing.sm,
-  },
-  uncategorizedAction: {
-    fontSize: typography.sizes.sm,
-    fontWeight: typography.weights.semibold,
   },
   insightsRow: {
     paddingHorizontal: spacing.screenHorizontal,
@@ -822,82 +639,32 @@ const styles = StyleSheet.create({
   },
   insightCard: {
     width: 200,
-    padding: spacing.base,
-  },
-  nudgeCard: {
-    marginHorizontal: spacing.lg,
-    marginBottom: spacing.base,
-    gap: 6,
-  },
-  nudgeHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  nudgeTitle: {
-    flex: 1,
-    fontSize: typography.sizes.base,
-    fontWeight: typography.weights.semibold,
-    marginRight: spacing.sm,
-  },
-  nudgeAction: {
-    fontSize: typography.sizes.sm,
-    fontWeight: typography.weights.semibold,
-  },
-  nudgeSummary: {
-    fontSize: typography.sizes.sm,
+    padding: spacing.sm,
   },
   infoCardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-  infoCardLabel: {
-    fontSize: typography.sizes.xs,
-    fontWeight: typography.weights.medium,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  infoCardAction: {
-    fontSize: typography.sizes.xs,
-    fontWeight: typography.weights.semibold,
-  },
-  infoCardAmount: {
-    fontSize: typography.sizes.lg,
-    fontWeight: typography.weights.bold,
+  smsPermBanner: {
+    marginHorizontal: spacing.screenHorizontal,
     marginTop: spacing.sm,
   },
-  infoCardSub: {
-    fontSize: typography.sizes.xs,
-    marginTop: 2,
-  },
-  periodFilter: {
+  smsPermBannerContent: {
     flexDirection: 'row',
-    paddingHorizontal: spacing.screenHorizontal,
+    alignItems: 'center',
     gap: spacing.sm,
-    marginBottom: spacing.base,
-  },
-  periodChip: {
-    flex: 1,
     paddingVertical: spacing.sm,
-    borderRadius: borderRadius.lg,
-    borderWidth: 1,
-    alignItems: 'center',
   },
-  periodChipText: {
-    fontSize: typography.sizes.sm,
-    fontWeight: typography.weights.medium,
-  },
-  activeFilterRow: {
+  smsBanner: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
     paddingHorizontal: spacing.screenHorizontal,
+    paddingVertical: spacing.sm,
     marginTop: spacing.sm,
   },
-  activeFilterText: {
-    fontSize: typography.sizes.sm,
-    textTransform: 'capitalize',
+  smsBannerText: {
+    flex: 1,
   },
   transactionsHeader: {
     flexDirection: 'row',
@@ -907,74 +674,27 @@ const styles = StyleSheet.create({
     marginTop: spacing.lg,
     marginBottom: spacing.base,
   },
-  transactionsTitle: {
-    fontSize: typography.sizes.lg,
-    fontWeight: typography.weights.semibold,
-  },
-  transactionsCount: {
-    fontSize: typography.sizes.sm,
-  },
-  listContent: {
-    paddingBottom: BOTTOM_NAV_SAFE_AREA,
-  },
-  smsBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: spacing.screenHorizontal,
-    paddingVertical: spacing.sm,
-  },
-  smsBannerText: {
-    flex: 1,
-    fontSize: typography.sizes.sm,
-    fontWeight: typography.weights.medium,
-  },
-  smsPermBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    marginHorizontal: spacing.screenHorizontal,
-    marginTop: spacing.sm,
-    paddingHorizontal: spacing.base,
-    paddingVertical: spacing.sm,
-    borderRadius: borderRadius.lg,
-    borderWidth: 1,
-  },
-  smsPermBannerText: {
-    flex: 1,
-    fontSize: typography.sizes.sm,
-    fontWeight: typography.weights.medium,
-  },
   dateHeader: {
     paddingHorizontal: spacing.screenHorizontal,
     paddingTop: spacing.lg,
     paddingBottom: spacing.sm,
-  },
-  dateHeaderText: {
-    fontSize: typography.sizes.sm,
-    fontWeight: typography.weights.semibold,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
+  divider: {
+    height: 1,
+    marginHorizontal: spacing.screenHorizontal,
+  },
   empty: {
-    paddingVertical: spacing['3xl'],
+    paddingVertical: 36,
     alignItems: 'center',
   },
-  emptyText: {
-    fontSize: typography.sizes.base,
+  listContent: {
+    paddingBottom: BOTTOM_NAV_SAFE_AREA,
   },
   fab: {
     position: 'absolute',
     right: spacing.lg,
     bottom: spacing.lg,
-    width: 56,
-    height: 56,
-    borderRadius: borderRadius.full,
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 6,
-    elevation: 6,
   },
 });

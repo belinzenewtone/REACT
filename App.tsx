@@ -3,6 +3,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { AppState, Platform, UIManager } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { PaperProvider } from 'react-native-paper';
 import { SQLiteProvider } from 'expo-sqlite';
 import * as SplashScreen from 'expo-splash-screen';
 import * as Updates from 'expo-updates';
@@ -11,6 +12,7 @@ import { AppNavigator } from './src/navigation/AppNavigator';
 import { TopBanner } from './src/components/common/TopBanner';
 import { useAppStore } from './src/store';
 import { colors } from './src/theme';
+import { lifeosPaperTheme } from './src/theme/paperTheme';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -77,14 +79,16 @@ function OtaUpdateBanner() {
 export default function App() {
   return (
     <GestureHandlerRootView style={{ flex: 1, backgroundColor: colors.bgPrimary }}>
-      <SafeAreaProvider>
-        <SQLiteProvider databaseName={DATABASE_NAME} onInit={migrateDatabaseAsync}>
-          <AppNavigator />
-          <SplashHider />
-          <OtaUpdateBanner />
-          <StatusBar style="light" />
-        </SQLiteProvider>
-      </SafeAreaProvider>
+      <PaperProvider theme={lifeosPaperTheme}>
+        <SafeAreaProvider>
+          <SQLiteProvider databaseName={DATABASE_NAME} onInit={migrateDatabaseAsync}>
+            <AppNavigator />
+            <SplashHider />
+            <OtaUpdateBanner />
+            <StatusBar style="light" />
+          </SQLiteProvider>
+        </SafeAreaProvider>
+      </PaperProvider>
     </GestureHandlerRootView>
   );
 }

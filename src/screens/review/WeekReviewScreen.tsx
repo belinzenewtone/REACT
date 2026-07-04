@@ -1,12 +1,12 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, RefreshControl } from 'react-native';
+import { View, StyleSheet, ScrollView, ActivityIndicator, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { useSQLiteContext } from 'expo-sqlite';
 import { format, startOfWeek, endOfWeek } from 'date-fns';
-import { useThemeColors } from '../../hooks/useThemeColors';
-import { spacing, typography, borderRadius } from '../../theme';
+import { Text, IconButton, useTheme } from 'react-native-paper';
+import { spacing } from '../../theme';
 import { formatCurrency, toLocalIso } from '../../utils/formatters';
 import { GlassCard } from '../../components/common/GlassCard';
 import { useDataVersion } from '../../store/dataVersion';
@@ -21,27 +21,29 @@ type ReviewData = {
   previousWeekSpend: number;
 };
 
-function StatRow({ label, value, colors }: { label: string; value: string; colors: any }) {
+function StatRow({ label, value }: { label: string; value: string }) {
+  const theme = useTheme();
   return (
     <View style={styles.statRow}>
-      <Text style={[styles.statLabel, { color: colors.textSecondary }]}>{label}</Text>
-      <Text style={[styles.statValue, { color: colors.textPrimary, fontFamily: 'monospace' as any }]}>{value}</Text>
+      <Text variant="bodyMedium" style={{ color: theme.colors.onSurfaceVariant, flex: 1 }}>{label}</Text>
+      <Text variant="bodyMedium" style={{ color: theme.colors.onSurface, flex: 1, textAlign: 'right', fontFamily: 'monospace' as any }}>{value}</Text>
     </View>
   );
 }
 
-function BulletCard({ title, items, colors }: { title: string; items: string[]; colors: any }) {
+function BulletCard({ title, items }: { title: string; items: string[] }) {
+  const theme = useTheme();
   if (items.length === 0) return null;
   return (
     <GlassCard>
-      <Text style={[styles.cardTitle, { color: colors.textPrimary }]}>{title}</Text>
+      <Text variant="titleMedium" style={{ color: theme.colors.onSurface, marginBottom: spacing.sm }}>{title}</Text>
       {items.map((item, i) => (
         <View key={i}>
           <View style={styles.bulletRow}>
-            <Text style={[styles.bulletNum, { color: colors.accentPrimary }]}>{i + 1}.</Text>
-            <Text style={[styles.bulletText, { color: colors.textSecondary }]}>{item}</Text>
+            <Text variant="bodyMedium" style={{ color: theme.colors.primary, width: 20, fontWeight: '700' }}>{i + 1}.</Text>
+            <Text variant="bodyMedium" style={{ color: theme.colors.onSurfaceVariant, flex: 1 }}>{item}</Text>
           </View>
-          {i < items.length - 1 && <View style={[styles.divider, { backgroundColor: colors.border }]} />}
+          {i < items.length - 1 && <View style={[styles.divider, { backgroundColor: theme.colors.outlineVariant }]} />}
         </View>
       ))}
     </GlassCard>
@@ -49,7 +51,7 @@ function BulletCard({ title, items, colors }: { title: string; items: string[]; 
 }
 
 export function WeekReviewScreen() {
-  const colors = useThemeColors();
+  const theme = useTheme();
   const navigation = useNavigation<any>();
   const db = useSQLiteContext();
   const [isLoading, setIsLoading] = useState(true);
@@ -62,7 +64,6 @@ export function WeekReviewScreen() {
   const loadedVersion = useRef(-1);
   const profileName = useAppStore((s) => s.profile?.name);
 
-  // Recomputed once per render — updates naturally when data reloads.
   const now = new Date();
   const weekStart = startOfWeek(now, { weekStartsOn: 1 });
   const weekEnd = endOfWeek(now, { weekStartsOn: 1 });
@@ -76,16 +77,10 @@ export function WeekReviewScreen() {
   const load = useCallback(async () => {
     setIsLoading(true);
     try {
-      // Transactions imported from SMS are stored as local wall-clock strings,
-      // so query them with local datetime boundaries.
       const txWeekStart = toLocalIso(weekStart);
       const txWeekEnd = toLocalIso(weekEnd);
-      // Tasks/events are stored as UTC ISO strings from JS `nowIso()`.
       const taskWeekStart = weekStart.toISOString();
 
-      // `transaction_type` is one of: 'expense' | 'income' | 'transfer' | 'fuliza'.
-      // Spend includes all outflows (expenses, transfers and Fuliza draws) so
-      // the weekly total matches the Today/Week/Month cards elsewhere.
       const [spendRow, topCatRow, completedRow, pendingRow] = await Promise.all([
         db.getFirstAsync<{ total: number }>(
           `SELECT SUM(amount) as total FROM transactions
@@ -151,7 +146,6 @@ export function WeekReviewScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [db]);
 
-  // Load on first mount, on focus (if data has changed), and on dataVersion bump.
   useFocusEffect(
     useCallback(() => {
       if (dataVersion !== loadedVersion.current) {
@@ -200,79 +194,77 @@ export function WeekReviewScreen() {
   ].filter(Boolean) as string[];
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.bgPrimary }]} edges={['top']}>
+    <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]} edges={['top']}>
       <ScrollView
         contentContainerStyle={styles.content}
         refreshControl={
           <RefreshControl
             refreshing={isLoading}
             onRefresh={load}
-            tintColor={colors.accentPrimary}
-            colors={[colors.accentPrimary]}
+            tintColor={theme.colors.primary}
+            colors={[theme.colors.primary]}
           />
         }
       >
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()}>
-            <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
-          </TouchableOpacity>
-          <View style={styles.headerCenter}>
-            <Text style={[styles.title, { color: colors.textPrimary }]} numberOfLines={1}>Weekly Review</Text>
-          </View>
-          <View style={{ width: 24 }} />
+          <IconButton
+            icon={() => <Ionicons name="arrow-back" size={24} color={theme.colors.onSurface} />}
+            size={24}
+            onPress={() => navigation.goBack()}
+            style={{ margin: 0 }}
+          />
+          <Text variant="titleLarge" style={{ color: theme.colors.onSurface }} numberOfLines={1}>Weekly Review</Text>
+          <View style={{ width: 44 }} />
         </View>
-        <Text style={[styles.weekLabel, { color: colors.textSecondary }]}>{weekLabel}</Text>
+        <Text variant="bodyMedium" style={{ color: theme.colors.onSurfaceVariant, marginBottom: spacing.base }}>{weekLabel}</Text>
 
         {isLoading ? (
           <View style={styles.centered}>
-            <ActivityIndicator color={colors.accentPrimary} />
-            <Text style={[styles.loadingText, { color: colors.textSecondary }]}>Building your review…</Text>
+            <ActivityIndicator color={theme.colors.primary} />
+            <Text variant="bodyMedium" style={{ color: theme.colors.onSurfaceVariant }}>Building your review…</Text>
           </View>
         ) : (
           <>
-            <Text style={[styles.greeting, { color: colors.textPrimary }]}>{greeting} 👋</Text>
+            <Text variant="titleMedium" style={{ color: theme.colors.onSurface }}>{greeting} 👋</Text>
 
-          {/* Momentum card — only shown when there's data to report */}
-          {(data.totalSpend > 0 || data.tasksCompleted > 0 || data.tasksPending > 0) && (
+            {(data.totalSpend > 0 || data.tasksCompleted > 0 || data.tasksPending > 0) && (
+              <GlassCard>
+                <Text variant="titleMedium" style={{ color: theme.colors.onSurface, marginBottom: spacing.sm }}>Momentum Check</Text>
+                <Text variant="bodyMedium" style={{ color: theme.colors.onSurfaceVariant }}>
+                  Here's how your week shaped up across spending and tasks.
+                </Text>
+              </GlassCard>
+            )}
+
             <GlassCard>
-              <Text style={[styles.cardTitle, { color: colors.textPrimary }]}>Momentum Check</Text>
-              <Text style={[styles.momentumText, { color: colors.textSecondary }]}>
-                Here's how your week shaped up across spending and tasks.
-              </Text>
+              <Text variant="titleMedium" style={{ color: theme.colors.onSurface, marginBottom: spacing.sm }}>Spending</Text>
+              <View style={styles.statsStack}>
+                <StatRow label="Total this week" value={formatCurrency(data.totalSpend)} />
+                <View style={[styles.divider, { backgroundColor: theme.colors.outlineVariant }]} />
+                <StatRow label="Posture" value={postureLabel} />
+                <View style={[styles.divider, { backgroundColor: theme.colors.outlineVariant }]} />
+                <StatRow label="Week delta" value={deltaLabel} />
+                {data.topCategory && (
+                  <>
+                    <View style={[styles.divider, { backgroundColor: theme.colors.outlineVariant }]} />
+                    <StatRow label="Top category" value={data.topCategory} />
+                  </>
+                )}
+              </View>
             </GlassCard>
-          )}
 
-          {/* Spending */}
-          <GlassCard>
-            <Text style={[styles.cardTitle, { color: colors.textPrimary }]}>Spending</Text>
-            <View style={styles.statsStack}>
-              <StatRow label="Total this week" value={formatCurrency(data.totalSpend)} colors={colors} />
-              <View style={[styles.divider, { backgroundColor: colors.border }]} />
-              <StatRow label="Posture" value={postureLabel} colors={colors} />
-              <View style={[styles.divider, { backgroundColor: colors.border }]} />
-              <StatRow label="Week delta" value={deltaLabel} colors={colors} />
-              {data.topCategory && (
-                <>
-                  <View style={[styles.divider, { backgroundColor: colors.border }]} />
-                  <StatRow label="Top category" value={data.topCategory} colors={colors} />
-                </>
-              )}
-            </View>
-          </GlassCard>
+            <GlassCard>
+              <Text variant="titleMedium" style={{ color: theme.colors.onSurface, marginBottom: spacing.sm }}>Tasks</Text>
+              <View style={styles.statsStack}>
+                <StatRow label="Completed this week" value={`${data.tasksCompleted}`} />
+                <View style={[styles.divider, { backgroundColor: theme.colors.outlineVariant }]} />
+                <StatRow label="Still pending" value={`${data.tasksPending}`} />
+              </View>
+            </GlassCard>
 
-          {/* Tasks */}
-          <GlassCard>
-            <Text style={[styles.cardTitle, { color: colors.textPrimary }]}>Tasks</Text>
-            <View style={styles.statsStack}>
-              <StatRow label="Completed this week" value={`${data.tasksCompleted}`} colors={colors} />
-              <View style={[styles.divider, { backgroundColor: colors.border }]} />
-              <StatRow label="Still pending" value={`${data.tasksPending}`} colors={colors} />
-            </View>
-          </GlassCard>
-
-            <BulletCard title="Wins" items={wins} colors={colors} />
-            <BulletCard title="Risks" items={risks} colors={colors} />
-            <BulletCard title="Top Insights" items={insights} colors={colors} />
+            <BulletCard title="Wins" items={wins} />
+            <BulletCard title="Risks" items={risks} />
+            <BulletCard title="Top Insights" items={insights} />
           </>
         )}
       </ScrollView>
@@ -283,21 +275,10 @@ export function WeekReviewScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   header: { flexDirection: 'row', alignItems: 'center', paddingVertical: spacing.sm },
-  headerCenter: { flex: 1, alignItems: 'center' },
-  title: { fontSize: typography.sizes.xl, fontWeight: typography.weights.bold },
-  weekLabel: { fontSize: typography.sizes.sm, marginBottom: spacing.base },
   content: { paddingHorizontal: spacing.screenHorizontal, paddingVertical: spacing.lg, paddingBottom: spacing['4xl'], gap: spacing.base },
-  greeting: { fontSize: typography.sizes.lg, fontWeight: typography.weights.semibold },
-  cardTitle: { fontSize: typography.sizes.base, fontWeight: typography.weights.semibold, marginBottom: spacing.sm },
-  momentumText: { fontSize: typography.sizes.sm, lineHeight: typography.sizes.sm * 1.6 },
+  centered: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: spacing.base },
   statsStack: { gap: spacing.xs },
   statRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: spacing.xs },
-  statLabel: { fontSize: typography.sizes.sm, flex: 1 },
-  statValue: { fontSize: typography.sizes.sm, flex: 1, textAlign: 'right' },
   divider: { height: 1 },
   bulletRow: { flexDirection: 'row', gap: spacing.sm, paddingVertical: spacing.xs },
-  bulletNum: { fontSize: typography.sizes.sm, fontWeight: typography.weights.bold, width: 20 },
-  bulletText: { flex: 1, fontSize: typography.sizes.sm, lineHeight: typography.sizes.sm * 1.5 },
-  centered: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: spacing.base },
-  loadingText: { fontSize: typography.sizes.sm },
 });

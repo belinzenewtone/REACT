@@ -1,8 +1,9 @@
-import React, { useRef } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, PanResponder, Animated } from 'react-native';
+import React, { useRef, useState } from 'react';
+import { View, StyleSheet, Animated, type LayoutChangeEvent } from 'react-native';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { Ionicons } from '@expo/vector-icons';
-import { useThemeColors } from '../../hooks/useThemeColors';
-import { spacing, typography, borderRadius } from '../../theme';
+import { Card, Text, IconButton, Button, TouchableRipple, useTheme } from 'react-native-paper';
+import { spacing, borderRadius } from '../../theme';
 
 interface CalendarDay {
   date: number;
@@ -15,14 +16,13 @@ interface CalendarDay {
 
 interface CalendarMonthViewProps {
   year: number;
-  month: number; // 1-12
+  month: number;
   selectedDate: string;
   eventsByDate: Map<string, { hasEvent: boolean; hasTask: boolean }>;
   onSelectDate: (date: string) => void;
   onPrevMonth: () => void;
   onNextMonth: () => void;
   onGoToToday?: () => void;
-  /** Swipe left/right to change months (user preference). Default: true. */
   swipeEnabled?: boolean;
 }
 
@@ -32,12 +32,10 @@ const MONTH_NAMES = [
   'July', 'August', 'September', 'October', 'November', 'December',
 ];
 
-// Deliberate-swipe tuning: the gesture must clearly be horizontal AND travel
-// far (or fast) before a month change triggers, so scroll wobbles and stray
-// touches never flip the page accidentally.
-const SWIPE_DISTANCE = 70;        // px of horizontal travel for a slow drag
-const SWIPE_FLICK_DISTANCE = 40;  // px minimum even for a fast flick
-const SWIPE_FLICK_VELOCITY = 0.9; // px/ms — a decisive flick
+const SWIPE_DISTANCE = 55;
+const SWIPE_FLICK_DISTANCE = 28;
+const SWIPE_FLICK_VELOCITY = 350;
+const SUCCESS = '#7BC47B';
 
 export function CalendarMonthView({
   year,
@@ -50,81 +48,61 @@ export function CalendarMonthView({
   onGoToToday,
   swipeEnabled = true,
 }: CalendarMonthViewProps) {
-  const colors = useThemeColors();
-  const fade = useRef(new Animated.Value(1)).current;
+  const theme = useTheme();
   const slide = useRef(new Animated.Value(0)).current;
+  const [gridWidth, setGridWidth] = useState(0);
+  const cellSize = gridWidth > 0 ? Math.floor(gridWidth / 7) : 0;
 
-  // Live refs so the stable PanResponder always reads current props.
+  const onGridLayout = (e: LayoutChangeEvent) => {
+    const w = e.nativeEvent.layout.width;
+    if (w > 0 && Math.abs(w - gridWidth) > 0.5) setGridWidth(w);
+  };
+
   const liveRef = useRef({ swipeEnabled, onPrevMonth, onNextMonth });
   liveRef.current = { swipeEnabled, onPrevMonth, onNextMonth };
 
   const runTransition = (action: () => void, direction: -1 | 0 | 1 = 0) => {
-    // Fade + a short native-driven slide in the swipe direction — smooth,
-    // no layout work on the JS thread.
-    slide.setValue(direction * 24);
-    Animated.parallel([
-      Animated.sequence([
-        Animated.timing(fade, { toValue: 0.3, duration: 90, useNativeDriver: true }),
-        Animated.timing(fade, { toValue: 1, duration: 160, useNativeDriver: true }),
-      ]),
-      Animated.timing(slide, { toValue: 0, duration: 220, useNativeDriver: true }),
-    ]).start();
     action();
+    if (direction === 0) return;
+    slide.setValue(direction * 28);
+    Animated.timing(slide, {
+      toValue: 0,
+      duration: 200,
+      useNativeDriver: true,
+    }).start();
   };
 
-  const panResponder = useRef(
-    PanResponder.create({
-      // Claim the gesture only once it's unmistakably horizontal: ≥20px of
-      // travel and at least twice as horizontal as vertical.
-      onMoveShouldSetPanResponder: (_, gesture) =>
-        liveRef.current.swipeEnabled &&
-        Math.abs(gesture.dx) > 20 &&
-        Math.abs(gesture.dx) > Math.abs(gesture.dy) * 2,
-      onPanResponderRelease: (_, gesture) => {
-        if (!liveRef.current.swipeEnabled) return;
-        const dx = gesture.dx;
-        const adx = Math.abs(dx);
-        // Must still be predominantly horizontal at release.
-        if (adx <= Math.abs(gesture.dy)) return;
-        const deliberate =
-          adx >= SWIPE_DISTANCE ||
-          (adx >= SWIPE_FLICK_DISTANCE && Math.abs(gesture.vx) >= SWIPE_FLICK_VELOCITY);
-        if (!deliberate) return;
-        if (dx < 0) runTransition(liveRef.current.onNextMonth, -1);
-        else runTransition(liveRef.current.onPrevMonth, 1);
-      },
-    })
-  ).current;
+  const swipeGesture = Gesture.Pan()
+    .enabled(swipeEnabled)
+    .activeOffsetX([-20, 20])
+    .failOffsetY([-15, 15])
+    .runOnJS(true)
+    .onEnd((e) => {
+      const dx = e.translationX;
+      const adx = Math.abs(dx);
+      if (adx <= Math.abs(e.translationY)) return;
+      const deliberate =
+        adx >= SWIPE_DISTANCE ||
+        (adx >= SWIPE_FLICK_DISTANCE && Math.abs(e.velocityX) >= SWIPE_FLICK_VELOCITY);
+      if (!deliberate) return;
+      if (dx < 0) runTransition(liveRef.current.onNextMonth, -1);
+      else runTransition(liveRef.current.onPrevMonth, 1);
+    });
 
   const days = React.useMemo(() => {
     const firstDayOfMonth = new Date(Date.UTC(year, month - 1, 1));
     const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
 
-    // Adjust so Monday is the first day (0 = Monday, 6 = Sunday)
     let startOffset = firstDayOfMonth.getUTCDay() - 1;
     if (startOffset < 0) startOffset = 6;
 
     const today = new Date();
     const todayStr = toDateString(today);
 
-    const result: CalendarDay[] = [];
+    const result: (CalendarDay | null)[] = [];
 
-    // Previous month padding
-    const prevMonthDays = new Date(Date.UTC(year, month - 1, 0)).getUTCDate();
-    for (let i = startOffset - 1; i >= 0; i--) {
-      const d = prevMonthDays - i;
-      const date = new Date(Date.UTC(year, month - 2, d));
-      result.push({
-        date: d,
-        fullDate: date.toISOString(),
-        isCurrentMonth: false,
-        isToday: false,
-        hasEvent: false,
-        hasTask: false,
-      });
-    }
+    for (let i = 0; i < startOffset; i++) result.push(null);
 
-    // Current month
     for (let d = 1; d <= daysInMonth; d++) {
       const date = new Date(Date.UTC(year, month - 1, d));
       const dateStr = toDateString(date);
@@ -139,105 +117,117 @@ export function CalendarMonthView({
       });
     }
 
-    // Next month padding to fill 6 rows
-    const remaining = 42 - result.length;
-    for (let d = 1; d <= remaining; d++) {
-      const date = new Date(Date.UTC(year, month, d));
-      result.push({
-        date: d,
-        fullDate: date.toISOString(),
-        isCurrentMonth: false,
-        isToday: false,
-        hasEvent: false,
-        hasTask: false,
-      });
-    }
+    while (result.length % 7 !== 0) result.push(null);
 
     return result;
   }, [year, month, eventsByDate]);
+
+  const weeks = React.useMemo(() => {
+    const rows: (CalendarDay | null)[][] = [];
+    for (let i = 0; i < days.length; i += 7) rows.push(days.slice(i, i + 7));
+    return rows;
+  }, [days]);
 
   const selectedDateStr = toDateString(new Date(selectedDate));
   const now = new Date();
   const isViewingCurrentMonth = year === now.getUTCFullYear() && month === now.getUTCMonth() + 1;
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.glassWhite, borderColor: colors.border }]}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => runTransition(onPrevMonth)} style={styles.arrowButton} activeOpacity={0.7}>
-          <Ionicons name="chevron-back" size={22} color={colors.textPrimary} />
-        </TouchableOpacity>
-        <View style={styles.headerCenter}>
-          <Text style={[styles.monthTitle, { color: colors.textPrimary }]}>
-            {MONTH_NAMES[month - 1]} {year}
-          </Text>
-          {!isViewingCurrentMonth && onGoToToday ? (
-            <TouchableOpacity
-              onPress={() => runTransition(onGoToToday)}
-              activeOpacity={0.7}
-              style={[styles.todayButton, { backgroundColor: `${colors.accentPrimary}16` }]}
-            >
-              <Text style={[styles.todayLabel, { color: colors.accentPrimary }]}>Today</Text>
-            </TouchableOpacity>
-          ) : null}
-        </View>
-        <TouchableOpacity onPress={() => runTransition(onNextMonth)} style={styles.arrowButton} activeOpacity={0.7}>
-          <Ionicons name="chevron-forward" size={22} color={colors.textPrimary} />
-        </TouchableOpacity>
-      </View>
-
-      <View style={styles.weekdayRow}>
-        {WEEKDAYS.map((day) => (
-          <Text key={day} style={[styles.weekdayText, { color: colors.textSecondary }]}>
-            {day}
-          </Text>
-        ))}
-      </View>
-
-      <Animated.View
-        style={[styles.daysGrid, { opacity: fade, transform: [{ translateX: slide }] }]}
-        {...panResponder.panHandlers}
-      >
-        {days.map((day, index) => {
-          const dayStr = toDateString(new Date(day.fullDate));
-          const isSelected = dayStr === selectedDateStr;
-
-          return (
-            <TouchableOpacity
-              key={index}
-              activeOpacity={0.7}
-              style={styles.dayCell}
-              onPress={() => onSelectDate(day.fullDate)}
-            >
-              <View
-                style={[
-                  styles.dayCircle,
-                  day.isToday && !isSelected && { borderWidth: 1.5, borderColor: colors.accentPrimary },
-                  isSelected && { backgroundColor: colors.accentPrimary },
-                ]}
+    <Card mode="elevated" style={[styles.container, { backgroundColor: theme.colors.surfaceVariant }]}>
+      <Card.Content>
+        <View style={styles.header}>
+          <IconButton
+            icon={() => <Ionicons name="chevron-back" size={22} color={theme.colors.onSurface} />}
+            size={22}
+            onPress={() => runTransition(onPrevMonth)}
+          />
+          <View style={styles.headerCenter}>
+            <Text variant="titleMedium" style={{ color: theme.colors.onSurface }}>
+              {MONTH_NAMES[month - 1]} {year}
+            </Text>
+            {!isViewingCurrentMonth && onGoToToday ? (
+              <Button
+                mode="text"
+                compact
+                onPress={() => runTransition(onGoToToday)}
+                textColor={theme.colors.primary}
               >
-                <Text
-                  style={[
-                    styles.dayText,
-                    { color: day.isCurrentMonth ? colors.textPrimary : colors.textTertiary },
-                    isSelected && { color: colors.textInverse, fontWeight: typography.weights.bold },
-                  ]}
-                >
-                  {day.date}
-                </Text>
+                Today
+              </Button>
+            ) : null}
+          </View>
+          <IconButton
+            icon={() => <Ionicons name="chevron-forward" size={22} color={theme.colors.onSurface} />}
+            size={22}
+            onPress={() => runTransition(onNextMonth)}
+          />
+        </View>
+
+        <View style={styles.weekdayRow}>
+          {WEEKDAYS.map((day) => (
+            <Text key={day} variant="labelSmall" style={[styles.weekdayText, { color: theme.colors.onSurfaceVariant }]}>
+              {day}
+            </Text>
+          ))}
+        </View>
+
+        <GestureDetector gesture={swipeGesture}>
+          <Animated.View
+            onLayout={onGridLayout}
+            style={{ transform: [{ translateX: slide }] }}
+          >
+            {cellSize > 0 && weeks.map((week, wIndex) => (
+              <View key={wIndex} style={[styles.weekRow, { height: cellSize }]}>
+                {week.map((day, dIndex) => {
+                  if (!day) {
+                    return <View key={dIndex} style={styles.dayCell} />;
+                  }
+                  const isSelected = day.fullDate.split('T')[0] === selectedDateStr;
+                  const circle = Math.min(cellSize - 6, 44);
+
+                  return (
+                    <TouchableRipple
+                      key={dIndex}
+                      style={styles.dayCell}
+                      onPress={() => onSelectDate(day.fullDate)}
+                    >
+                      <View style={styles.dayCellInner}>
+                        <View
+                          style={[
+                            styles.dayCircle,
+                            { width: circle, height: circle },
+                            day.isToday && !isSelected && { borderWidth: 1.5, borderColor: theme.colors.primary },
+                            isSelected && { backgroundColor: theme.colors.primary },
+                          ]}
+                        >
+                          <Text
+                            variant="bodyMedium"
+                            style={[
+                              { color: theme.colors.onSurface },
+                              isSelected && { color: theme.colors.onPrimary, fontWeight: '600' },
+                            ]}
+                          >
+                            {day.date}
+                          </Text>
+                        </View>
+                        <View style={styles.indicators}>
+                          {day.hasEvent && (
+                            <View style={[styles.dot, { backgroundColor: isSelected ? theme.colors.onPrimary : theme.colors.secondary }]} />
+                          )}
+                          {day.hasTask && (
+                            <View style={[styles.dot, { backgroundColor: isSelected ? theme.colors.onPrimary : SUCCESS }]} />
+                          )}
+                        </View>
+                      </View>
+                    </TouchableRipple>
+                  );
+                })}
               </View>
-              <View style={styles.indicators}>
-                {day.hasEvent && (
-                  <View style={[styles.dot, { backgroundColor: colors.accentSecondary }]} />
-                )}
-                {day.hasTask && (
-                  <View style={[styles.dot, { backgroundColor: colors.success }]} />
-                )}
-              </View>
-            </TouchableOpacity>
-          );
-        })}
-      </Animated.View>
-    </View>
+            ))}
+          </Animated.View>
+        </GestureDetector>
+      </Card.Content>
+    </Card>
   );
 }
 
@@ -248,8 +238,7 @@ function toDateString(date: Date): string {
 const styles = StyleSheet.create({
   container: {
     borderRadius: 20,
-    borderWidth: 1,
-    padding: spacing.base,
+    padding: spacing.sm,
   },
   header: {
     flexDirection: 'row',
@@ -262,23 +251,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: spacing.xs,
   },
-  arrowButton: {
-    padding: spacing.sm,
-  },
-  monthTitle: {
-    fontSize: typography.sizes.lg,
-    fontWeight: typography.weights.semibold,
-  },
-  todayButton: {
-    marginTop: 2,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 3,
-    borderRadius: borderRadius.full,
-  },
-  todayLabel: {
-    fontSize: typography.sizes.xs,
-    fontWeight: typography.weights.semibold,
-  },
   weekdayRow: {
     flexDirection: 'row',
     marginBottom: 4,
@@ -286,35 +258,26 @@ const styles = StyleSheet.create({
   weekdayText: {
     flex: 1,
     textAlign: 'center',
-    fontSize: typography.sizes.xs,
-    fontWeight: typography.weights.medium,
   },
-  daysGrid: {
+  weekRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
   },
   dayCell: {
-    width: `${100 / 7}%`,
-    aspectRatio: 1,
+    flex: 1,
+    padding: 2,
+    margin: 0,
+    borderRadius: 0,
+  },
+  dayCellInner: {
+    flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 2,
   },
-  // Fixed pixel size + explicit radius + overflow:hidden keeps the squircle
-  // shape deterministic. The previous %-width + aspectRatio sizing let the
-  // radius render inconsistently (squircle → square) after month-change
-  // re-layouts (LayoutAnimation on Android can drop fractional radii).
   dayCircle: {
-    width: 38,
-    height: 38,
-    borderRadius: 13,
+    borderRadius: 14,
     overflow: 'hidden',
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  dayText: {
-    fontSize: typography.sizes.base,
-    fontWeight: typography.weights.medium,
   },
   indicators: {
     position: 'absolute',

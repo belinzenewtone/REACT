@@ -260,7 +260,7 @@ export async function retryIngestQueue(): Promise<{ requeued: number }> {
 }
 
 /**
- * Registers the 6-hourly self-healing sweep and drains any rows that
+ * Registers the 15-minute self-healing sweep and drains any rows that
  * accumulated while the app was closed. Call once on app bootstrap.
  */
 export async function ensureIngestSweep(): Promise<void> {

@@ -10,7 +10,7 @@ try {
   Haptics = null;
 }
 
-export type HapticKind = 'light' | 'medium' | 'heavy' | 'success' | 'warning' | 'error';
+type HapticKind = 'light' | 'medium' | 'heavy' | 'success' | 'warning' | 'error';
 
 /**
  * Fire a haptic pulse if the user has enabled haptic feedback in Settings.

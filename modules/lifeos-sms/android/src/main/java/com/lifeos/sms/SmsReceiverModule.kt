@@ -299,7 +299,7 @@ class SmsReceiverModule : Module() {
             mapOf("requeued" to requeued)
         }
 
-        // Called from app bootstrap: register the 6-hourly sweep and drain any
+        // Called from app bootstrap: register the 15-minute sweep and drain any
         // rows that accumulated while the app was closed/killed.
         AsyncFunction("ensureIngestSweep") {
             val ctx = appContext.reactContext ?: throw CodedException("no_context")

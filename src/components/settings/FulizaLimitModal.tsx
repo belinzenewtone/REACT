@@ -2,9 +2,6 @@ import React, { useState, useEffect } from 'react';
 import {
   Modal,
   View,
-  Text,
-  TextInput,
-  TouchableOpacity,
   StyleSheet,
   KeyboardAvoidingView,
   Platform,
@@ -12,8 +9,8 @@ import {
   Keyboard,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useThemeColors } from '../../hooks/useThemeColors';
-import { spacing, typography, borderRadius } from '../../theme';
+import { Text, TextInput, Button, useTheme } from 'react-native-paper';
+import { spacing } from '../../theme';
 
 interface FulizaLimitModalProps {
   visible: boolean;
@@ -28,9 +25,7 @@ export function FulizaLimitModal({
   onSave,
   onCancel,
 }: FulizaLimitModalProps) {
-  const colors = useThemeColors();
-  // Show an empty field when no limit is set so the user doesn't have to
-  // delete a leading zero before typing their real limit.
+  const theme = useTheme();
   const displayValue = (value: number) => (value > 0 ? value.toString() : '');
   const [value, setValue] = useState(displayValue(currentLimit));
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -56,23 +51,21 @@ export function FulizaLimitModal({
     onCancel();
   };
 
-  // Header is rendered outside the ScrollView so tapping Save/Later is never
-  // intercepted by scroll-view keyboard-dismiss logic.
   const body = (
     <SafeAreaView
-      style={[styles.container, { backgroundColor: colors.bgPrimary }]}
+      style={[styles.container, { backgroundColor: theme.colors.background }]}
       edges={['top', 'bottom']}
     >
       <View style={styles.header}>
-        <TouchableOpacity onPress={handleCancel} hitSlop={styles.headerHitSlop}>
-          <Text style={[styles.headerAction, { color: colors.textSecondary }]}>Later</Text>
-        </TouchableOpacity>
-        <Text style={[styles.title, { color: colors.textPrimary }]}>Fuliza Credit Limit</Text>
-        <TouchableOpacity onPress={handleSave} hitSlop={styles.headerHitSlop} disabled={isSubmitting}>
-          <Text style={[styles.headerAction, { color: colors.accentPrimary, opacity: isSubmitting ? 0.5 : 1 }]}>
-            Save
-          </Text>
-        </TouchableOpacity>
+        <Button mode="text" onPress={handleCancel} disabled={isSubmitting} textColor={theme.colors.onSurfaceVariant}>
+          Later
+        </Button>
+        <Text variant="titleLarge" style={{ color: theme.colors.onSurface }}>
+          Fuliza Credit Limit
+        </Text>
+        <Button mode="text" onPress={handleSave} disabled={isSubmitting} loading={isSubmitting}>
+          Save
+        </Button>
       </View>
 
       <ScrollView
@@ -82,31 +75,23 @@ export function FulizaLimitModal({
         keyboardDismissMode="none"
       >
         <View style={styles.content}>
-          <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
+          <Text variant="bodyMedium" style={{ color: theme.colors.onSurfaceVariant, textAlign: 'center', marginBottom: spacing.xl }}>
             We detected Fuliza activity. Enter your personal Fuliza limit in KES to improve debt tracking accuracy.
           </Text>
 
-          <View
-            style={[
-              styles.inputContainer,
-              { backgroundColor: colors.glassWhite, borderColor: colors.border },
-            ]}
-          >
-            <Text style={[styles.currency, { color: colors.textSecondary }]}>KSh</Text>
-            <TextInput
-              style={[styles.input, { color: colors.textPrimary }]}
-              value={value}
-              onChangeText={(text) => setValue(text.replace(/[^0-9]/g, ''))}
-              keyboardType="number-pad"
-              placeholder="0"
-              placeholderTextColor={colors.textTertiary}
-              autoFocus
-              selectionColor={colors.accentPrimary}
-              returnKeyType="done"
-              onSubmitEditing={handleSave}
-              editable={!isSubmitting}
-            />
-          </View>
+          <TextInput
+            mode="outlined"
+            value={value}
+            onChangeText={(text) => setValue(text.replace(/[^0-9]/g, ''))}
+            keyboardType="number-pad"
+            placeholder="0"
+            autoFocus
+            returnKeyType="done"
+            onSubmitEditing={handleSave}
+            editable={!isSubmitting}
+            left={<TextInput.Affix text="KSh " />}
+            style={[styles.input, { backgroundColor: theme.colors.surfaceVariant }]}
+          />
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -142,48 +127,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.base,
   },
-  headerAction: {
-    fontSize: typography.sizes.base,
-    fontWeight: typography.weights.medium,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
-  },
-  headerHitSlop: {
-    top: 16,
-    bottom: 16,
-    left: 16,
-    right: 16,
-  },
   content: {
     flex: 1,
     padding: spacing.lg,
     paddingTop: spacing.xl,
   },
-  title: {
-    fontSize: typography.sizes.lg,
-    fontWeight: typography.weights.semibold,
-  },
-  subtitle: {
-    fontSize: typography.sizes.base,
-    textAlign: 'center',
-    marginBottom: spacing.xl,
-  },
-  inputContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderRadius: borderRadius.xl,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.lg,
-  },
-  currency: {
-    fontSize: typography.sizes.lg,
-    fontWeight: typography.weights.medium,
-    marginRight: spacing.base,
-  },
   input: {
-    flex: 1,
-    fontSize: typography.sizes['3xl'],
-    fontWeight: typography.weights.bold,
+    fontSize: 28,
+    fontWeight: '700',
   },
 });

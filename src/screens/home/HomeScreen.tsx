@@ -1,28 +1,31 @@
 import React, { useCallback, useRef } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
   ScrollView,
-  RefreshControl,
-  TouchableOpacity,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
+import {
+  Card,
+  Text,
+  IconButton,
+  useTheme,
+} from 'react-native-paper';
 import { useDataVersion } from '../../store/dataVersion';
 import { format } from 'date-fns';
-import { useThemeColors } from '../../hooks/useThemeColors';
 import { useDashboardStore } from '../../store/useDashboardStore';
 import { useAppStore } from '../../store';
-import { MetricCard, HomeMenuCard, WeeklyResetCard } from '../../components/dashboard';
+import { HomeMenuCard, WeeklyResetCard } from '../../components/dashboard';
 import { TopBanner } from '../../components/common/TopBanner';
 import { ShimmerLoadingState } from '../../components/common/ShimmerLoadingState';
-import { spacing, typography, BOTTOM_NAV_SAFE_AREA } from '../../theme';
+import { formatCurrency } from '../../utils/formatters';
+import { spacing, BOTTOM_NAV_SAFE_AREA } from '../../theme';
 
-export function HomeScreen() {
-  const colors = useThemeColors();
+function HomeScreenContent() {
+  const theme = useTheme();
   const db = useSQLiteContext();
   const navigation = useNavigation<any>();
   const profile = useAppStore((state) => state.profile);
@@ -63,38 +66,35 @@ export function HomeScreen() {
   };
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.bgPrimary }]} edges={['top']}>
+    <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]} edges={['top']}>
       <TopBanner tone="error" message={error ?? ''} visible={!!error} />
       <ScrollView
         contentContainerStyle={styles.content}
-        refreshControl={
-          <RefreshControl
-            refreshing={isLoading}
-            onRefresh={() => loadDashboard(db)}
-            tintColor={colors.accentPrimary}
-            colors={[colors.accentPrimary]}
-          />
-        }
       >
         <View style={styles.header}>
           <View style={styles.headerText}>
-            <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>Today</Text>
-            <Text style={[styles.headerDate, { color: colors.textSecondary }]}>{todayLabel}</Text>
+            <Text variant="headlineSmall" style={{ color: theme.colors.onSurface }}>
+              Today
+            </Text>
+            <Text variant="bodyMedium" style={{ color: theme.colors.onSurfaceVariant }}>
+              {todayLabel}
+            </Text>
           </View>
-          <TouchableOpacity
-            style={[styles.profileButton, { backgroundColor: colors.glassWhite }]}
+          <IconButton
+            icon={() => <Ionicons name="person-outline" size={22} color={theme.colors.onSurface} />}
+            containerColor={theme.colors.surfaceVariant}
             onPress={() => navigateToTab('Profile')}
-          >
-            <Ionicons name="person-outline" size={22} color={colors.textPrimary} />
-          </TouchableOpacity>
+          />
         </View>
 
         <View style={styles.focusSection}>
-          <Text style={[styles.focusLabel, { color: colors.accentPrimary }]}>Daily focus</Text>
-          <Text style={[styles.greeting, { color: colors.textPrimary }]} numberOfLines={2}>
+          <Text variant="labelLarge" style={{ color: theme.colors.primary }}>
+            Daily focus
+          </Text>
+          <Text variant="headlineLarge" style={{ color: theme.colors.onSurface }} numberOfLines={2}>
             {greeting}, {name}
           </Text>
-          <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
+          <Text variant="bodyLarge" style={{ color: theme.colors.onSurfaceVariant }}>
             Review priorities, schedule, and your spend trend.
           </Text>
         </View>
@@ -133,6 +133,26 @@ export function HomeScreen() {
   );
 }
 
+export function HomeScreen() {
+  return <HomeScreenContent />;
+}
+
+function MetricCard({ label, amount }: { label: string; amount: number }) {
+  const theme = useTheme();
+  return (
+    <Card style={[styles.metricCard, { backgroundColor: theme.colors.surfaceVariant }]} mode="elevated">
+      <Card.Content>
+        <Text variant="bodyMedium" style={{ color: theme.colors.onSurfaceVariant }}>
+          {label}
+        </Text>
+        <Text variant="headlineMedium" style={{ color: theme.colors.onSurface, marginTop: spacing.sm }} numberOfLines={1}>
+          {formatCurrency(amount, { decimals: 0 })}
+        </Text>
+      </Card.Content>
+    </Card>
+  );
+}
+
 function getGreeting(): string {
   const hour = new Date().getHours();
   if (hour < 12) return 'Good morning';
@@ -145,7 +165,8 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   content: {
-    paddingHorizontal: spacing.screenHorizontal, paddingVertical: spacing.lg,
+    paddingHorizontal: spacing.screenHorizontal,
+    paddingVertical: spacing.lg,
     paddingTop: spacing.sm,
     paddingBottom: BOTTOM_NAV_SAFE_AREA,
   },
@@ -158,42 +179,19 @@ const styles = StyleSheet.create({
   headerText: {
     flex: 1,
   },
-  headerTitle: {
-    fontSize: typography.sizes['2xl'],
-    fontWeight: typography.weights.bold,
-  },
-  headerDate: {
-    fontSize: typography.sizes.base,
-    marginTop: 2,
-  },
-  profileButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 14,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
   focusSection: {
     marginBottom: spacing.xl,
-  },
-  focusLabel: {
-    fontSize: typography.sizes.sm,
-    fontWeight: typography.weights.medium,
-  },
-  greeting: {
-    fontSize: typography.sizes['3xl'],
-    fontWeight: typography.weights.bold,
-    marginTop: spacing.sm,
-  },
-  subtitle: {
-    fontSize: typography.sizes.base,
-    marginTop: spacing.sm,
-    lineHeight: typography.sizes.base * typography.lineHeights.relaxed,
+    gap: spacing.sm,
   },
   metricsRow: {
     flexDirection: 'row',
     paddingBottom: spacing.xl,
-    paddingRight: spacing.lg, // allow last card to scroll past edge
+    paddingRight: spacing.lg,
+    gap: spacing.base,
+  },
+  metricCard: {
+    minWidth: 140,
+    marginRight: spacing.base,
   },
   section: {
     marginBottom: spacing.xl,

@@ -1,11 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
   ScrollView,
-  TouchableOpacity,
-  TextInput,
   Alert,
   Keyboard,
   Dimensions,
@@ -13,14 +10,14 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
-import { useThemeColors } from '../../hooks/useThemeColors';
+import { Text, TextInput, Button, IconButton, useTheme } from 'react-native-paper';
 import { useAppStore } from '../../store';
 import { GlassCard } from '../../components/common/GlassCard';
 import { TopBanner } from '../../components/common/TopBanner';
 import { SegmentedControl } from '../../components/settings/SegmentedControl';
 import { SettingsRow } from '../../components/settings/SettingsRow';
 import { Dropdown } from '../../components/common/Dropdown';
-import { spacing, typography, borderRadius } from '../../theme';
+import { spacing } from '../../theme';
 import { promptBiometrics } from '../../utils/biometrics';
 
 const PIN_LENGTH = 6;
@@ -56,7 +53,7 @@ function biometricFailureMessage(reason: 'no-hardware' | 'not-enrolled' | 'faile
 }
 
 export function ScreenLockScreen() {
-  const colors = useThemeColors();
+  const theme = useTheme();
   const navigation = useNavigation<any>();
   const settings = useAppStore((state) => state.settings);
   const updateSettings = useAppStore((state) => state.updateSettings);
@@ -70,7 +67,7 @@ export function ScreenLockScreen() {
 
   const scrollRef = useRef<ScrollView>(null);
   const scrollOffset = useRef(0);
-  const focusedInput = useRef<TextInput | null>(null);
+  const focusedInput = useRef<View>(null);
 
   useEffect(() => {
     if (!message) return;
@@ -78,15 +75,12 @@ export function ScreenLockScreen() {
     return () => clearTimeout(timer);
   }, [message]);
 
-  // TextInputs inside a plain ScrollView don't auto-scroll into view on Android when the
-  // keyboard opens (only iOS does this natively), so we measure the focused field once the
-  // keyboard has finished animating and nudge the scroll position to keep it visible.
   useEffect(() => {
     const subscription = Keyboard.addListener('keyboardDidShow', (event) => {
       const input = focusedInput.current;
       const scroller = scrollRef.current;
       if (!input || !scroller) return;
-      input.measureInWindow((_x, y, _width, height) => {
+      input.measureInWindow((_x: number, y: number, _width: number, height: number) => {
         const keyboardTop = Dimensions.get('window').height - event.endCoordinates.height;
         const overlap = y + height + SCROLL_INTO_VIEW_PADDING - keyboardTop;
         if (overlap > 0) {
@@ -151,12 +145,12 @@ export function ScreenLockScreen() {
     confirmPin.length === PIN_LENGTH &&
     (!settings.pinCode || currentPin.length === PIN_LENGTH);
 
-  const handlePinInputFocus = (ref: TextInput | null) => {
+  const handlePinInputFocus = (ref: View | null) => {
     focusedInput.current = ref;
   };
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.bgPrimary }]} edges={['top']}>
+    <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]} edges={['top']}>
       <TopBanner tone="success" message={message ?? ''} visible={!!message} onDismiss={() => setMessage(null)} />
       <ScrollView
         ref={scrollRef}
@@ -168,11 +162,14 @@ export function ScreenLockScreen() {
         scrollEventThrottle={16}
       >
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()}>
-            <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
-          </TouchableOpacity>
-          <Text style={[styles.title, { color: colors.textPrimary }]} numberOfLines={1}>Screen Lock</Text>
-          <View style={{ width: 24 }} />
+          <IconButton
+            icon={() => <Ionicons name="arrow-back" size={24} color={theme.colors.onSurface} />}
+            size={24}
+            onPress={() => navigation.goBack()}
+            style={{ margin: 0 }}
+          />
+          <Text variant="titleLarge" style={{ color: theme.colors.onSurface }} numberOfLines={1}>Screen Lock</Text>
+          <View style={{ width: 44 }} />
         </View>
 
         <GlassCard>
@@ -208,7 +205,7 @@ export function ScreenLockScreen() {
                   options={TIMEOUT_OPTIONS}
                   onChange={(value) => updateSettings({ lockTimeoutMinutes: Number(value) })}
                 />
-                <Text style={[styles.timeoutHint, { color: colors.textTertiary }]}>
+                <Text variant="bodySmall" style={{ color: theme.colors.outline, marginTop: -spacing.sm }}>
                   How long the app can sit in the background before fingerprint (or your PIN) is
                   required again.
                 </Text>
@@ -237,10 +234,10 @@ export function ScreenLockScreen() {
 
             {settings.screenLockEnabled && (
               <View style={styles.pinForm}>
-                <Text style={[styles.pinFormTitle, { color: colors.textPrimary }]}>
+                <Text variant="titleMedium" style={{ color: theme.colors.onSurface, marginBottom: spacing.xs }}>
                   {settings.pinCode ? 'Reset your secure access code' : 'Set up your secure access code'}
                 </Text>
-                <Text style={[styles.pinFormSubtitle, { color: colors.textTertiary }]}>
+                <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant, marginBottom: spacing.lg }}>
                   Use exactly {PIN_LENGTH} digits. Your new PIN is stored only on this device.
                 </Text>
 
@@ -264,18 +261,14 @@ export function ScreenLockScreen() {
                   onChangeText={setConfirmPin}
                   onFocusInput={handlePinInputFocus}
                 />
-                <TouchableOpacity
-                  style={[
-                    styles.saveButton,
-                    { backgroundColor: canSavePin ? colors.accentPrimary : colors.textTertiary },
-                  ]}
+                <Button
+                  mode="contained"
                   onPress={handleSavePin}
                   disabled={!canSavePin}
+                  style={{ marginTop: spacing.base }}
                 >
-                  <Text style={[styles.saveButtonText, { color: colors.textInverse }]}>
-                    {settings.pinCode ? 'Update PIN' : 'Set PIN'}
-                  </Text>
-                </TouchableOpacity>
+                  {settings.pinCode ? 'Update PIN' : 'Set PIN'}
+                </Button>
               </View>
             )}
           </GlassCard>
@@ -294,33 +287,28 @@ function PinInput({
   label: string;
   value: string;
   onChangeText: (text: string) => void;
-  onFocusInput: (ref: TextInput | null) => void;
+  onFocusInput: (ref: View | null) => void;
 }) {
-  const colors = useThemeColors();
-  const inputRef = useRef<TextInput>(null);
+  const theme = useTheme();
+  const wrapperRef = useRef<View>(null);
 
   const handleFocus = () => {
-    onFocusInput(inputRef.current);
+    onFocusInput(wrapperRef.current);
   };
 
   return (
-    <View style={styles.inputGroup}>
+    <View ref={wrapperRef} style={styles.inputGroup}>
       <View style={styles.inputLabelRow}>
-        <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>{label}</Text>
-        <Text style={[styles.inputCounter, { color: colors.textTertiary }]}>
+        <Text variant="bodyMedium" style={{ color: theme.colors.onSurfaceVariant }}>{label}</Text>
+        <Text variant="bodySmall" style={{ color: theme.colors.outline }}>
           {value.length}/{PIN_LENGTH}
         </Text>
       </View>
       <TextInput
-        ref={inputRef}
-        style={[
-          styles.input,
-          {
-            color: colors.textPrimary,
-            backgroundColor: colors.glassWhite,
-            borderColor: colors.border,
-          },
-        ]}
+        mode="outlined"
+        dense
+        style={{ backgroundColor: theme.colors.surfaceVariant }}
+        textColor={theme.colors.onSurface}
         value={value}
         onChangeText={(text) => onChangeText(text.replace(/[^0-9]/g, '').slice(0, PIN_LENGTH))}
         onFocus={handleFocus}
@@ -328,7 +316,7 @@ function PinInput({
         secureTextEntry
         maxLength={PIN_LENGTH}
         placeholder="0 0 0 0 0 0"
-        placeholderTextColor={colors.textTertiary}
+        placeholderTextColor={theme.colors.outline}
       />
     </View>
   );
@@ -344,12 +332,9 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingBottom: spacing.sm,
   },
-  title: {
-    fontSize: typography.sizes.lg,
-    fontWeight: typography.weights.semibold,
-  },
   content: {
-    paddingHorizontal: spacing.screenHorizontal, paddingVertical: spacing.lg,
+    paddingHorizontal: spacing.screenHorizontal,
+    paddingVertical: spacing.lg,
     paddingTop: spacing.sm,
     paddingBottom: spacing['4xl'] * 2,
   },
@@ -362,26 +347,11 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: 'transparent',
   },
-  timeoutHint: {
-    fontSize: typography.sizes.xs,
-    lineHeight: typography.sizes.xs * 1.5,
-    marginTop: -spacing.sm,
-  },
   pinForm: {
     marginTop: spacing.lg,
     paddingTop: spacing.lg,
     borderTopWidth: 1,
     borderTopColor: 'transparent',
-  },
-  pinFormTitle: {
-    fontSize: typography.sizes.base,
-    fontWeight: typography.weights.semibold,
-    marginBottom: spacing.xs,
-  },
-  pinFormSubtitle: {
-    fontSize: typography.sizes.xs,
-    lineHeight: typography.sizes.xs * 1.5,
-    marginBottom: spacing.lg,
   },
   inputGroup: {
     marginBottom: spacing.base,
@@ -391,32 +361,5 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     marginBottom: spacing.sm,
-  },
-  inputLabel: {
-    fontSize: typography.sizes.sm,
-    fontWeight: typography.weights.medium,
-  },
-  inputCounter: {
-    fontSize: typography.sizes.xs,
-    fontWeight: typography.weights.medium,
-  },
-  input: {
-    borderWidth: 1,
-    borderRadius: borderRadius.lg,
-    paddingHorizontal: spacing.base,
-    paddingVertical: spacing.base,
-    fontSize: typography.sizes.lg,
-    fontWeight: typography.weights.semibold,
-    letterSpacing: 4,
-  },
-  saveButton: {
-    marginTop: spacing.base,
-    paddingVertical: spacing.base,
-    borderRadius: borderRadius.lg,
-    alignItems: 'center',
-  },
-  saveButtonText: {
-    fontSize: typography.sizes.base,
-    fontWeight: typography.weights.semibold,
   },
 });

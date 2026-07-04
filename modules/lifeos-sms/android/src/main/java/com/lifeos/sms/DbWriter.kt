@@ -152,6 +152,18 @@ internal class DbWriter private constructor(context: Context) {
         db.execSQL(
             "CREATE INDEX IF NOT EXISTS idx_ingest_pending ON sms_ingest_queue (status, next_retry_at)"
         )
+        // Dedupe lookups (existsBySourceHash / existsByMpesaCode) must be
+        // index hits, not table scans — they run per-candidate in the
+        // reconciliation sweep and per-message in realtime processing.
+        try {
+            db.execSQL("CREATE INDEX IF NOT EXISTS idx_tx_source_hash ON transactions (source_hash)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS idx_tx_mpesa_code ON transactions (mpesa_code)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS idx_tx_semantic_hash ON transactions (semantic_hash)")
+        } catch (e: Exception) {
+            // transactions table may not exist yet on a fresh install before the
+            // JS migration runs — indexes get created on the next process start.
+            Log.w(TAG, "dedupe index creation deferred: ${e.message}")
+        }
     }
 
     /**
@@ -178,6 +190,26 @@ internal class DbWriter private constructor(context: Context) {
         } catch (e: Exception) {
             Log.e(TAG, "enqueueIngest failed: ${e.message}", e)
             return -1L
+        }
+    }
+
+    /**
+     * Variant for the inbox reconciliation scan: enqueue ONLY if this body has
+     * never been seen by the queue. Returns true when a new row was inserted.
+     * Single INSERT OR IGNORE — no follow-up SELECT on the hot no-op path.
+     */
+    fun enqueueIngestIfNew(body: String): Boolean {
+        return try {
+            db.compileStatement(
+                "INSERT OR IGNORE INTO sms_ingest_queue (body, body_hash) VALUES (?, ?)"
+            ).use { stmt ->
+                stmt.bindString(1, body)
+                stmt.bindString(2, sha256(body.trim()))
+                stmt.executeInsert() >= 0
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "enqueueIngestIfNew failed: ${e.message}")
+            false
         }
     }
 

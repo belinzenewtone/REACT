@@ -1,17 +1,17 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
+import { View, StyleSheet, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { useSQLiteContext } from 'expo-sqlite';
 import { format } from 'date-fns';
-import { useThemeColors } from '../../hooks/useThemeColors';
+import { Text, Searchbar, IconButton, useTheme } from 'react-native-paper';
 import { useCalendarStore } from '../../store';
 import { GlassCard } from '../../components/common/GlassCard';
-import { spacing, typography, borderRadius, BOTTOM_NAV_SAFE_AREA } from '../../theme';
+import { spacing, BOTTOM_NAV_SAFE_AREA } from '../../theme';
 
 export function EventsScreen() {
-  const colors = useThemeColors();
+  const theme = useTheme();
   const db = useSQLiteContext();
   const navigation = useNavigation<any>();
   const { allEvents, loadCalendar } = useCalendarStore();
@@ -31,58 +31,64 @@ export function EventsScreen() {
   }, [allEvents, query]);
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.bgPrimary }]} edges={['top']}>
+    <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]} edges={['top']}>
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()}>
-            <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
-          </TouchableOpacity>
+          <IconButton
+            icon={() => <Ionicons name="arrow-back" size={24} color={theme.colors.onSurface} />}
+            size={24}
+            onPress={() => navigation.goBack()}
+            style={{ margin: 0 }}
+          />
           <View style={styles.headerText}>
-            <Text style={[styles.title, { color: colors.textPrimary }]} numberOfLines={1}>Events</Text>
-            <Text style={[styles.subtitle, { color: colors.textSecondary }]}>Upcoming</Text>
+            <Text variant="titleLarge" style={{ color: theme.colors.onSurface }} numberOfLines={1}>Events</Text>
+            <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>Upcoming</Text>
           </View>
-          <TouchableOpacity onPress={() => navigation.navigate('EventForm')}>
-            <Ionicons name="add" size={24} color={colors.accentPrimary} />
-          </TouchableOpacity>
-        </View>
-
-        <View style={[styles.searchBar, { backgroundColor: colors.glassWhite, borderColor: colors.border }]}>
-          <Ionicons name="search" size={18} color={colors.textTertiary} />
-          <TextInput
-            style={[styles.searchInput, { color: colors.textPrimary }]}
-            placeholder="Search events..."
-            placeholderTextColor={colors.textTertiary}
-            value={query}
-            onChangeText={setQuery}
+          <IconButton
+            icon={() => <Ionicons name="add" size={24} color={theme.colors.primary} />}
+            size={24}
+            onPress={() => navigation.navigate('EventForm')}
+            style={{ margin: 0 }}
           />
         </View>
 
+        <Searchbar
+          placeholder="Search events..."
+          onChangeText={setQuery}
+          value={query}
+          style={{ backgroundColor: theme.colors.surfaceVariant, marginBottom: spacing.base }}
+          inputStyle={{ color: theme.colors.onSurface }}
+          iconColor={theme.colors.onSurfaceVariant}
+          placeholderTextColor={theme.colors.outline}
+        />
+
         {events.length === 0 ? (
           <View style={styles.emptyState}>
-            <Text style={[styles.emptyTitle, { color: colors.textPrimary }]}>No upcoming events</Text>
-            <Text style={[styles.emptyDesc, { color: colors.textSecondary }]}>
+            <Text variant="titleMedium" style={{ color: theme.colors.onSurface }}>No upcoming events</Text>
+            <Text variant="bodyMedium" style={{ color: theme.colors.onSurfaceVariant }}>
               Tap + to schedule your next event.
             </Text>
           </View>
         ) : (
           events.map((event: any) => (
-            <GlassCard key={event.id} style={styles.eventCard}>
-              <TouchableOpacity
-                style={styles.eventRow}
-                onPress={() => navigation.navigate('EventDetail', { eventId: event.id })}
-              >
-                <View style={[styles.eventBar, { backgroundColor: colors.accentPrimary }]} />
+            <GlassCard
+              key={event.id}
+              style={styles.eventCard}
+              onPress={() => navigation.navigate('EventDetail', { eventId: event.id })}
+            >
+              <View style={styles.eventRow}>
+                <View style={[styles.eventBar, { backgroundColor: theme.colors.primary }]} />
                 <View style={styles.eventInfo}>
-                  <Text style={[styles.eventTitle, { color: colors.textPrimary }]} numberOfLines={1}>
+                  <Text variant="bodyLarge" style={{ color: theme.colors.onSurface }} numberOfLines={1}>
                     {event.title}
                   </Text>
-                  <Text style={[styles.eventDate, { color: colors.textSecondary }]}>
+                  <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
                     {event.date ? format(new Date(event.date), 'MMM dd, yyyy') : ''}
                     {event.event_type ? ` · ${event.event_type}` : ''}
                   </Text>
                 </View>
-                <Ionicons name="chevron-forward" size={18} color={colors.textTertiary} />
-              </TouchableOpacity>
+                <Ionicons name="chevron-forward" size={18} color={theme.colors.outline} />
+              </View>
             </GlassCard>
           ))
         )}
@@ -102,47 +108,17 @@ const styles = StyleSheet.create({
   headerText: {
     alignItems: 'center',
   },
-  title: {
-    fontSize: typography.sizes.lg,
-    fontWeight: typography.weights.semibold,
-  },
-  subtitle: {
-    fontSize: typography.sizes.xs,
-    marginTop: 2,
-  },
   content: {
     paddingHorizontal: spacing.screenHorizontal,
     paddingVertical: spacing.lg,
     paddingBottom: BOTTOM_NAV_SAFE_AREA,
     gap: spacing.base,
   },
-  searchBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: borderRadius.lg,
-    borderWidth: 1,
-    paddingHorizontal: spacing.base,
-    paddingVertical: spacing.sm,
-    gap: spacing.sm,
-  },
-  searchInput: {
-    flex: 1,
-    fontSize: typography.sizes.base,
-  },
   emptyState: {
     gap: spacing.sm,
   },
-  emptyTitle: {
-    fontSize: typography.sizes.xl,
-    fontWeight: typography.weights.bold,
-  },
-  emptyDesc: {
-    fontSize: typography.sizes.base,
-  },
   eventCard: { marginBottom: 0 },
-  eventRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  eventRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: spacing.sm },
   eventBar: { width: 3, height: 40, borderRadius: 2 },
   eventInfo: { flex: 1 },
-  eventTitle: { fontSize: typography.sizes.base, fontWeight: typography.weights.medium },
-  eventDate: { fontSize: typography.sizes.xs, marginTop: 2 },
 });

@@ -1,10 +1,10 @@
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, StyleSheet } from 'react-native';
 import { GlassCard } from '../common/GlassCard';
 import { SectionHeader } from '../common/SectionHeader';
-import { useThemeColors } from '../../hooks/useThemeColors';
+import { Text, useTheme } from 'react-native-paper';
 import { formatCurrency } from '../../utils/formatters';
-import { spacing, typography, borderRadius } from '../../theme';
+import { spacing, borderRadius } from '../../theme';
 
 interface MerchantItem {
   merchant: string;
@@ -16,14 +16,16 @@ interface TopMerchantsProps {
 }
 
 export function TopMerchants({ merchants }: TopMerchantsProps) {
-  const colors = useThemeColors();
+  const theme = useTheme();
 
   return (
     <View>
       <SectionHeader title="Top merchants" />
       <GlassCard>
         {merchants.length === 0 ? (
-          <Text style={[styles.empty, { color: colors.textTertiary }]}>No merchant data</Text>
+          <Text variant="bodyLarge" style={[styles.empty, { color: theme.colors.onSurfaceVariant }]}>
+            No merchant data
+          </Text>
         ) : (
           merchants.slice(0, 5).map((item, index) => {
             const maxAmount = merchants[0].amount;
@@ -31,21 +33,23 @@ export function TopMerchants({ merchants }: TopMerchantsProps) {
 
             return (
               <View key={item.merchant} style={styles.row}>
-                <Text style={[styles.rank, { color: colors.textTertiary }]}>{index + 1}</Text>
+                <Text variant="bodySmall" style={[styles.rank, { color: theme.colors.onSurfaceVariant }]}>
+                  {index + 1}
+                </Text>
                 <View style={styles.content}>
                   <View style={styles.header}>
-                    <Text style={[styles.merchant, { color: colors.textPrimary }]} numberOfLines={1} ellipsizeMode="tail">
+                    <Text variant="bodyMedium" style={{ color: theme.colors.onSurface }} numberOfLines={1} ellipsizeMode="tail">
                       {item.merchant}
                     </Text>
-                    <Text style={[styles.amount, { color: colors.textPrimary }]}>
+                    <Text variant="bodyMedium" style={{ color: theme.colors.onSurface }}>
                       {formatCurrency(item.amount)}
                     </Text>
                   </View>
-                  <View style={[styles.track, { backgroundColor: colors.border }]}>
+                  <View style={[styles.track, { backgroundColor: theme.colors.outlineVariant }]}>
                     <View
                       style={[
                         styles.fill,
-                        { width: `${percent}%`, backgroundColor: colors.accentPrimary },
+                        { width: `${percent}%`, backgroundColor: theme.colors.primary },
                       ]}
                     />
                   </View>
@@ -63,7 +67,6 @@ const styles = StyleSheet.create({
   empty: {
     textAlign: 'center',
     paddingVertical: spacing.lg,
-    fontSize: typography.sizes.base,
   },
   row: {
     flexDirection: 'row',
@@ -72,8 +75,7 @@ const styles = StyleSheet.create({
   },
   rank: {
     width: 24,
-    fontSize: typography.sizes.sm,
-    fontWeight: typography.weights.bold,
+    fontWeight: '700',
   },
   content: {
     flex: 1,
@@ -82,16 +84,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     marginBottom: 4,
-  },
-  merchant: {
-    fontSize: typography.sizes.sm,
-    fontWeight: typography.weights.medium,
-    flex: 1,
-    marginRight: spacing.sm,
-  },
-  amount: {
-    fontSize: typography.sizes.sm,
-    fontWeight: typography.weights.semibold,
   },
   track: {
     height: 6,

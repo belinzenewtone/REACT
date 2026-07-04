@@ -1,20 +1,26 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   View,
-  Text,
-  TextInput,
-  TouchableOpacity,
   ScrollView,
   StyleSheet,
-  Switch,
   Modal,
   Alert,
+  TouchableOpacity,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { useSQLiteContext } from 'expo-sqlite';
-import { useThemeColors } from '../../hooks/useThemeColors';
+import {
+  Text,
+  TextInput,
+  Button,
+  IconButton,
+  Chip,
+  Switch,
+  TouchableRipple,
+  useTheme,
+} from 'react-native-paper';
 import { useCalendarStore } from '../../store';
 import { useAppStore } from '../../store';
 import {
@@ -33,10 +39,10 @@ import { SearchField } from '../common/SearchField';
 import { Dropdown } from '../common/Dropdown';
 import { DateField } from '../common/DateField';
 import { TimeField } from '../common/TimeField';
-import { spacing, typography, borderRadius } from '../../theme';
+import { spacing, borderRadius } from '../../theme';
 import type { EventType, EventKind, RepeatRule, TaskPriority, TaskStatus } from '../../types';
 
-export type FormType = 'task' | 'event' | 'birthday' | 'anniversary' | 'countdown';
+type FormType = 'task' | 'event' | 'birthday' | 'anniversary' | 'countdown';
 
 interface TaskEventFormProps {
   editTaskId?: string;
@@ -59,6 +65,12 @@ const PRIORITY_OPTIONS: { key: TaskPriority; label: string }[] = [
   { key: 'medium', label: 'Important' },
   { key: 'high', label: 'Urgent' },
 ];
+
+const PRIORITY_COLORS: Record<TaskPriority, string> = {
+  low: '#7FC8F8',
+  medium: '#F5CB5C',
+  high: '#F2B8B5',
+};
 
 const EVENT_KIND_OPTIONS: { key: EventKind; label: string }[] = [
   { key: 'meeting', label: 'Meeting' },
@@ -88,11 +100,16 @@ const REMINDER_PRESETS = [
   { label: '1 day before', minutes: 1440 },
 ];
 
-const REMINDER_UNIT_CONFIG: Record<'minute' | 'hour' | 'day', { label: string; max: number }> = {
-  minute: { label: 'Min', max: 60 },
-  hour: { label: 'Hour', max: 24 },
-  day: { label: 'Day', max: 30 },
+const REMINDER_UNIT_CONFIG: Record<'minute' | 'hour' | 'day', { label: string; short: string; max: number }> = {
+  minute: { label: 'Minutes', short: 'Min', max: 60 },
+  hour: { label: 'Hours', short: 'Hour', max: 24 },
+  day: { label: 'Days', short: 'Day', max: 30 },
 };
+
+const REMINDER_UNIT_OPTIONS = (['minute', 'hour', 'day'] as const).map((unit) => ({
+  value: unit,
+  label: REMINDER_UNIT_CONFIG[unit].label,
+}));
 
 const FALLBACK_TIMEZONES = [
   'UTC', 'Africa/Nairobi', 'Africa/Lagos', 'Africa/Cairo', 'Africa/Johannesburg',
@@ -114,7 +131,7 @@ function getAvailableTimezones(): string[] {
 }
 
 export function TaskEventForm({ editTaskId, editEventId, defaultType = 'task' }: TaskEventFormProps) {
-  const colors = useThemeColors();
+  const theme = useTheme();
   const db = useSQLiteContext();
   const navigation = useNavigation<any>();
   const { loadCalendar } = useCalendarStore();
@@ -125,11 +142,9 @@ export function TaskEventForm({ editTaskId, editEventId, defaultType = 'task' }:
   const [priority, setPriority] = useState<TaskPriority>('low');
   const [status, setStatus] = useState<TaskStatus>('active');
 
-  // Task deadline
   const [dateText, setDateText] = useState('');
   const [timeText, setTimeText] = useState('');
 
-  // Event fields
   const [allDay, setAllDay] = useState(false);
   const [startDate, setStartDate] = useState('');
   const [startTime, setStartTime] = useState('');
@@ -143,18 +158,14 @@ export function TaskEventForm({ editTaskId, editEventId, defaultType = 'task' }:
   const [kind, setKind] = useState<EventKind>('other');
   const [timeZoneId, setTimeZoneId] = useState(Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC');
 
-  // Birthday/Anniversary
   const [addYear, setAddYear] = useState(true);
 
-  // Countdown
   const [countdownReminderTime, setCountdownReminderTime] = useState('09:00');
   const [remind3DaysBefore, setRemind3DaysBefore] = useState(false);
 
-  // Shared
   const [reminderOffsets, setReminderOffsets] = useState<number[]>([]);
   const [alarmEnabled, setAlarmEnabled] = useState(false);
 
-  // Modals
   const [reminderModalOpen, setReminderModalOpen] = useState(false);
   const [repeatModalOpen, setRepeatModalOpen] = useState(false);
   const [customReminderOpen, setCustomReminderOpen] = useState(false);
@@ -253,9 +264,6 @@ export function TaskEventForm({ editTaskId, editEventId, defaultType = 'task' }:
   const buildIso = (date: string, time: string, defaultTime: string): string | undefined => {
     if (!date.trim()) return undefined;
     const t = time.trim() || defaultTime;
-    // Parse "YYYY-MM-DD" and "HH:mm" independently so we can interpret the
-    // wall-clock in the user-selected zone (or the device zone) rather than
-    // treating it as raw UTC.
     const dParts = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date.trim());
     const tParts = /^(\d{1,2}):(\d{2})$/.exec(t);
     if (!dParts || !tParts) return undefined;
@@ -264,7 +272,6 @@ export function TaskEventForm({ editTaskId, editEventId, defaultType = 'task' }:
     const d  = parseInt(dParts[3], 10);
     const h  = parseInt(tParts[1], 10);
     const mi = parseInt(tParts[2], 10);
-    // Prefer the explicit event zone; fall back to the device zone.
     const zone = timeZoneId?.trim() || deviceTimeZone();
     const iso = wallClockInZoneToUtcIso(y, mo, d, h, mi, zone);
     return isNaN(new Date(iso).getTime()) ? undefined : iso;
@@ -323,7 +330,6 @@ export function TaskEventForm({ editTaskId, editEventId, defaultType = 'task' }:
           } else if (type === 'anniversary') {
             effectiveRepeatRule = 'yearly';
           } else {
-            // countdown
             effectiveRepeatRule = repeatRule;
             effectiveReminderTimeMinutes = parseTimeOfDayMinutes(countdownReminderTime);
             effectiveOffsets = [];
@@ -355,8 +361,6 @@ export function TaskEventForm({ editTaskId, editEventId, defaultType = 'task' }:
           reminderTimeOfDayMinutes: effectiveReminderTimeMinutes,
           allDay: effectiveAllDay,
           repeatRule: effectiveRepeatRule,
-          // Only persist an end date when the event actually repeats — otherwise
-          // it's meaningless. Empty string / invalid date → undefined.
           repeatEndDate:
             effectiveRepeatRule !== 'none' && repeatEndDate.trim()
               ? buildIso(repeatEndDate, '23:59', '23:59')
@@ -375,7 +379,6 @@ export function TaskEventForm({ editTaskId, editEventId, defaultType = 'task' }:
           await syncEventReminders(db, created.id);
         }
       }
-      // Signal every subscribed screen (Calendar, Home, Analytics, WeekReview) to reload.
       useDataVersion.getState().bump();
       await loadCalendar(db);
       navigation.goBack();
@@ -477,23 +480,29 @@ export function TaskEventForm({ editTaskId, editEventId, defaultType = 'task' }:
   const typeLabel = TYPE_OPTIONS.find((t) => t.key === type)?.label ?? 'Task';
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.bgPrimary }]} edges={['top']}>
+    <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]} edges={['top']}>
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()}>
-            <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
-          </TouchableOpacity>
-          <Text style={[styles.headerTitle, { color: colors.textPrimary }]} numberOfLines={1}>
+          <IconButton
+            icon={() => <Ionicons name="arrow-back" size={24} color={theme.colors.onSurface} />}
+            size={24}
+            onPress={() => navigation.goBack()}
+            style={{ margin: 0 }}
+          />
+          <Text variant="titleLarge" style={{ color: theme.colors.onSurface }} numberOfLines={1}>
             {isEditing ? 'Edit' : 'New'} {typeLabel}
           </Text>
           {isEditing ? (
-            <TouchableOpacity onPress={handleDelete}>
-              <Ionicons name="trash-outline" size={22} color={colors.danger} />
-            </TouchableOpacity>
+            <IconButton
+              icon={() => <Ionicons name="trash-outline" size={22} color={theme.colors.error} />}
+              size={22}
+              onPress={handleDelete}
+              style={{ margin: 0 }}
+            />
           ) : (
-            <TouchableOpacity onPress={handleSave}>
-              <Text style={[styles.saveTopText, { color: colors.accentPrimary }]}>Save</Text>
-            </TouchableOpacity>
+            <Button mode="text" onPress={handleSave} textColor={theme.colors.primary}>
+              Save
+            </Button>
           )}
         </View>
 
@@ -503,60 +512,51 @@ export function TaskEventForm({ editTaskId, editEventId, defaultType = 'task' }:
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.typeChips}
         >
-          {TYPE_OPTIONS.map((option) => {
-            const selected = type === option.key;
-            return (
-              <TouchableOpacity
-                key={option.key}
-                style={[
-                  styles.typeChip,
-                  selected && { backgroundColor: colors.accentPrimary, borderColor: colors.accentPrimary },
-                  { borderColor: colors.border },
-                ]}
-                onPress={() => setType(option.key)}
-              >
-                <Text
-                  style={[
-                    styles.typeChipText,
-                    { color: selected ? colors.textInverse : colors.textSecondary },
-                  ]}
-                >
-                  {option.label}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
+          {TYPE_OPTIONS.map((option) => (
+            <Chip
+              key={option.key}
+              selected={type === option.key}
+              onPress={() => setType(option.key)}
+              style={{ marginRight: spacing.sm }}
+            >
+              {option.label}
+            </Chip>
+          ))}
         </ScrollView>
 
-        <InputGroup label={type === 'birthday' ? "Person's name" : type === 'anniversary' ? 'Anniversary name' : type === 'countdown' ? 'Event name' : 'Title'}>
-          <TextInput
-            style={[styles.input, { color: colors.textPrimary }]}
-            placeholder={isTask ? 'e.g. Pay electricity bill' : 'e.g. Team meeting'}
-            placeholderTextColor={colors.textTertiary}
-            value={title}
-            onChangeText={setTitle}
-          />
-        </InputGroup>
+        <TextInput
+          mode="outlined"
+          dense
+          label={type === 'birthday' ? "Person's name" : type === 'anniversary' ? 'Anniversary name' : type === 'countdown' ? 'Event name' : 'Title'}
+          style={styles.input}
+          textColor={theme.colors.onSurface}
+          placeholder={isTask ? 'e.g. Pay electricity bill' : 'e.g. Team meeting'}
+          placeholderTextColor={theme.colors.outline}
+          value={title}
+          onChangeText={setTitle}
+        />
 
         {!isSingleDateType && (
-          <InputGroup label="Description">
-            <TextInput
-              style={[styles.input, { color: colors.textPrimary }]}
-              placeholder="Add details..."
-              placeholderTextColor={colors.textTertiary}
-              value={description}
-              onChangeText={setDescription}
-              multiline
-            />
-          </InputGroup>
+          <TextInput
+            mode="outlined"
+            dense
+            label="Description"
+            style={styles.input}
+            textColor={theme.colors.onSurface}
+            placeholder="Add details..."
+            placeholderTextColor={theme.colors.outline}
+            value={description}
+            onChangeText={setDescription}
+            multiline
+          />
         )}
 
         {isTask ? (
           <>
-            <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>Deadline</Text>
+            <Text variant="bodyMedium" style={{ color: theme.colors.onSurfaceVariant, marginTop: spacing.lg, marginBottom: spacing.sm }}>Deadline</Text>
             <View style={styles.row}>
               <DateField label="Date" value={dateText} onChange={setDateText} style={styles.dateInput} />
-              <TimeField label="Time" value={timeText} onChange={setTimeText} style={styles.timeInput} />
+              <TimeField label="Time" value={timeText} onChange={setTimeText} style={styles.timeInput} showIcon={false} />
             </View>
           </>
         ) : isSingleDateType ? (
@@ -611,27 +611,29 @@ export function TaskEventForm({ editTaskId, editEventId, defaultType = 'task' }:
           <>
             <RowToggle label="All day" value={allDay} onValueChange={setAllDay} />
 
-            <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>From</Text>
+            <Text variant="bodyMedium" style={{ color: theme.colors.onSurfaceVariant, marginTop: spacing.lg, marginBottom: spacing.sm }}>From</Text>
             <View style={styles.row}>
               <DateField label="Date" value={startDate} onChange={setStartDate} style={styles.dateInput} />
-              {!allDay && <TimeField label="Time" value={startTime} onChange={setStartTime} style={styles.timeInput} />}
+              {!allDay && <TimeField label="Time" value={startTime} onChange={setStartTime} style={styles.timeInput} showIcon={false} />}
             </View>
 
-            <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>To</Text>
+            <Text variant="bodyMedium" style={{ color: theme.colors.onSurfaceVariant, marginTop: spacing.lg, marginBottom: spacing.sm }}>To</Text>
             <View style={styles.row}>
               <DateField label="Date" value={endDate} onChange={setEndDate} style={styles.dateInput} />
-              {!allDay && <TimeField label="Time" value={endTime} onChange={setEndTime} style={styles.timeInput} />}
+              {!allDay && <TimeField label="Time" value={endTime} onChange={setEndTime} style={styles.timeInput} showIcon={false} />}
             </View>
             {endDate.trim().length > 0 && (
-              <TouchableOpacity
+              <Button
+                mode="text"
                 onPress={() => {
                   setEndDate('');
                   setEndTime('');
                 }}
-                style={styles.clearEndDate}
+                textColor={theme.colors.error}
+                style={{ alignSelf: 'flex-start', marginBottom: spacing.base, marginTop: -spacing.xs }}
               >
-                <Text style={[styles.clearEndDateText, { color: colors.danger }]}>Clear end date</Text>
-              </TouchableOpacity>
+                Clear end date
+              </Button>
             )}
 
             <RowButton label="Repeat" value={repeatLabel} onPress={() => setRepeatModalOpen(true)} />
@@ -643,45 +645,56 @@ export function TaskEventForm({ editTaskId, editEventId, defaultType = 'task' }:
               />
             )}
 
-            <InputGroup label="Guests">
-              <View style={styles.guestInputRow}>
-                <TextInput
-                  style={[styles.input, styles.guestInputField, { color: colors.textPrimary }]}
-                  placeholder="email@example.com"
-                  placeholderTextColor={colors.textTertiary}
-                  value={guestInput}
-                  onChangeText={setGuestInput}
-                  onSubmitEditing={addGuest}
-                />
-                <TouchableOpacity onPress={addGuest}>
-                  <Ionicons name="add-circle" size={22} color={colors.accentPrimary} />
-                </TouchableOpacity>
-              </View>
-            </InputGroup>
+            <View style={styles.row}>
+              <TextInput
+                mode="outlined"
+                dense
+                label="Guests"
+                style={[styles.input, { flex: 1 }]}
+                textColor={theme.colors.onSurface}
+                placeholder="email@example.com"
+                placeholderTextColor={theme.colors.outline}
+                value={guestInput}
+                onChangeText={setGuestInput}
+                onSubmitEditing={addGuest}
+              />
+              <TouchableOpacity
+                onPress={addGuest}
+                activeOpacity={0.8}
+                style={[
+                  styles.addGuestButton,
+                  { backgroundColor: theme.colors.primary },
+                ]}
+              >
+                <Ionicons name="add" size={22} color={theme.colors.onPrimary} />
+              </TouchableOpacity>
+            </View>
             {guests.length > 0 && (
               <View style={styles.chipWrap}>
                 {guests.map((guest) => (
-                  <View key={guest} style={[styles.guestChip, { borderColor: colors.border, backgroundColor: colors.glassWhite }]}>
-                    <Text style={[styles.guestChipText, { color: colors.textPrimary }]} numberOfLines={1}>
-                      {guest}
-                    </Text>
-                    <TouchableOpacity onPress={() => removeGuest(guest)}>
-                      <Ionicons name="close-circle" size={16} color={colors.textSecondary} />
-                    </TouchableOpacity>
-                  </View>
+                  <Chip
+                    key={guest}
+                    onClose={() => removeGuest(guest)}
+                    style={{ backgroundColor: theme.colors.surfaceVariant, borderColor: theme.colors.outlineVariant, maxWidth: 200 }}
+                    textStyle={{ color: theme.colors.onSurface }}
+                  >
+                    {guest}
+                  </Chip>
                 ))}
               </View>
             )}
 
-            <InputGroup label="Location">
-              <TextInput
-                style={[styles.input, { color: colors.textPrimary }]}
-                placeholder="e.g. Conference room"
-                placeholderTextColor={colors.textTertiary}
-                value={location}
-                onChangeText={setLocation}
-              />
-            </InputGroup>
+            <TextInput
+              mode="outlined"
+              dense
+              label="Location"
+              style={styles.input}
+              textColor={theme.colors.onSurface}
+              placeholder="e.g. Conference room"
+              placeholderTextColor={theme.colors.outline}
+              value={location}
+              onChangeText={setLocation}
+            />
 
             {!allDay && (
               <RowButton label="Time zone" value={timeZoneId} onPress={() => setTimezoneModalOpen(true)} />
@@ -698,32 +711,19 @@ export function TaskEventForm({ editTaskId, editEventId, defaultType = 'task' }:
 
         {(isTask || type === 'event') && (
           <>
-            <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>Priority</Text>
+            <Text variant="bodyMedium" style={{ color: theme.colors.onSurfaceVariant, marginTop: spacing.lg, marginBottom: spacing.sm }}>Priority</Text>
             <View style={styles.priorityRow}>
-              {PRIORITY_OPTIONS.map((option) => {
-                const selected = priority === option.key;
-                const pColor = colors.priority[option.key];
-                return (
-                  <TouchableOpacity
-                    key={option.key}
-                    style={[
-                      styles.priorityChip,
-                      selected && { backgroundColor: pColor, borderColor: pColor },
-                      { borderColor: colors.border },
-                    ]}
-                    onPress={() => setPriority(option.key)}
-                  >
-                    <Text
-                      style={[
-                        styles.priorityChipText,
-                        { color: selected ? colors.textInverse : colors.textSecondary },
-                      ]}
-                    >
-                      {option.label}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
+              {PRIORITY_OPTIONS.map((option) => (
+                <Chip
+                  key={option.key}
+                  selected={priority === option.key}
+                  onPress={() => setPriority(option.key)}
+                  style={{ flex: 1 }}
+                  selectedColor={PRIORITY_COLORS[option.key]}
+                >
+                  {option.label}
+                </Chip>
+              ))}
             </View>
           </>
         )}
@@ -736,36 +736,39 @@ export function TaskEventForm({ editTaskId, editEventId, defaultType = 'task' }:
         )}
 
         {isEditing && (
-          <TouchableOpacity
-            style={[styles.saveButton, { backgroundColor: colors.accentPrimary }]}
+          <Button
+            mode="contained"
             onPress={handleSave}
+            style={{ marginTop: spacing.xl }}
           >
-            <Text style={[styles.saveButtonText, { color: colors.textInverse }]} numberOfLines={1}>Save</Text>
-          </TouchableOpacity>
+            Save
+          </Button>
         )}
       </ScrollView>
 
       {/* Reminder Modal */}
       <Modal visible={reminderModalOpen} transparent animationType="slide" onRequestClose={() => setReminderModalOpen(false)}>
         <View style={[styles.modalOverlay, { backgroundColor: 'rgba(0,0,0,0.6)' }]}>
-          <View style={[styles.modalContent, { backgroundColor: colors.bgSecondary }]}>
+          <View style={[styles.modalContent, { backgroundColor: theme.colors.surfaceVariant }]}>
             <View style={styles.modalHeader}>
-              <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>Reminders</Text>
-              <TouchableOpacity onPress={() => setReminderModalOpen(false)}>
-                <Ionicons name="close" size={24} color={colors.textSecondary} />
-              </TouchableOpacity>
+              <Text variant="titleLarge" style={{ color: theme.colors.onSurface }}>Reminders</Text>
+              <IconButton
+                icon={() => <Ionicons name="close" size={24} color={theme.colors.onSurfaceVariant} />}
+                size={24}
+                onPress={() => setReminderModalOpen(false)}
+                style={{ margin: 0 }}
+              />
             </View>
 
             <View style={styles.modalRow}>
-              <Text style={[styles.modalLabel, { color: colors.textSecondary }]}>Enable reminders</Text>
+              <Text variant="bodyMedium" style={{ color: theme.colors.onSurfaceVariant }}>Enable reminders</Text>
               <Switch
                 value={reminderOffsets.length > 0}
                 onValueChange={(on) => {
                   if (!on) setReminderOffsets([]);
                   else setReminderOffsets([10]);
                 }}
-                trackColor={{ false: colors.border, true: colors.accentPrimary }}
-                thumbColor={reminderOffsets.length > 0 ? colors.textInverse : colors.textTertiary}
+                color={theme.colors.primary}
               />
             </View>
 
@@ -774,20 +777,24 @@ export function TaskEventForm({ editTaskId, editEventId, defaultType = 'task' }:
                 {REMINDER_PRESETS.map((preset) => {
                   const selected = reminderOffsets.includes(preset.minutes);
                   return (
-                    <TouchableOpacity
+                    <TouchableRipple
                       key={preset.minutes}
-                      style={styles.modalOption}
                       onPress={() => toggleReminder(preset.minutes)}
+                      rippleColor={theme.colors.primary}
                     >
-                      <Text style={[styles.modalOptionText, { color: colors.textPrimary }]}>{preset.label}</Text>
-                      {selected && <Ionicons name="checkmark" size={20} color={colors.accentPrimary} />}
-                    </TouchableOpacity>
+                      <View style={styles.modalOption}>
+                        <Text variant="bodyMedium" style={{ color: theme.colors.onSurface }}>{preset.label}</Text>
+                        {selected && <Ionicons name="checkmark" size={20} color={theme.colors.primary} />}
+                      </View>
+                    </TouchableRipple>
                   );
                 })}
-                <TouchableOpacity style={styles.modalOption} onPress={() => setCustomReminderOpen(true)}>
-                  <Text style={[styles.modalOptionText, { color: colors.textPrimary }]}>Custom...</Text>
-                  <Ionicons name="chevron-forward" size={18} color={colors.textTertiary} />
-                </TouchableOpacity>
+                <TouchableRipple onPress={() => setCustomReminderOpen(true)} rippleColor={theme.colors.primary}>
+                  <View style={styles.modalOption}>
+                    <Text variant="bodyMedium" style={{ color: theme.colors.onSurface }}>Custom...</Text>
+                    <Ionicons name="chevron-forward" size={18} color={theme.colors.outline} />
+                  </View>
+                </TouchableRipple>
               </>
             )}
           </View>
@@ -797,61 +804,42 @@ export function TaskEventForm({ editTaskId, editEventId, defaultType = 'task' }:
       {/* Custom Reminder Modal */}
       <Modal visible={customReminderOpen} transparent animationType="slide" onRequestClose={() => setCustomReminderOpen(false)}>
         <View style={[styles.modalOverlay, { backgroundColor: 'rgba(0,0,0,0.6)' }]}>
-          <View style={[styles.modalContent, { backgroundColor: colors.bgSecondary }]}>
-            <Text style={[styles.modalTitle, { color: colors.textPrimary, marginBottom: spacing.lg }]}>
+          <View style={[styles.modalContent, { backgroundColor: theme.colors.surfaceVariant }]}>
+            <Text variant="titleLarge" style={{ color: theme.colors.onSurface, marginBottom: spacing.lg }}>
               Custom reminder
             </Text>
             <View style={styles.row}>
               <TextInput
-                style={[styles.customInput, { color: colors.textPrimary, borderColor: colors.border, backgroundColor: colors.bgElevated }]}
+                mode="outlined"
+                label="Value"
+                style={[styles.customInput, { backgroundColor: theme.colors.surfaceVariant }]}
+                textColor={theme.colors.onSurface}
                 value={customValue}
                 onChangeText={handleCustomValueChange}
                 keyboardType="number-pad"
                 placeholder="15"
-                placeholderTextColor={colors.textTertiary}
+                placeholderTextColor={theme.colors.outline}
                 maxLength={2}
               />
-              <View style={styles.unitSelector}>
-                {(['minute', 'hour', 'day'] as const).map((unit) => {
-                  const selected = customUnit === unit;
-                  return (
-                    <TouchableOpacity
-                      key={unit}
-                      style={[
-                        styles.unitButton,
-                        {
-                          backgroundColor: selected ? `${colors.accentPrimary}1F` : colors.bgElevated,
-                          borderWidth: 1,
-                          borderColor: selected ? `${colors.accentPrimary}66` : 'transparent',
-                        },
-                      ]}
-                      onPress={() => handleCustomUnitChange(unit)}
-                    >
-                      <Text
-                        style={{
-                          color: selected ? colors.accentPrimary : colors.textSecondary,
-                          fontWeight: selected ? typography.weights.semibold : typography.weights.regular,
-                        }}
-                        numberOfLines={1}
-                        adjustsFontSizeToFit
-                      >
-                        {REMINDER_UNIT_CONFIG[unit].label}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
+              <View style={styles.customUnitDropdown}>
+                <Dropdown
+                  label="Unit"
+                  value={customUnit}
+                  options={REMINDER_UNIT_OPTIONS}
+                  onChange={(value) => handleCustomUnitChange(value as 'minute' | 'hour' | 'day')}
+                />
               </View>
             </View>
-            <Text style={[styles.unitRangeHint, { color: colors.textTertiary }]}>
-              {`${REMINDER_UNIT_CONFIG[customUnit].label} · 1-${REMINDER_UNIT_CONFIG[customUnit].max}`}
+            <Text variant="bodySmall" style={{ color: theme.colors.outline, marginTop: spacing.sm }}>
+              {`Enter 1-${REMINDER_UNIT_CONFIG[customUnit].max} ${REMINDER_UNIT_CONFIG[customUnit].label.toLowerCase()}`}
             </Text>
             <View style={styles.modalActions}>
-              <TouchableOpacity onPress={() => setCustomReminderOpen(false)}>
-                <Text style={[styles.modalActionText, { color: colors.textSecondary }]}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={addCustomReminder}>
-                <Text style={[styles.modalActionText, { color: colors.accentPrimary }]}>OK</Text>
-              </TouchableOpacity>
+              <Button mode="text" onPress={() => setCustomReminderOpen(false)} textColor={theme.colors.onSurfaceVariant}>
+                Cancel
+              </Button>
+              <Button mode="text" onPress={addCustomReminder} textColor={theme.colors.primary}>
+                OK
+              </Button>
             </View>
           </View>
         </View>
@@ -860,27 +848,32 @@ export function TaskEventForm({ editTaskId, editEventId, defaultType = 'task' }:
       {/* Repeat Modal */}
       <Modal visible={repeatModalOpen} transparent animationType="slide" onRequestClose={() => setRepeatModalOpen(false)}>
         <View style={[styles.modalOverlay, { backgroundColor: 'rgba(0,0,0,0.6)' }]}>
-          <View style={[styles.modalContent, { backgroundColor: colors.bgSecondary }]}>
+          <View style={[styles.modalContent, { backgroundColor: theme.colors.surfaceVariant }]}>
             <View style={styles.modalHeader}>
-              <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>Repeat</Text>
-              <TouchableOpacity onPress={() => setRepeatModalOpen(false)}>
-                <Ionicons name="close" size={24} color={colors.textSecondary} />
-              </TouchableOpacity>
+              <Text variant="titleLarge" style={{ color: theme.colors.onSurface }}>Repeat</Text>
+              <IconButton
+                icon={() => <Ionicons name="close" size={24} color={theme.colors.onSurfaceVariant} />}
+                size={24}
+                onPress={() => setRepeatModalOpen(false)}
+                style={{ margin: 0 }}
+              />
             </View>
             {REPEAT_OPTIONS.map((option) => {
               const selected = repeatRule === option.key;
               return (
-                <TouchableOpacity
+                <TouchableRipple
                   key={option.key}
-                  style={styles.modalOption}
                   onPress={() => {
                     setRepeatRule(option.key);
                     setRepeatModalOpen(false);
                   }}
+                  rippleColor={theme.colors.primary}
                 >
-                  <Text style={[styles.modalOptionText, { color: colors.textPrimary }]}>{option.label}</Text>
-                  {selected && <Ionicons name="checkmark" size={20} color={colors.accentPrimary} />}
-                </TouchableOpacity>
+                  <View style={styles.modalOption}>
+                    <Text variant="bodyMedium" style={{ color: theme.colors.onSurface }}>{option.label}</Text>
+                    {selected && <Ionicons name="checkmark" size={20} color={theme.colors.primary} />}
+                  </View>
+                </TouchableRipple>
               );
             })}
           </View>
@@ -890,30 +883,35 @@ export function TaskEventForm({ editTaskId, editEventId, defaultType = 'task' }:
       {/* Timezone Modal */}
       <Modal visible={timezoneModalOpen} transparent animationType="slide" onRequestClose={() => setTimezoneModalOpen(false)}>
         <View style={[styles.modalOverlay, { backgroundColor: 'rgba(0,0,0,0.6)' }]}>
-          <View style={[styles.modalContent, styles.timezoneModalContent, { backgroundColor: colors.bgSecondary }]}>
+          <View style={[styles.modalContent, styles.timezoneModalContent, { backgroundColor: theme.colors.surfaceVariant }]}>
             <View style={styles.modalHeader}>
-              <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>Time zone</Text>
-              <TouchableOpacity onPress={() => setTimezoneModalOpen(false)}>
-                <Ionicons name="close" size={24} color={colors.textSecondary} />
-              </TouchableOpacity>
+              <Text variant="titleLarge" style={{ color: theme.colors.onSurface }}>Time zone</Text>
+              <IconButton
+                icon={() => <Ionicons name="close" size={24} color={theme.colors.onSurfaceVariant} />}
+                size={24}
+                onPress={() => setTimezoneModalOpen(false)}
+                style={{ margin: 0 }}
+              />
             </View>
             <SearchField value={timezoneQuery} onChangeText={setTimezoneQuery} placeholder="Search time zones…" />
             <ScrollView style={styles.timezoneList}>
               {filteredTimezones.map((tz) => {
                 const selected = tz === timeZoneId;
                 return (
-                  <TouchableOpacity
+                  <TouchableRipple
                     key={tz}
-                    style={styles.modalOption}
                     onPress={() => {
                       setTimeZoneId(tz);
                       setTimezoneModalOpen(false);
                       setTimezoneQuery('');
                     }}
+                    rippleColor={theme.colors.primary}
                   >
-                    <Text style={[styles.modalOptionText, { color: colors.textPrimary }]}>{tz}</Text>
-                    {selected && <Ionicons name="checkmark" size={20} color={colors.accentPrimary} />}
-                  </TouchableOpacity>
+                    <View style={styles.modalOption}>
+                      <Text variant="bodyMedium" style={{ color: theme.colors.onSurface }}>{tz}</Text>
+                      {selected && <Ionicons name="checkmark" size={20} color={theme.colors.primary} />}
+                    </View>
+                  </TouchableRipple>
                 );
               })}
             </ScrollView>
@@ -944,30 +942,33 @@ function InputGroup({
   children: React.ReactNode;
   style?: object;
 }) {
-  const colors = useThemeColors();
+  const theme = useTheme();
   return (
-    <View style={[styles.inputGroup, { backgroundColor: colors.glassWhite, borderColor: colors.border }, style]}>
-      <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>{label}</Text>
+    <View style={[styles.inputGroup, { backgroundColor: theme.colors.surfaceVariant, borderColor: theme.colors.outlineVariant }, style]}>
+      <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant, marginBottom: 2 }}>{label}</Text>
       {children}
     </View>
   );
 }
 
 function RowButton({ label, value, onPress }: { label: string; value: string; onPress: () => void }) {
-  const colors = useThemeColors();
+  const theme = useTheme();
   return (
-    <TouchableOpacity
-      style={[styles.rowButton, { backgroundColor: colors.glassWhite, borderColor: colors.border }]}
+    <TouchableRipple
       onPress={onPress}
+      rippleColor={theme.colors.primary}
+      style={[styles.rowButton, { backgroundColor: theme.colors.surfaceVariant, borderColor: theme.colors.outlineVariant }]}
     >
-      <Text style={[styles.rowButtonLabel, { color: colors.textSecondary }]}>{label}</Text>
-      <View style={styles.rowButtonValue}>
-        <Text style={[styles.rowButtonValueText, { color: colors.textPrimary }]} numberOfLines={1}>
-          {value}
-        </Text>
-        <Ionicons name="chevron-forward" size={18} color={colors.textTertiary} />
-      </View>
-    </TouchableOpacity>
+      <>
+        <Text variant="bodyMedium" style={{ color: theme.colors.onSurfaceVariant }}>{label}</Text>
+        <View style={styles.rowButtonValue}>
+          <Text variant="bodyMedium" style={{ color: theme.colors.onSurface, marginRight: spacing.sm }} numberOfLines={1}>
+            {value}
+          </Text>
+          <Ionicons name="chevron-forward" size={18} color={theme.colors.outline} />
+        </View>
+      </>
+    </TouchableRipple>
   );
 }
 
@@ -980,15 +981,14 @@ function RowToggle({
   value: boolean;
   onValueChange: (value: boolean) => void;
 }) {
-  const colors = useThemeColors();
+  const theme = useTheme();
   return (
-    <View style={[styles.rowButton, { backgroundColor: colors.glassWhite, borderColor: colors.border }]}>
-      <Text style={[styles.rowButtonLabel, { color: colors.textSecondary }]}>{label}</Text>
+    <View style={[styles.rowButton, { backgroundColor: theme.colors.surfaceVariant, borderColor: theme.colors.outlineVariant }]}>
+      <Text variant="bodyMedium" style={{ color: theme.colors.onSurfaceVariant }}>{label}</Text>
       <Switch
         value={value}
         onValueChange={onValueChange}
-        trackColor={{ false: colors.border, true: colors.accentPrimary }}
-        thumbColor={value ? colors.textInverse : colors.textTertiary}
+        color={theme.colors.primary}
       />
     </View>
   );
@@ -1004,14 +1004,6 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingBottom: spacing.sm,
   },
-  headerTitle: {
-    fontSize: typography.sizes.lg,
-    fontWeight: typography.weights.semibold,
-  },
-  saveTopText: {
-    fontSize: typography.sizes.base,
-    fontWeight: typography.weights.semibold,
-  },
   content: {
     padding: spacing.lg,
     paddingTop: spacing.sm,
@@ -1020,17 +1012,6 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.base,
     gap: spacing.sm,
   },
-  typeChip: {
-    paddingHorizontal: spacing.base,
-    paddingVertical: spacing.sm,
-    borderRadius: borderRadius.full,
-    borderWidth: 1,
-    marginRight: spacing.sm,
-  },
-  typeChipText: {
-    fontSize: typography.sizes.sm,
-    fontWeight: typography.weights.medium,
-  },
   inputGroup: {
     borderRadius: borderRadius.lg,
     borderWidth: 1,
@@ -1038,13 +1019,9 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
     marginBottom: spacing.base,
   },
-  inputLabel: {
-    fontSize: typography.sizes.xs,
-    marginBottom: 2,
-  },
   input: {
-    fontSize: typography.sizes.base,
-    paddingVertical: 4,
+    marginBottom: spacing.base,
+    backgroundColor: 'transparent',
   },
   row: {
     flexDirection: 'row',
@@ -1056,27 +1033,10 @@ const styles = StyleSheet.create({
   timeInput: {
     flex: 1,
   },
-  sectionLabel: {
-    fontSize: typography.sizes.base,
-    fontWeight: typography.weights.medium,
-    marginTop: spacing.lg,
-    marginBottom: spacing.sm,
-  },
   priorityRow: {
     flexDirection: 'row',
     gap: spacing.sm,
     marginBottom: spacing.base,
-  },
-  priorityChip: {
-    flex: 1,
-    paddingVertical: spacing.sm,
-    borderRadius: borderRadius.md,
-    alignItems: 'center',
-    borderWidth: 1,
-  },
-  priorityChipText: {
-    fontSize: typography.sizes.sm,
-    fontWeight: typography.weights.medium,
   },
   chipWrap: {
     flexDirection: 'row',
@@ -1084,36 +1044,14 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     marginBottom: spacing.base,
   },
-  clearEndDate: {
-    alignSelf: 'flex-start',
-    marginBottom: spacing.base,
-    marginTop: -spacing.xs,
-  },
-  clearEndDateText: {
-    fontSize: typography.sizes.sm,
-    fontWeight: typography.weights.medium,
-  },
-  guestInputRow: {
-    flexDirection: 'row',
+  addGuestButton: {
+    width: 40,
+    height: 40,
+    borderRadius: borderRadius.md,
+    justifyContent: 'center',
     alignItems: 'center',
-    gap: spacing.sm,
-  },
-  guestInputField: {
-    flex: 1,
-  },
-  guestChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-    borderWidth: 1,
-    borderRadius: borderRadius.full,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 4,
-    maxWidth: 200,
-  },
-  guestChipText: {
-    fontSize: typography.sizes.xs,
-    flexShrink: 1,
+    alignSelf: 'center',
+    marginLeft: spacing.xs,
   },
   rowButton: {
     flexDirection: 'row',
@@ -1125,29 +1063,9 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.base,
     marginBottom: spacing.base,
   },
-  rowButtonLabel: {
-    fontSize: typography.sizes.sm,
-    fontWeight: typography.weights.medium,
-  },
   rowButtonValue: {
     flexDirection: 'row',
     alignItems: 'center',
-  },
-  rowButtonValueText: {
-    fontSize: typography.sizes.base,
-    fontWeight: typography.weights.medium,
-    marginRight: spacing.sm,
-    maxWidth: 160,
-  },
-  saveButton: {
-    marginTop: spacing.xl,
-    paddingVertical: spacing.base,
-    borderRadius: borderRadius.lg,
-    alignItems: 'center',
-  },
-  saveButtonText: {
-    fontSize: typography.sizes.base,
-    fontWeight: typography.weights.semibold,
   },
   modalOverlay: {
     flex: 1,
@@ -1171,18 +1089,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: spacing.lg,
   },
-  modalTitle: {
-    fontSize: typography.sizes.xl,
-    fontWeight: typography.weights.semibold,
-  },
   modalRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: spacing.base,
-  },
-  modalLabel: {
-    fontSize: typography.sizes.base,
   },
   modalOption: {
     flexDirection: 'row',
@@ -1192,41 +1103,16 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(255,255,255,0.06)',
   },
-  modalOptionText: {
-    fontSize: typography.sizes.base,
-  },
   customInput: {
-    flex: 1,
-    borderWidth: 1,
-    borderRadius: borderRadius.lg,
-    paddingHorizontal: spacing.base,
-    paddingVertical: spacing.base,
-    fontSize: typography.sizes.base,
+    width: 120,
   },
-  unitSelector: {
+  customUnitDropdown: {
     flex: 1,
-    flexDirection: 'row',
-    gap: spacing.sm,
-  },
-  unitButton: {
-    flex: 1,
-    paddingVertical: spacing.base,
-    paddingHorizontal: 4,
-    borderRadius: borderRadius.lg,
-    alignItems: 'center',
-  },
-  unitRangeHint: {
-    fontSize: typography.sizes.xs,
-    marginTop: spacing.sm,
   },
   modalActions: {
     flexDirection: 'row',
     justifyContent: 'flex-end',
     gap: spacing.lg,
     marginTop: spacing.xl,
-  },
-  modalActionText: {
-    fontSize: typography.sizes.base,
-    fontWeight: typography.weights.semibold,
   },
 });

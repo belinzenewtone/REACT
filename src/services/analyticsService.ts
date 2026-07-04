@@ -3,7 +3,7 @@ import { TransactionRepository } from '../database/repositories/TransactionRepos
 import { BudgetRepository } from '../database/repositories/BudgetRepository';
 import { TaskRepository } from '../database/repositories/TaskRepository';
 
-export interface WeeklyTrendItem {
+interface WeeklyTrendItem {
   week: string;
   amount: number;
 }
@@ -15,31 +15,31 @@ export interface WeeklyCategorySpendItem {
   total: number;
 }
 
-export interface MonthlyTrendItem {
+interface MonthlyTrendItem {
   month: string;
   expense: number;
   income: number;
 }
 
-export interface BudgetVsActualItem {
+interface BudgetVsActualItem {
   category: string;
   budgeted: number;
   actual: number;
 }
 
-export interface MerchantSpendItem {
+interface MerchantSpendItem {
   merchant: string;
   amount: number;
 }
 
-export interface InsightItem {
+interface InsightItem {
   icon: string;
   title: string;
   description: string;
   color: string;
 }
 
-export interface ProductivityData {
+interface ProductivityData {
   tasksCompleted: number;
   tasksPending: number;
   completionRate: number;

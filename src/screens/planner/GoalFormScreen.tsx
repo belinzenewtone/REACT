@@ -1,24 +1,26 @@
 import React, { useEffect, useState } from 'react';
-import { Animated, View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet, Alert } from 'react-native';
+import { Animated, View, StyleSheet, ScrollView, Alert } from 'react-native';
 import { useFormFadeIn } from '../../hooks/useFormFadeIn';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
+import { Text, IconButton, Button, TextInput, useTheme } from 'react-native-paper';
 import { TopBanner } from '../../components/common/TopBanner';
 import { useSQLiteContext } from 'expo-sqlite';
-import { useThemeColors } from '../../hooks/useThemeColors';
 import { usePlannerStore } from '../../store';
 import { GoalRepository } from '../../database/repositories/GoalRepository';
 import { DateField } from '../../components/common/DateField';
-import { spacing, typography, borderRadius } from '../../theme';
+import { Dropdown } from '../../components/common/Dropdown';
+import { spacing, borderRadius } from '../../theme';
 import { haptic } from '../../services/haptics';
 import type { RootStackParamList } from '../../navigation/types';
 
 type GoalFormRouteProp = RouteProp<RootStackParamList, 'GoalForm'>;
 const STATUSES = ['active', 'completed', 'archived'] as const;
+const STATUS_OPTIONS = STATUSES.map((s) => ({ value: s, label: s.charAt(0).toUpperCase() + s.slice(1) }));
 
 export function GoalFormScreen() {
-  const colors = useThemeColors();
+  const theme = useTheme();
   const db = useSQLiteContext();
   const navigation = useNavigation<any>();
   const route = useRoute<GoalFormRouteProp>();
@@ -110,92 +112,98 @@ export function GoalFormScreen() {
   };
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.bgPrimary }]} edges={['top']}>
+    <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]} edges={['top']}>
       <TopBanner tone="success" message={successMsg ?? ''} visible={!!successMsg} />
       <Animated.View style={{ flex: 1, opacity: contentOpacity }}>
-      <ScrollView contentContainerStyle={styles.content}>
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()}>
-            <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
-          </TouchableOpacity>
-          <Text style={[styles.title, { color: colors.textPrimary }]} numberOfLines={1}>
-            {isEditing ? 'Edit Goal' : 'Add Goal'}
-          </Text>
-          {isEditing ? (
-            <TouchableOpacity onPress={handleDelete}>
-              <Ionicons name="trash-outline" size={22} color={colors.danger} />
-            </TouchableOpacity>
-          ) : (
-            <View style={{ width: 24 }} />
-          )}
-        </View>
+        <ScrollView contentContainerStyle={styles.content}>
+          <View style={styles.header}>
+            <IconButton
+              icon={() => <Ionicons name="arrow-back" size={22} color={theme.colors.onSurface} />}
+              onPress={() => navigation.goBack()}
+            />
+            <Text variant="titleLarge" style={{ color: theme.colors.onSurface }} numberOfLines={1}>
+              {isEditing ? 'Edit Goal' : 'Add Goal'}
+            </Text>
+            {isEditing ? (
+              <IconButton
+                icon={() => <Ionicons name="trash-outline" size={22} color={theme.colors.error} />}
+                onPress={handleDelete}
+              />
+            ) : (
+              <View style={{ width: 44 }} />
+            )}
+          </View>
 
-        <Input label="Title" value={title} onChangeText={setTitle} placeholder="e.g. Emergency fund" />
-        <Input label="Description (optional)" value={description} onChangeText={setDescription} placeholder="Notes..." />
-        <Input label="Target value" value={targetValue} onChangeText={setTargetValue} placeholder="0.00" keyboardType="decimal-pad" />
-        <Input label="Current value" value={currentValue} onChangeText={setCurrentValue} placeholder="0.00" keyboardType="decimal-pad" />
-        <Input label="Unit (optional)" value={unit} onChangeText={setUnit} placeholder="e.g. KES, km" />
-        <DateField label="Deadline (optional)" value={deadline} onChange={setDeadline} />
+          <TextInput
+            mode="outlined"
+            dense
+            label="Title"
+            value={title}
+            onChangeText={setTitle}
+            placeholder="e.g. Emergency fund"
+            style={styles.input}
+          />
+          <TextInput
+            mode="outlined"
+            dense
+            label="Description (optional)"
+            value={description}
+            onChangeText={setDescription}
+            placeholder="Notes..."
+            style={styles.input}
+            multiline
+          />
+          <TextInput
+            mode="outlined"
+            dense
+            label="Target value"
+            value={targetValue}
+            onChangeText={setTargetValue}
+            placeholder="0.00"
+            keyboardType="decimal-pad"
+            style={styles.input}
+          />
+          <TextInput
+            mode="outlined"
+            dense
+            label="Current value"
+            value={currentValue}
+            onChangeText={setCurrentValue}
+            placeholder="0.00"
+            keyboardType="decimal-pad"
+            style={styles.input}
+          />
+          <TextInput
+            mode="outlined"
+            dense
+            label="Unit (optional)"
+            value={unit}
+            onChangeText={setUnit}
+            placeholder="e.g. KES, km"
+            style={styles.input}
+          />
+          <DateField label="Deadline (optional)" value={deadline} onChange={setDeadline} />
 
-        <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>Status</Text>
-        <View style={styles.segmentContainer}>
-          {STATUSES.map((s) => {
-            const selected = status === s;
-            return (
-              <TouchableOpacity
-                key={s}
-                style={[styles.segment, selected && { backgroundColor: colors.accentPrimary }]}
-                onPress={() => setStatus(s)}
-              >
-                <Text style={[styles.segmentText, { color: selected ? colors.textInverse : colors.textSecondary }]}>
-                  {s.charAt(0).toUpperCase() + s.slice(1)}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
+          <Dropdown
+            label="Status"
+            value={status}
+            options={STATUS_OPTIONS}
+            onChange={(value) => setStatus(value as 'active' | 'completed' | 'archived')}
+          />
 
-        <TouchableOpacity
-          style={[styles.saveButton, { backgroundColor: colors.accentPrimary, opacity: isSaving ? 0.6 : 1 }]}
-          onPress={handleSave}
-          disabled={isSaving}
-        >
-          <Text style={[styles.saveButtonText, { color: colors.textInverse }]}>
+          <Button
+            mode="contained"
+            onPress={handleSave}
+            disabled={isSaving}
+            loading={isSaving}
+            style={[styles.saveButton, { backgroundColor: theme.colors.primary }]}
+            textColor={theme.colors.onPrimary}
+          >
             {isSaving ? 'Saving…' : isEditing ? 'Update Goal' : 'Add Goal'}
-          </Text>
-        </TouchableOpacity>
-      </ScrollView>
+          </Button>
+        </ScrollView>
       </Animated.View>
     </SafeAreaView>
-  );
-}
-
-function Input({
-  label,
-  value,
-  onChangeText,
-  placeholder,
-  keyboardType,
-}: {
-  label: string;
-  value: string;
-  onChangeText: (text: string) => void;
-  placeholder?: string;
-  keyboardType?: 'default' | 'decimal-pad' | 'numeric';
-}) {
-  const colors = useThemeColors();
-  return (
-    <View style={[styles.inputGroup, { backgroundColor: colors.glassWhite, borderColor: colors.border }]}>
-      <Text style={[styles.label, { color: colors.textSecondary }]}>{label}</Text>
-      <TextInput
-        style={[styles.input, { color: colors.textPrimary }]}
-        placeholder={placeholder}
-        placeholderTextColor={colors.textTertiary}
-        value={value}
-        onChangeText={onChangeText}
-        keyboardType={keyboardType}
-      />
-    </View>
   );
 }
 
@@ -207,37 +215,14 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingVertical: spacing.sm,
   },
-  title: { fontSize: typography.sizes.lg, fontWeight: typography.weights.semibold },
-  content: { padding: spacing.lg },
-  inputGroup: {
-    borderRadius: borderRadius.lg,
-    borderWidth: 1,
-    paddingHorizontal: spacing.base,
-    paddingVertical: spacing.sm,
+  content: { paddingHorizontal: spacing.screenHorizontal, paddingVertical: spacing.lg },
+  input: {
     marginBottom: spacing.base,
+    backgroundColor: 'transparent',
   },
-  label: { fontSize: typography.sizes.xs, marginBottom: 2 },
-  input: { fontSize: typography.sizes.base, paddingVertical: 4 },
-  sectionLabel: {
-    fontSize: typography.sizes.base,
-    fontWeight: typography.weights.medium,
-    marginTop: spacing.lg,
-    marginBottom: spacing.sm,
-  },
-  segmentContainer: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.base },
-  segment: {
-    flex: 1,
-    paddingVertical: spacing.sm,
-    borderRadius: borderRadius.md,
-    alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.06)',
-  },
-  segmentText: { fontSize: typography.sizes.sm, fontWeight: typography.weights.medium, textTransform: 'capitalize' },
   saveButton: {
     marginTop: spacing.xl,
     paddingVertical: spacing.base,
     borderRadius: borderRadius.lg,
-    alignItems: 'center',
   },
-  saveButtonText: { fontSize: typography.sizes.base, fontWeight: typography.weights.semibold },
 });

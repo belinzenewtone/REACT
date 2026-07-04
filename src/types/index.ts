@@ -93,6 +93,21 @@ export interface CalendarEvent {
   userId?: string;
 }
 
+export interface DayEvent {
+  id: string;
+  title: string;
+  date: string;
+  type: 'event' | 'task' | 'birthday' | 'anniversary' | 'countdown';
+  priority?: 'low' | 'medium' | 'high';
+  completed?: boolean;
+  location?: string | null;
+  allDay?: boolean;
+  /** Non-zero when this is a synthetic occurrence of a repeating series. */
+  occurrenceIndex?: number;
+  /** Number of days between selected date and the event's actual date (countdown ordinal). */
+  daysToGo?: number;
+}
+
 export type BudgetPeriod = 'daily' | 'weekly' | 'monthly' | 'yearly';
 
 export interface Budget {

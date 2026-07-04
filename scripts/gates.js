@@ -26,9 +26,9 @@ const MAX_LINES = 1100;
 const GRANDFATHERED = [
   'src/components/calendar/CalendarEventItem.tsx:7 component imports a repository',
   'src/components/calendar/CalendarTaskItem.tsx:7 component imports a repository',
-  'src/components/planner/TaskEventForm.tsx has ', // 1233 lines — split pending
-  'src/components/planner/TaskEventForm.tsx:30 component imports a repository',
-  'src/components/planner/TaskEventForm.tsx:31 component imports a repository',
+  'src/components/planner/TaskEventForm.tsx has ', // 1110+ lines — split pending
+  'src/components/planner/TaskEventForm.tsx:36 component imports a repository',
+  'src/components/planner/TaskEventForm.tsx:37 component imports a repository',
 ];
 
 /** Recursively collect .ts/.tsx files under a dir. */

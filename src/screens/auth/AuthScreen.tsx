@@ -1,26 +1,23 @@
 import React, { useState } from 'react';
 import {
   View,
-  Text,
   Image,
-  TextInput,
-  TouchableOpacity,
-  ScrollView,
   ActivityIndicator,
+  ScrollView,
   StyleSheet,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useThemeColors } from '../../hooks/useThemeColors';
+import { Text, TextInput, Button, useTheme } from 'react-native-paper';
 import { useAppStore } from '../../store';
 import { generateId, nowIso } from '../../database';
 import { HeroSurface } from '../../components/common/HeroSurface';
 import { TopBanner } from '../../components/common/TopBanner';
 import { GlassCard } from '../../components/common/GlassCard';
-import { spacing, typography, borderRadius } from '../../theme';
+import { spacing, borderRadius } from '../../theme';
 
 export function AuthScreen() {
-  const colors = useThemeColors();
+  const theme = useTheme();
   const setIsAuthenticated = useAppStore((state) => state.setIsAuthenticated);
   const profile = useAppStore((state) => state.profile);
   const setProfile = useAppStore((state) => state.setProfile);
@@ -54,61 +51,69 @@ export function AuthScreen() {
 
   if (isLoading) {
     return (
-      <SafeAreaView style={[styles.container, { backgroundColor: colors.bgPrimary }]}>
+      <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
         <View style={styles.loadingContent}>
           <Image source={require('../../../assets/icon.png')} style={styles.loadingLogo} resizeMode="contain" />
-          <ActivityIndicator color={colors.accentPrimary} />
+          <ActivityIndicator size="large" color={theme.colors.primary} />
         </View>
       </SafeAreaView>
     );
   }
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.bgPrimary }]} edges={['top', 'bottom']}>
+    <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]} edges={['top', 'bottom']}>
       <ScrollView contentContainerStyle={styles.scroll}>
         <HeroSurface
           eyebrow="Welcome"
           title="Your PersonalOS"
           subtitle="All your tasks, calendar, and finances — stored locally on your device."
           action={
-            <View style={[styles.logoBadge, { backgroundColor: colors.bgTertiary, borderColor: colors.border }]}>
+            <View style={[styles.logoBadge, { backgroundColor: theme.colors.surfaceVariant, borderColor: theme.colors.outlineVariant }]}>
               <Image source={require('../../../assets/icon.png')} style={styles.logoBadgeImage} resizeMode="contain" />
             </View>
           }
         />
 
-        <GlassCard variant="elevated" style={styles.card}>
-          <FieldLabel label="Full Name" />
-          <View style={[styles.inputWrap, { borderColor: colors.border, backgroundColor: colors.bgTertiary }]}>
-            <Ionicons name="person-outline" size={18} color={colors.textSecondary} />
-            <TextInput
-              style={[styles.input, { color: colors.textPrimary }]}
-              value={fullName}
-              onChangeText={setFullName}
-              placeholder="Your full name"
-              placeholderTextColor={colors.textTertiary}
-              autoCapitalize="words"
-            />
-          </View>
+        <GlassCard variant="default" style={styles.card}>
+          <TextInput
+            mode="outlined"
+            dense
+            label="Full Name"
+            value={fullName}
+            onChangeText={setFullName}
+            left={
+              <TextInput.Icon
+                icon={({ color }) => <Ionicons name="person-outline" size={18} color={color} />}
+              />
+            }
+            autoCapitalize="words"
+          />
 
-          <FieldLabel label="Username (optional)" />
-          <View style={[styles.inputWrap, { borderColor: colors.border, backgroundColor: colors.bgTertiary }]}>
-            <Ionicons name="person-outline" size={18} color={colors.textSecondary} />
-            <TextInput
-              style={[styles.input, { color: colors.textPrimary }]}
-              value={username}
-              onChangeText={setUsername}
-              placeholder="Pick a username"
-              placeholderTextColor={colors.textTertiary}
-              autoCapitalize="none"
-            />
-          </View>
+          <TextInput
+            mode="outlined"
+            dense
+            label="Username (optional)"
+            value={username}
+            onChangeText={setUsername}
+            left={
+              <TextInput.Icon
+                icon={({ color }) => <Ionicons name="person-outline" size={18} color={color} />}
+              />
+            }
+            autoCapitalize="none"
+          />
 
-          <TouchableOpacity style={[styles.ctaButton, { backgroundColor: colors.accentPrimary }]} onPress={handleSignUp}>
-            <Text style={[styles.ctaText, { color: colors.textInverse }]}>Get Started</Text>
-          </TouchableOpacity>
+          <Button
+            mode="contained"
+            onPress={handleSignUp}
+            loading={isLoading}
+            disabled={isLoading}
+            style={styles.ctaButton}
+          >
+            Get Started
+          </Button>
 
-          <Text style={[styles.disclaimer, { color: colors.textSecondary }]}>
+          <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant, textAlign: 'center' }}>
             No account required. Your data stays on this device.
           </Text>
         </GlassCard>
@@ -127,17 +132,13 @@ export function AuthScreen() {
   );
 }
 
-function FieldLabel({ label }: { label: string }) {
-  const colors = useThemeColors();
-  return <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>{label}</Text>;
-}
-
 const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
   scroll: {
-    paddingHorizontal: spacing.screenHorizontal, paddingVertical: spacing.lg,
+    paddingHorizontal: spacing.screenHorizontal,
+    paddingVertical: spacing.lg,
     paddingBottom: spacing['2xl'],
   },
   loadingContent: {
@@ -167,39 +168,9 @@ const styles = StyleSheet.create({
     marginTop: spacing.lg,
     gap: spacing.sm,
   },
-  fieldLabel: {
-    fontSize: typography.sizes.xs,
-    fontWeight: typography.weights.medium,
-    marginTop: spacing.sm,
-  },
-  inputWrap: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderRadius: borderRadius.full,
-    paddingHorizontal: spacing.base,
-    height: 48,
-  },
-  input: {
-    flex: 1,
-    marginLeft: spacing.sm,
-    fontSize: typography.sizes.base,
-  },
   ctaButton: {
     marginTop: spacing.base,
-    height: 54,
     borderRadius: borderRadius.full,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  ctaText: {
-    fontSize: typography.sizes.base,
-    fontWeight: typography.weights.semibold,
-  },
-  disclaimer: {
-    fontSize: typography.sizes.xs,
-    textAlign: 'center',
-    marginTop: spacing.sm,
   },
   snackbarWrap: {
     position: 'absolute',

@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
-import { View, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
+import { View, StyleSheet, ActivityIndicator, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useThemeColors } from '../../hooks/useThemeColors';
-import { spacing, borderRadius, typography } from '../../theme';
+import { TextInput, useTheme } from 'react-native-paper';
+import { spacing, borderRadius } from '../../theme';
 
 interface ChatInputProps {
   onSend: (text: string) => void;
@@ -11,7 +11,7 @@ interface ChatInputProps {
 }
 
 export function ChatInput({ onSend, disabled, bottomInset = 0 }: ChatInputProps) {
-  const colors = useThemeColors();
+  const theme = useTheme();
   const [text, setText] = useState('');
 
   const handleSend = () => {
@@ -20,31 +20,44 @@ export function ChatInput({ onSend, disabled, bottomInset = 0 }: ChatInputProps)
     setText('');
   };
 
+  const canSend = text.trim().length > 0 && !disabled;
+
   return (
     <View style={[styles.container, { paddingBottom: bottomInset }]}>
-      <View style={[styles.inner, { backgroundColor: colors.bgSecondary, borderColor: colors.border }]}>
+      <View style={[styles.inner, { backgroundColor: theme.colors.surfaceVariant, borderColor: theme.colors.outlineVariant }]}>
         <TextInput
-          style={[styles.input, { color: colors.textPrimary }]}
+          mode="outlined"
+          dense
+          style={[styles.input, { backgroundColor: theme.colors.surfaceVariant, textAlign: 'center', textAlignVertical: 'center' }]}
           placeholder="Message LifeOS..."
-          placeholderTextColor={colors.textTertiary}
+          placeholderTextColor={theme.colors.onSurfaceVariant}
           value={text}
           onChangeText={setText}
           multiline
           maxLength={500}
           editable={!disabled}
+          underlineColor="transparent"
+          activeUnderlineColor="transparent"
+          outlineColor="transparent"
+          activeOutlineColor="transparent"
         />
         <TouchableOpacity
+          onPress={handleSend}
+          disabled={!canSend}
           style={[
             styles.sendButton,
-            { backgroundColor: text.trim() ? colors.accentPrimary : colors.bgTertiary },
+            { backgroundColor: canSend ? theme.colors.primary : theme.colors.surfaceVariant },
           ]}
-          onPress={handleSend}
-          disabled={!text.trim() || disabled}
+          activeOpacity={0.8}
         >
           {disabled ? (
-            <ActivityIndicator size={18} color={colors.textInverse} />
+            <ActivityIndicator size="small" color={theme.colors.onPrimary} />
           ) : (
-            <Ionicons name="arrow-up" size={20} color={text.trim() ? colors.textInverse : colors.textTertiary} />
+            <Ionicons
+              name="arrow-up"
+              size={20}
+              color={canSend ? theme.colors.onPrimary : theme.colors.onSurfaceVariant}
+            />
           )}
         </TouchableOpacity>
       </View>
@@ -59,27 +72,26 @@ const styles = StyleSheet.create({
   },
   inner: {
     flexDirection: 'row',
-    alignItems: 'flex-end',
-    borderRadius: borderRadius.full,
+    alignItems: 'center',
+    borderRadius: borderRadius.lg,
     borderWidth: 1,
     paddingLeft: spacing.base,
     paddingRight: spacing.xs,
-    paddingVertical: spacing.xs,
-    gap: spacing.xs,
+    minHeight: 44,
+    maxHeight: 120,
   },
   input: {
     flex: 1,
-    fontSize: typography.sizes.base,
     maxHeight: 100,
-    paddingVertical: spacing.sm,
-    lineHeight: typography.sizes.base * 1.2,
+    paddingVertical: 0,
+    marginVertical: 0,
   },
   sendButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 36,
+    height: 36,
+    borderRadius: borderRadius.md,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 1,
+    marginLeft: spacing.xs,
   },
 });

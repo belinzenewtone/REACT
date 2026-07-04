@@ -96,6 +96,7 @@ class SmsReceiver : BroadcastReceiver() {
     private fun enqueueProcessWorker(context: Context, queueId: Long, body: String? = null) {
         val workData = Data.Builder()
             .putLong(SmsProcessWorker.KEY_QUEUE_ID, queueId)
+            .putString(SmsProcessWorker.KEY_ORIGIN, SmsProcessWorker.ORIGIN_REALTIME)
             .apply { body?.let { putString(SmsProcessWorker.KEY_SMS_BODY, it) } }
             .build()
 

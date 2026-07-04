@@ -105,18 +105,18 @@ export type ColorTheme = {
 };
 
 export const spacing = {
-  /** Screen edge to component gap (matches Kotlin AppSpacing.ScreenHorizontal = 8.dp) */
-  screenHorizontal: 8,
+  /** Screen edge to component gap (standard Material 3 screen margin) */
+  screenHorizontal: 12,
   xs: 4,
   sm: 8,
-  md: 14,
-  lg: 20,
-  xl: 28,
-  '2xl': 36,
-  '3xl': 44,
-  '4xl': 56,
+  md: 12,
+  lg: 16,
+  xl: 24,
+  '2xl': 28,
+  '3xl': 36,
+  '4xl': 48,
   // Kept for backward compat — maps to closest Kotlin equivalent
-  base: 16,
+  base: 14,
 } as const;
 
 export const borderRadius = {

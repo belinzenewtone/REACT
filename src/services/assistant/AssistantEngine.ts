@@ -9,7 +9,7 @@ import { FulizaLoanRepository } from '../../database/repositories/FulizaLoanRepo
 import { EventRepository } from '../../database/repositories/EventRepository';
 import { formatCurrency } from '../../utils/formatters';
 
-export interface AssistantResponse {
+interface AssistantResponse {
   content: string;
   actions?: string[];
 }

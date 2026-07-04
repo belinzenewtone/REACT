@@ -1,12 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
   ScrollView,
-  TouchableOpacity,
   Modal,
-  TextInput,
   KeyboardAvoidingView,
   Platform,
   Alert,
@@ -15,8 +12,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { useSQLiteContext } from 'expo-sqlite';
-import { useThemeColors } from '../../hooks/useThemeColors';
-import { spacing, typography, borderRadius } from '../../theme';
+import { Text, Card, Chip, FAB, TextInput, Button, IconButton, useTheme } from 'react-native-paper';
+import { spacing, borderRadius } from '../../theme';
 import { GlassCard } from '../../components/common/GlassCard';
 
 type LearningSession = {
@@ -32,57 +29,73 @@ type LearningSession = {
 
 const CATEGORIES = ['All', 'Finance', 'Technology', 'Health', 'Leadership', 'Mindfulness', 'Career'];
 
-function ProgressBar({ progress, color, colors }: { progress: number; color: string; colors: any }) {
+const CATEGORY_COLORS: Record<string, string> = {
+  Finance: '#F5CB5C',
+  Technology: '#7FC8F8',
+  Health: '#7BC47B',
+  Leadership: '#D0BCFF',
+  Mindfulness: '#F2B8B5',
+  Career: '#67D4E0',
+};
+
+function ProgressBar({ progress, color }: { progress: number; color: string }) {
+  const theme = useTheme();
   return (
-    <View style={[styles.progressTrack, { backgroundColor: colors.bgTertiary }]}>
+    <View style={[styles.progressTrack, { backgroundColor: theme.colors.outlineVariant }]}>
       <View style={[styles.progressFill, { width: `${Math.min(progress * 100, 100)}%`, backgroundColor: color }]} />
     </View>
   );
 }
 
-function SessionCard({ session, onTap, colors }: { session: LearningSession; onTap: () => void; colors: any }) {
+function SessionCard({ session, onTap }: { session: LearningSession; onTap: () => void }) {
+  const theme = useTheme();
   const isCompleted = session.is_completed === 1;
+  const categoryColor = CATEGORY_COLORS[session.category] ?? theme.colors.primary;
+
   return (
-    <TouchableOpacity
-      style={[styles.sessionCard, { backgroundColor: colors.bgSecondary, borderColor: colors.border }]}
+    <Card
+      style={{ backgroundColor: theme.colors.surfaceVariant, marginBottom: spacing.base }}
+      mode="elevated"
       onPress={onTap}
-      activeOpacity={0.8}
     >
-      <View style={styles.sessionTop}>
-        <View style={styles.sessionMeta}>
-          <Text style={[styles.sessionCategory, { color: colors.accentPrimary }]}>{session.category}</Text>
-          <Text style={[styles.sessionTitle, { color: colors.textPrimary }]}>{session.title}</Text>
+      <Card.Content style={{ gap: spacing.sm }}>
+        <View style={styles.sessionTop}>
+          <View style={styles.sessionMeta}>
+            <Text variant="bodySmall" style={{ color: categoryColor, marginBottom: 2 }}>{session.category}</Text>
+            <Text variant="titleMedium" style={{ color: theme.colors.onSurface }}>{session.title}</Text>
+          </View>
+          {isCompleted && (
+            <Ionicons name="checkmark-circle" size={22} color="#7BC47B" />
+          )}
         </View>
-        {isCompleted && (
-          <Ionicons name="checkmark-circle" size={22} color={colors.success} />
-        )}
-      </View>
 
-      {session.description ? (
-        <Text style={[styles.sessionDesc, { color: colors.textSecondary }]} numberOfLines={2}>
-          {session.description}
-        </Text>
-      ) : null}
+        {session.description ? (
+          <Text variant="bodyMedium" style={{ color: theme.colors.onSurfaceVariant }} numberOfLines={2}>
+            {session.description}
+          </Text>
+        ) : null}
 
-      <View style={styles.sessionFooter}>
-        <Ionicons name="timer-outline" size={13} color={colors.textTertiary} />
-        <Text style={[styles.sessionDuration, { color: colors.textSecondary }]}>
-          {session.duration_minutes} min
-        </Text>
-      </View>
-
-      {session.progress > 0 && !isCompleted && (
-        <ProgressBar progress={session.progress} color={colors.accentPrimary} colors={colors} />
-      )}
-
-      {!isCompleted && (
-        <View style={[styles.startChip, { backgroundColor: `${colors.accentPrimary}18` }]}>
-          <Text style={[styles.startChipText, { color: colors.accentPrimary }]}>
-            {session.progress > 0 ? 'Continue' : 'Start'}
+        <View style={styles.sessionFooter}>
+          <Ionicons name="timer-outline" size={13} color={theme.colors.outline} />
+          <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
+            {session.duration_minutes} min
           </Text>
         </View>
-      )}
-    </TouchableOpacity>
+
+        {session.progress > 0 && !isCompleted && (
+          <ProgressBar progress={session.progress} color={theme.colors.primary} />
+        )}
+
+        {!isCompleted && (
+          <Chip
+            style={{ backgroundColor: `${theme.colors.primary}18`, alignSelf: 'flex-start' }}
+            textStyle={{ color: theme.colors.primary }}
+          >
+            {session.progress > 0 ? 'Continue' : 'Start'}
+          </Chip>
+        )}
+      </Card.Content>
+    </Card>
   );
 }
 
@@ -90,13 +103,12 @@ function LogSessionModal({
   visible,
   onClose,
   onSave,
-  colors,
 }: {
   visible: boolean;
   onClose: () => void;
   onSave: (topic: string, duration: number, notes: string) => void;
-  colors: any;
 }) {
+  const theme = useTheme();
   const [topic, setTopic] = useState('');
   const [duration, setDuration] = useState('');
   const [notes, setNotes] = useState('');
@@ -115,29 +127,37 @@ function LogSessionModal({
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.modalOverlay}>
-        <TouchableOpacity style={StyleSheet.absoluteFill} onPress={onClose} />
-        <View style={[styles.modalSheet, { backgroundColor: colors.bgSecondary }]}>
-          <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>Log Learning Session</Text>
+        <View style={[styles.modalSheet, { backgroundColor: theme.colors.surfaceVariant }]}>
+          <Text variant="titleLarge" style={{ color: theme.colors.onSurface, marginBottom: spacing.lg }}>Log Learning Session</Text>
 
           <TextInput
-            style={[styles.input, { borderColor: errors.topic ? colors.danger : colors.border, color: colors.textPrimary, backgroundColor: colors.bgTertiary }]}
+            mode="outlined"
+            dense
+            style={{ backgroundColor: theme.colors.surfaceVariant, marginBottom: spacing.base }}
+            textColor={theme.colors.onSurface}
             placeholder="Topic (e.g. Kotlin Coroutines)"
-            placeholderTextColor={colors.textTertiary}
+            placeholderTextColor={theme.colors.outline}
             value={topic}
             onChangeText={(v) => { setTopic(v); setErrors((e) => ({ ...e, topic: false })); }}
           />
           <TextInput
-            style={[styles.input, { borderColor: errors.duration ? colors.danger : colors.border, color: colors.textPrimary, backgroundColor: colors.bgTertiary }]}
+            mode="outlined"
+            dense
+            style={{ backgroundColor: theme.colors.surfaceVariant, marginBottom: spacing.base }}
+            textColor={theme.colors.onSurface}
             placeholder="Duration (minutes)"
-            placeholderTextColor={colors.textTertiary}
+            placeholderTextColor={theme.colors.outline}
             value={duration}
             onChangeText={(v) => { setDuration(v); setErrors((e) => ({ ...e, duration: false })); }}
             keyboardType="number-pad"
           />
           <TextInput
-            style={[styles.input, styles.notesInput, { borderColor: colors.border, color: colors.textPrimary, backgroundColor: colors.bgTertiary }]}
+            mode="outlined"
+            dense
+            style={[styles.notesInput, { backgroundColor: theme.colors.surfaceVariant, marginBottom: spacing.base }]}
+            textColor={theme.colors.onSurface}
             placeholder="Notes (optional)"
-            placeholderTextColor={colors.textTertiary}
+            placeholderTextColor={theme.colors.outline}
             value={notes}
             onChangeText={setNotes}
             multiline
@@ -145,12 +165,12 @@ function LogSessionModal({
           />
 
           <View style={styles.modalActions}>
-            <TouchableOpacity style={[styles.modalBtn, { borderColor: colors.border }]} onPress={onClose}>
-              <Text style={[styles.modalBtnText, { color: colors.textSecondary }]}>Cancel</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={[styles.modalBtn, { backgroundColor: colors.accentPrimary, borderColor: colors.accentPrimary }]} onPress={handleSave}>
-              <Text style={[styles.modalBtnText, { color: colors.textInverse }]}>Log</Text>
-            </TouchableOpacity>
+            <Button mode="outlined" onPress={onClose} style={{ flex: 1 }}>
+              Cancel
+            </Button>
+            <Button mode="contained" onPress={handleSave} style={{ flex: 1 }}>
+              Log
+            </Button>
           </View>
         </View>
       </KeyboardAvoidingView>
@@ -159,7 +179,7 @@ function LogSessionModal({
 }
 
 export function LearningScreen() {
-  const colors = useThemeColors();
+  const theme = useTheme();
   const navigation = useNavigation<any>();
   const db = useSQLiteContext();
   const [sessions, setSessions] = useState<LearningSession[]>([]);
@@ -217,58 +237,61 @@ export function LearningScreen() {
 
   const completedCount = sessions.filter((s) => s.is_completed === 1).length;
   const progress = monthlyGoalHours > 0 ? Math.min(monthlyHours / monthlyGoalHours, 1) : 0;
-  const progressColor = progress >= 0.8 ? colors.success : progress >= 0.4 ? colors.warning : colors.danger;
+  const progressColor = progress >= 0.8 ? '#7BC47B' : progress >= 0.4 ? '#F5CB5C' : theme.colors.error;
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.bgPrimary }]} edges={['top']}>
+    <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]} edges={['top']}>
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()}>
-            <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
-          </TouchableOpacity>
+          <IconButton
+            icon={() => <Ionicons name="arrow-back" size={24} color={theme.colors.onSurface} />}
+            size={24}
+            onPress={() => navigation.goBack()}
+            style={{ margin: 0 }}
+          />
           <View style={styles.headerCenter}>
-            <Text style={[styles.eyebrow, { color: colors.textSecondary }]}>Growth</Text>
-            <Text style={[styles.title, { color: colors.textPrimary }]} numberOfLines={1}>Learn</Text>
+            <Text variant="labelSmall" style={{ color: theme.colors.onSurfaceVariant }}>Growth</Text>
+            <Text variant="titleLarge" style={{ color: theme.colors.onSurface }} numberOfLines={1}>Learn</Text>
           </View>
-          <View style={{ width: 24 }} />
+          <View style={{ width: 44 }} />
         </View>
 
-        <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
+        <Text variant="bodyMedium" style={{ color: theme.colors.onSurfaceVariant, marginBottom: spacing.sm }}>
           {completedCount} of {sessions.length} sessions completed
         </Text>
 
-        {/* Monthly Goal */}
         <GlassCard style={styles.goalCard}>
           <View style={styles.goalHeader}>
-            <Text style={[styles.goalLabel, { color: colors.textPrimary }]}>Monthly Goal</Text>
-            <Text style={[styles.goalProgress, { color: colors.textSecondary }]}>
+            <Text variant="bodyMedium" style={{ color: theme.colors.onSurface, fontWeight: '600' }}>Monthly Goal</Text>
+            <Text variant="bodyMedium" style={{ color: theme.colors.onSurfaceVariant }}>
               {monthlyHours.toFixed(1)} / {monthlyGoalHours} hours
             </Text>
           </View>
-          <ProgressBar progress={progress} color={progressColor} colors={colors} />
+          <ProgressBar progress={progress} color={progressColor} />
         </GlassCard>
 
-        {/* Category chips */}
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chips} contentContainerStyle={styles.chipsContent}>
           {CATEGORIES.map((cat) => {
             const active = cat === 'All' ? selectedCategory === null : selectedCategory === cat;
             return (
-              <TouchableOpacity
+              <Chip
                 key={cat}
-                style={[styles.chip, { backgroundColor: active ? colors.accentPrimary : colors.bgTertiary }]}
+                selected={active}
                 onPress={() => setSelectedCategory(cat === 'All' ? null : cat)}
+                style={{ backgroundColor: active ? theme.colors.primary : theme.colors.surfaceVariant }}
+                textStyle={{ color: active ? theme.colors.onPrimary : theme.colors.onSurfaceVariant }}
               >
-                <Text style={[styles.chipText, { color: active ? colors.textInverse : colors.textSecondary }]}>{cat}</Text>
-              </TouchableOpacity>
+                {cat}
+              </Chip>
             );
           })}
         </ScrollView>
 
         {filtered.length === 0 ? (
           <View style={styles.emptyState}>
-            <Ionicons name="book-outline" size={48} color={colors.textTertiary} />
-            <Text style={[styles.emptyTitle, { color: colors.textPrimary }]}>No sessions here</Text>
-            <Text style={[styles.emptyDesc, { color: colors.textSecondary }]}>
+            <Ionicons name="book-outline" size={48} color={theme.colors.outline} />
+            <Text variant="titleMedium" style={{ color: theme.colors.onSurface }}>No sessions here</Text>
+            <Text variant="bodyMedium" style={{ color: theme.colors.onSurfaceVariant, textAlign: 'center' }}>
               {selectedCategory ? 'Select a different category or log a new session.' : 'Log your first learning session.'}
             </Text>
           </View>
@@ -277,7 +300,6 @@ export function LearningScreen() {
             <SessionCard
               key={session.id}
               session={session}
-              colors={colors}
               onTap={() => {
                 if (!session.is_completed) markCompleted(session.id);
               }}
@@ -286,19 +308,17 @@ export function LearningScreen() {
         )}
       </ScrollView>
 
-      <TouchableOpacity
-        style={[styles.fab, { backgroundColor: colors.accentPrimary }]}
+      <FAB
+        icon={() => <Ionicons name="add" size={22} color={theme.colors.onPrimary} />}
+        style={[styles.fab, { backgroundColor: theme.colors.primary }]}
         onPress={() => setShowModal(true)}
-      >
-        <Ionicons name="add" size={22} color={colors.textInverse} />
-        <Text style={[styles.fabText, { color: colors.textInverse }]}>Log Session</Text>
-      </TouchableOpacity>
+        label="Log Session"
+      />
 
       <LogSessionModal
         visible={showModal}
         onClose={() => setShowModal(false)}
         onSave={logSession}
-        colors={colors}
       />
     </SafeAreaView>
   );
@@ -308,56 +328,24 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   header: { flexDirection: 'row', alignItems: 'center', paddingVertical: spacing.sm },
   headerCenter: { flex: 1, alignItems: 'center' },
-  eyebrow: { fontSize: typography.sizes.xs, fontWeight: typography.weights.medium },
-  title: { fontSize: typography.sizes.xl, fontWeight: typography.weights.bold },
-  subtitle: { fontSize: typography.sizes.sm, marginBottom: spacing.sm },
   content: { paddingHorizontal: spacing.screenHorizontal, paddingVertical: spacing.lg, paddingBottom: 120, gap: spacing.base },
   goalCard: {},
   goalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.sm },
-  goalLabel: { fontSize: typography.sizes.sm, fontWeight: typography.weights.semibold },
-  goalProgress: { fontSize: typography.sizes.sm },
   progressTrack: { height: 6, borderRadius: 3, overflow: 'hidden' },
   progressFill: { height: 6, borderRadius: 3 },
   chips: { maxHeight: 44 },
   chipsContent: { gap: spacing.sm, paddingHorizontal: spacing.screenHorizontal, paddingVertical: 4 },
-  chip: { paddingHorizontal: spacing.base, paddingVertical: spacing.xs, borderRadius: borderRadius.full },
-  chipText: { fontSize: typography.sizes.sm, fontWeight: typography.weights.medium },
-  sessionCard: { borderRadius: borderRadius.lg, borderWidth: 1, padding: spacing.base, gap: spacing.sm },
   sessionTop: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' },
   sessionMeta: { flex: 1 },
-  sessionCategory: { fontSize: typography.sizes.xs, fontWeight: typography.weights.medium, marginBottom: 2 },
-  sessionTitle: { fontSize: typography.sizes.base, fontWeight: typography.weights.semibold },
-  sessionDesc: { fontSize: typography.sizes.sm, lineHeight: typography.sizes.sm * 1.5 },
   sessionFooter: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  sessionDuration: { fontSize: typography.sizes.xs },
-  startChip: { alignSelf: 'flex-start', paddingHorizontal: spacing.base, paddingVertical: 4, borderRadius: borderRadius.sm },
-  startChipText: { fontSize: typography.sizes.sm, fontWeight: typography.weights.medium },
   fab: {
     position: 'absolute',
     bottom: spacing['2xl'],
     right: spacing.lg,
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: spacing.screenHorizontal,
-    paddingVertical: spacing.sm,
-    borderRadius: borderRadius.full,
-    gap: spacing.sm,
-    elevation: 4,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.25,
-    shadowRadius: 8,
   },
-  fabText: { fontSize: typography.sizes.base, fontWeight: typography.weights.semibold },
   emptyState: { alignItems: 'center', paddingVertical: spacing['2xl'], gap: spacing.sm },
-  emptyTitle: { fontSize: typography.sizes.lg, fontWeight: typography.weights.semibold },
-  emptyDesc: { fontSize: typography.sizes.sm, textAlign: 'center' },
   modalOverlay: { flex: 1, justifyContent: 'flex-end' },
   modalSheet: { borderTopLeftRadius: borderRadius['2xl'], borderTopRightRadius: borderRadius['2xl'], padding: spacing.xl, gap: spacing.base },
-  modalTitle: { fontSize: typography.sizes.xl, fontWeight: typography.weights.bold },
-  input: { borderWidth: 1, borderRadius: borderRadius.full, paddingHorizontal: spacing.base, paddingVertical: spacing.sm, fontSize: typography.sizes.base },
-  notesInput: { borderRadius: borderRadius.lg, height: 80, paddingTop: spacing.sm, textAlignVertical: 'top' },
+  notesInput: { height: 80, paddingTop: spacing.sm, textAlignVertical: 'top' },
   modalActions: { flexDirection: 'row', gap: spacing.sm },
-  modalBtn: { flex: 1, borderWidth: 1, borderRadius: borderRadius.full, paddingVertical: spacing.sm, alignItems: 'center' },
-  modalBtnText: { fontSize: typography.sizes.base, fontWeight: typography.weights.semibold },
 });

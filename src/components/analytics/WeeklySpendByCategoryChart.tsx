@@ -1,10 +1,10 @@
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, StyleSheet, ScrollView } from 'react-native';
 import { GlassCard } from '../common/GlassCard';
 import { SectionHeader } from '../common/SectionHeader';
-import { useThemeColors } from '../../hooks/useThemeColors';
+import { Text, useTheme } from 'react-native-paper';
 import { formatCurrency } from '../../utils/formatters';
-import { spacing, typography, borderRadius } from '../../theme';
+import { spacing, borderRadius } from '../../theme';
 
 interface CategorySpend {
   category: string;
@@ -24,11 +24,10 @@ interface WeeklySpendByCategoryChartProps {
 }
 
 export function WeeklySpendByCategoryChart({ data }: WeeklySpendByCategoryChartProps) {
-  const colors = useThemeColors();
+  const theme = useTheme();
 
   const maxTotal = Math.max(...data.map((d) => d.total), 1);
 
-  // Collect unique categories across all weeks for the legend, sorted by total amount
   const categoryTotals = new Map<string, { category: string; color: string; total: number }>();
   for (const week of data) {
     for (const cat of week.categories) {
@@ -44,20 +43,31 @@ export function WeeklySpendByCategoryChart({ data }: WeeklySpendByCategoryChartP
       <SectionHeader title="Weekly Spend by Category" />
       <GlassCard>
         {data.length === 0 ? (
-          <Text style={[styles.empty, { color: colors.textTertiary }]}>No expense data</Text>
+          <Text variant="bodyLarge" style={[styles.empty, { color: theme.colors.onSurfaceVariant }]}>
+            No expense data
+          </Text>
         ) : (
           <>
             {legendItems.length > 0 && (
-              <View style={styles.legend}>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.legend}
+              >
                 {legendItems.map((item) => (
                   <View key={item.category} style={styles.legendItem}>
-                    <View style={[styles.legendDot, { backgroundColor: item.color }]} />
-                    <Text style={[styles.legendText, { color: colors.textPrimary }]} numberOfLines={1}>
-                      {item.category}
+                    <View style={styles.legendRow}>
+                      <View style={[styles.legendDot, { backgroundColor: item.color }]} />
+                      <Text variant="bodySmall" style={{ color: theme.colors.onSurface }} numberOfLines={1}>
+                        {item.category}
+                      </Text>
+                    </View>
+                    <Text variant="labelSmall" style={{ color: theme.colors.onSurfaceVariant, marginLeft: 16 }}>
+                      {formatCurrency(item.total)}
                     </Text>
                   </View>
                 ))}
-              </View>
+              </ScrollView>
             )}
 
             <View style={styles.chartContainer}>
@@ -92,19 +102,23 @@ export function WeeklySpendByCategoryChart({ data }: WeeklySpendByCategoryChartP
                         style={[
                           styles.barFill,
                           styles.barEmpty,
-                          { height: `${barHeightPercent}%`, backgroundColor: colors.borderSubtle },
+                          { height: `${barHeightPercent}%`, backgroundColor: theme.colors.outlineVariant },
                         ]}
                       />
                     )}
-                    <Text style={[styles.barLabel, { color: colors.textSecondary }]}>{week.label}</Text>
+                    <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
+                      {week.label}
+                    </Text>
                   </View>
                 );
               })}
             </View>
 
             <View style={styles.totalRow}>
-              <Text style={[styles.totalLabel, { color: colors.textSecondary }]}>Total spend</Text>
-              <Text style={[styles.totalValue, { color: colors.textPrimary }]}>
+              <Text variant="bodyMedium" style={{ color: theme.colors.onSurfaceVariant }}>
+                Total spend
+              </Text>
+              <Text variant="titleMedium" style={{ color: theme.colors.onSurface }}>
                 {formatCurrency(data.reduce((sum, d) => sum + d.total, 0))}
               </Text>
             </View>
@@ -119,15 +133,17 @@ const styles = StyleSheet.create({
   empty: {
     textAlign: 'center',
     paddingVertical: spacing.lg,
-    fontSize: typography.sizes.base,
   },
   legend: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.base,
+    alignItems: 'flex-start',
+    gap: spacing.sm,
     marginBottom: spacing.lg,
   },
   legendItem: {
+    marginRight: spacing.base,
+  },
+  legendRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
@@ -136,11 +152,6 @@ const styles = StyleSheet.create({
     width: 10,
     height: 10,
     borderRadius: 5,
-  },
-  legendText: {
-    fontSize: typography.sizes.sm,
-    fontWeight: typography.weights.medium,
-    textTransform: 'capitalize',
   },
   chartContainer: {
     flexDirection: 'row',
@@ -167,10 +178,6 @@ const styles = StyleSheet.create({
   barSegment: {
     width: '100%',
   },
-  barLabel: {
-    fontSize: typography.sizes.xs,
-    marginTop: spacing.sm,
-  },
   totalRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -178,12 +185,5 @@ const styles = StyleSheet.create({
     paddingTop: spacing.base,
     borderTopWidth: 1,
     borderTopColor: 'transparent',
-  },
-  totalLabel: {
-    fontSize: typography.sizes.sm,
-  },
-  totalValue: {
-    fontSize: typography.sizes.base,
-    fontWeight: typography.weights.bold,
   },
 });

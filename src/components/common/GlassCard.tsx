@@ -1,43 +1,56 @@
 import React, { type ReactNode } from 'react';
-import { View, StyleSheet, type ViewStyle } from 'react-native';
-import { useThemeColors } from '../../hooks/useThemeColors';
-import { borderRadius, spacing } from '../../theme';
+import { StyleSheet, type ViewStyle } from 'react-native';
+import { Card, TouchableRipple, useTheme } from 'react-native-paper';
 
 interface GlassCardProps {
   children: ReactNode;
   style?: ViewStyle;
   variant?: 'default' | 'elevated' | 'accent';
+  onPress?: () => void;
 }
 
-export function GlassCard({ children, style, variant = 'default' }: GlassCardProps) {
-  const colors = useThemeColors();
+export function GlassCard({ children, style, variant = 'default', onPress }: GlassCardProps) {
+  const theme = useTheme();
 
   const backgroundColors = {
-    default: colors.glassWhite,
-    elevated: colors.bgElevated,
-    accent: `${colors.accentPrimary}14`, // 8% opacity
+    default: theme.colors.surfaceVariant,
+    elevated: theme.colors.elevation.level2,
+    accent: `${theme.colors.primary}14`, // 8% opacity
   };
 
-  return (
-    <View
+  const card = (
+    <Card
       style={[
         styles.card,
         {
           backgroundColor: backgroundColors[variant],
-          borderColor: colors.border,
+          borderColor: theme.colors.outlineVariant,
         },
         style,
       ]}
+      mode="elevated"
     >
       {children}
-    </View>
+    </Card>
+  );
+
+  if (!onPress) return card;
+
+  return (
+    <TouchableRipple
+      onPress={onPress}
+      rippleColor={theme.colors.primary}
+      style={[styles.card, { borderRadius: 16 }]}
+    >
+      {card}
+    </TouchableRipple>
   );
 }
 
 const styles = StyleSheet.create({
   card: {
-    borderRadius: borderRadius.xl,
+    borderRadius: 16,
     borderWidth: 1,
-    padding: spacing.lg,
+    padding: 12,
   },
 });

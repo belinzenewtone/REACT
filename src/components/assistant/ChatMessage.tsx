@@ -1,9 +1,9 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useThemeColors } from '../../hooks/useThemeColors';
+import { Text, Chip, useTheme } from 'react-native-paper';
 import { formatDate } from '../../utils/formatters';
-import { spacing, typography, borderRadius } from '../../theme';
+import { spacing, borderRadius } from '../../theme';
 
 export interface ChatMessageData {
   id: string;
@@ -19,7 +19,7 @@ interface ChatMessageProps {
 }
 
 export function ChatMessage({ message, onActionPress }: ChatMessageProps) {
-  const colors = useThemeColors();
+  const theme = useTheme();
   const isUser = message.role === 'user';
 
   return (
@@ -30,8 +30,8 @@ export function ChatMessage({ message, onActionPress }: ChatMessageProps) {
       ]}
     >
       {!isUser && (
-        <View style={[styles.avatar, { backgroundColor: colors.accentPrimary }]}>
-          <Ionicons name="sparkles" size={16} color={colors.textInverse} />
+        <View style={[styles.avatar, { backgroundColor: theme.colors.primary }]}>
+          <Ionicons name="sparkles" size={16} color={theme.colors.onPrimary} />
         </View>
       )}
 
@@ -40,19 +40,17 @@ export function ChatMessage({ message, onActionPress }: ChatMessageProps) {
           styles.bubble,
           isUser ? styles.userBubble : styles.assistantBubble,
           {
-            backgroundColor: isUser ? colors.accentPrimary : colors.glassWhite,
-            borderColor: isUser ? colors.accentPrimary : colors.border,
+            backgroundColor: isUser ? theme.colors.primary : theme.colors.surfaceVariant,
+            borderColor: isUser ? theme.colors.primary : theme.colors.outlineVariant,
           },
         ]}
       >
         <Text
-          style={[
-            styles.content,
-            {
-              color: isUser ? colors.textInverse : colors.textPrimary,
-              fontWeight: isUser ? typography.weights.semibold : typography.weights.regular,
-            },
-          ]}
+          variant="bodyMedium"
+          style={{
+            color: isUser ? theme.colors.onPrimary : theme.colors.onSurface,
+            fontWeight: isUser ? '600' : '400',
+          }}
         >
           {message.content}
         </Text>
@@ -60,31 +58,28 @@ export function ChatMessage({ message, onActionPress }: ChatMessageProps) {
         {message.actions && message.actions.length > 0 && (
           <View style={styles.actions}>
             {message.actions.map((action, index) => (
-              <TouchableOpacity
+              <Chip
                 key={index}
-                style={[
-                  styles.actionButton,
-                  { backgroundColor: isUser ? `${colors.textInverse}20` : colors.bgElevated },
-                ]}
                 onPress={() => onActionPress?.(action)}
+                style={[
+                  styles.actionChip,
+                  {
+                    backgroundColor: isUser ? `${theme.colors.onPrimary}20` : theme.colors.surface,
+                  },
+                ]}
+                textStyle={{ color: isUser ? theme.colors.onPrimary : theme.colors.primary }}
               >
-                <Text
-                  style={[
-                    styles.actionText,
-                    { color: isUser ? colors.textInverse : colors.accentPrimary },
-                  ]}
-                >
-                  {action}
-                </Text>
-              </TouchableOpacity>
+                {action}
+              </Chip>
             ))}
           </View>
         )}
 
         <Text
+          variant="bodySmall"
           style={[
             styles.timestamp,
-            { color: isUser ? `${colors.textInverse}99` : colors.textTertiary },
+            { color: isUser ? `${theme.colors.onPrimary}99` : theme.colors.onSurfaceVariant },
           ]}
         >
           {formatDate(message.createdAt, 'HH:mm')}
@@ -132,27 +127,16 @@ const styles = StyleSheet.create({
     borderBottomLeftRadius: 4,
     borderBottomRightRadius: 20,
   },
-  content: {
-    fontSize: 14,
-    lineHeight: 20,
-  },
   actions: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: spacing.sm,
     marginTop: spacing.base,
   },
-  actionButton: {
-    paddingHorizontal: spacing.base,
-    paddingVertical: 6,
+  actionChip: {
     borderRadius: borderRadius.full,
   },
-  actionText: {
-    fontSize: typography.sizes.xs,
-    fontWeight: typography.weights.medium,
-  },
   timestamp: {
-    fontSize: typography.sizes.xs,
     marginTop: spacing.sm,
     alignSelf: 'flex-end',
   },

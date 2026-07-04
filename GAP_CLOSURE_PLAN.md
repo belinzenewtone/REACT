@@ -45,7 +45,7 @@ insert can drop a message until manual reconcile.
    crash-safe), THEN enqueue `SmsProcessWorker` keyed by queue row id.
 3. `SmsProcessWorker`: read from queue → parse/dedupe/insert → mark done.
    On exception: attempts++, exponential `next_retry_at`, Result.retry().
-4. Add a periodic sweep (WorkManager periodic, 6h) that drains any
+4. Add a periodic sweep (WorkManager periodic, 15min) that drains any
    pending/failed rows older than a threshold — self-healing without user action.
 5. Surface queue depth + oldest pending age in Import Health.
 

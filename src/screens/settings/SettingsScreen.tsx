@@ -1,12 +1,9 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
   ScrollView,
-  TouchableOpacity,
   Alert,
-  ActivityIndicator,
 } from 'react-native';
 import * as Updates from 'expo-updates';
 import {
@@ -20,7 +17,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
-import { useThemeColors } from '../../hooks/useThemeColors';
+import { Text, Card, Button, useTheme } from 'react-native-paper';
 import { useAppStore } from '../../store';
 import { GlassCard } from '../../components/common/GlassCard';
 import { TopBanner } from '../../components/common/TopBanner';
@@ -29,7 +26,7 @@ import { SegmentedControl } from '../../components/settings/SegmentedControl';
 import { FulizaLimitModal } from '../../components/settings/FulizaLimitModal';
 import { APP_NAME, APP_VERSION } from '../../constants';
 import { formatCurrency } from '../../utils/formatters';
-import { spacing, typography, borderRadius } from '../../theme';
+import { spacing, BOTTOM_NAV_SAFE_AREA } from '../../theme';
 import type { ThemeMode } from '../../theme';
 
 const THEME_OPTIONS: { value: ThemeMode; label: string }[] = [
@@ -38,8 +35,10 @@ const THEME_OPTIONS: { value: ThemeMode; label: string }[] = [
   { value: 'dark', label: 'Dark' },
 ];
 
+const WARNING = '#F5CB5C';
+
 export function SettingsScreen() {
-  const colors = useThemeColors();
+  const theme = useTheme();
   const navigation = useNavigation<any>();
   const settings = useAppStore((state) => state.settings);
   const updateSettings = useAppStore((state) => state.updateSettings);
@@ -69,8 +68,6 @@ export function SettingsScreen() {
     }
   }, []);
 
-  // Check on first mount and every time the user returns to this screen,
-  // so the banner disappears as soon as permissions are granted in Settings.
   useEffect(() => {
     refreshPermissionState();
   }, [refreshPermissionState]);
@@ -85,8 +82,6 @@ export function SettingsScreen() {
     setRequestingPerms(true);
     try {
       const { granted } = await requestSmsPermissions();
-      // Re-read native state — requestMultiple returns the dialog result, but
-      // the user may have changed the toggle in system Settings while away.
       await refreshPermissionState();
       setInfoMessage(granted ? 'SMS permissions granted' : 'Permissions denied — grant them in device Settings');
     } catch {
@@ -177,15 +172,17 @@ export function SettingsScreen() {
   };
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.bgPrimary }]} edges={['top']}>
+    <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]} edges={['top']}>
       <TopBanner tone="success" message={infoMessage ?? ''} visible={!!infoMessage} onDismiss={() => setInfoMessage(null)} />
 
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()}>
-            <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
-          </TouchableOpacity>
-          <Text style={[styles.title, { color: colors.textPrimary }]} numberOfLines={1}>Settings</Text>
+          <Ionicons name="arrow-back" size={24} color={theme.colors.onSurface} onPress={() => navigation.goBack()} />
+          <View style={styles.headerText}>
+            <Text variant="headlineSmall" style={{ color: theme.colors.onSurface }} numberOfLines={1}>
+              Settings
+            </Text>
+          </View>
           <View style={{ width: 24 }} />
         </View>
 
@@ -194,9 +191,9 @@ export function SettingsScreen() {
           <SegmentedControl
             options={THEME_OPTIONS}
             value={settings.theme}
-            onChange={(theme) => {
-              updateSettings({ theme });
-              setInfoMessage(`Theme set to ${THEME_OPTIONS.find((o) => o.value === theme)?.label}`);
+            onChange={(themeValue) => {
+              updateSettings({ theme: themeValue });
+              setInfoMessage(`Theme set to ${THEME_OPTIONS.find((o) => o.value === themeValue)?.label}`);
             }}
           />
         </GlassCard>
@@ -234,8 +231,6 @@ export function SettingsScreen() {
             toggleValue={settings.hapticFeedback}
             onToggleChange={(value) => {
               updateSettings({ hapticFeedback: value });
-              // Give an immediate confirmation pulse when the user enables haptics
-              // so they can feel that it actually works.
               if (value) {
                 setTimeout(() => {
                   import('../../services/haptics').then((m) => m.haptic('success'));
@@ -289,17 +284,23 @@ export function SettingsScreen() {
 
         <SectionLabel label="Import SMS" />
         {!smsPermissionsGranted && (
-          <TouchableOpacity
-            style={[styles.permBanner, { backgroundColor: colors.warning + '20', borderColor: colors.warning }]}
+          <Card
+            mode="outlined"
+            style={[styles.permBanner, { borderColor: WARNING, backgroundColor: `${WARNING}20` }]}
             onPress={handleGrantSmsPermissions}
-            disabled={requestingPerms}
           >
-            <Ionicons name="alert-circle-outline" size={18} color={colors.warning} />
-            <Text style={[styles.permBannerText, { color: colors.warning }]}>
-              {requestingPerms ? 'Requesting…' : 'SMS permissions not granted — tap to allow'}
-            </Text>
-            {!requestingPerms && <Ionicons name="chevron-forward" size={16} color={colors.warning} />}
-          </TouchableOpacity>
+            <Card.Content style={styles.permBannerContent}>
+              <Ionicons name="alert-circle-outline" size={18} color={WARNING} />
+              <Text
+                variant="bodyMedium"
+                style={[styles.permBannerText, { color: WARNING }]}
+                numberOfLines={2}
+              >
+                {requestingPerms ? 'Requesting…' : 'SMS permissions not granted — tap to allow'}
+              </Text>
+              {!requestingPerms && <Ionicons name="chevron-forward" size={16} color={WARNING} />}
+            </Card.Content>
+          </Card>
         )}
         <GlassCard>
           <SettingsRow
@@ -309,18 +310,10 @@ export function SettingsScreen() {
             toggle
             toggleValue={settings.smsBackgroundReceiver}
             onToggleChange={(value) => {
-              // Persist to native SharedPreferences FIRST — the BroadcastReceiver
-              // reads that flag, not JS state. Only reflect the toggle in app
-              // settings once the native write succeeds; otherwise the UI would
-              // show "on" while the receiver stays off.
               enableBackgroundReceiver(value)
                 .then(async () => {
                   updateSettings({ smsBackgroundReceiver: value });
                   if (value) {
-                    // The toggle doubles as the "run reliably in background"
-                    // switch: without a battery-optimization exemption, Doze /
-                    // OEM killers can delay or drop the SMS worker when the
-                    // app is backgrounded or killed.
                     try {
                       const exempt = await isIgnoringBatteryOptimizations();
                       if (!exempt) {
@@ -373,7 +366,7 @@ export function SettingsScreen() {
           />
           <SettingsRow
             icon="trash-outline"
-            iconColor={colors.danger}
+            iconColor={theme.colors.error}
             label="Clear all local data"
             showChevron
             destructive
@@ -385,36 +378,27 @@ export function SettingsScreen() {
         <SectionLabel label="App Updates" />
         <GlassCard>
           <View style={styles.updateActions}>
-            <TouchableOpacity
-              style={[
-                styles.updateButton,
-                { backgroundColor: colors.glassWhite, borderColor: colors.border, opacity: checkingUpdate ? 0.6 : 1 },
-              ]}
+            <Button
+              mode="outlined"
               onPress={handleCheckUpdates}
               disabled={checkingUpdate}
+              loading={checkingUpdate}
+              icon={() => <Ionicons name="refresh-outline" size={18} color={theme.colors.onSurface} />}
+              style={[styles.updateButton, { borderColor: theme.colors.outlineVariant }]}
+              textColor={theme.colors.onSurface}
             >
-              {checkingUpdate ? (
-                <ActivityIndicator size="small" color={colors.textPrimary} />
-              ) : (
-                <Ionicons name="refresh-outline" size={18} color={colors.textPrimary} />
-              )}
-              <Text style={[styles.updateButtonText, { color: colors.textPrimary }]}>Check</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[
-                styles.updateButton,
-                { backgroundColor: colors.accentPrimary, opacity: downloadingUpdate ? 0.6 : 1 },
-              ]}
+              Check
+            </Button>
+            <Button
+              mode="contained"
               onPress={handleDownloadUpdate}
               disabled={downloadingUpdate}
+              loading={downloadingUpdate}
+              icon={() => <Ionicons name="download-outline" size={18} color={theme.colors.onPrimary} />}
+              style={styles.updateButton}
             >
-              {downloadingUpdate ? (
-                <ActivityIndicator size="small" color={colors.textInverse} />
-              ) : (
-                <Ionicons name="download-outline" size={18} color={colors.textInverse} />
-              )}
-              <Text style={[styles.updateButtonText, { color: colors.textInverse }]}>Download</Text>
-            </TouchableOpacity>
+              Download
+            </Button>
           </View>
         </GlassCard>
       </ScrollView>
@@ -424,9 +408,6 @@ export function SettingsScreen() {
         currentLimit={settings.fulizaLimit}
         onCancel={() => setFulizaVisible(false)}
         onSave={(limit) => {
-          // Native first — the background SMS worker computes Fuliza
-          // outstanding from SharedPreferences, not JS state. JS setting is
-          // updated regardless; bootstrap re-pushes JS → native on launch.
           setFulizaLimit(limit)
             .catch(() => setInfoMessage('Saved — will sync to background worker on next launch'))
             .finally(() => updateSettings({ fulizaLimit: limit }));
@@ -441,9 +422,11 @@ export function SettingsScreen() {
 }
 
 function SectionLabel({ label }: { label: string }) {
-  const colors = useThemeColors();
+  const theme = useTheme();
   return (
-    <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>{label}</Text>
+    <Text variant="labelLarge" style={[styles.sectionLabel, { color: theme.colors.onSurfaceVariant }]}>
+      {label}
+    </Text>
   );
 }
 
@@ -455,37 +438,33 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    paddingVertical: spacing.sm,
     paddingBottom: spacing.sm,
   },
-  title: {
-    fontSize: typography.sizes.lg,
-    fontWeight: typography.weights.semibold,
+  headerText: {
+    alignItems: 'center',
   },
   content: {
-    paddingHorizontal: spacing.screenHorizontal, paddingVertical: spacing.lg,
+    paddingHorizontal: spacing.screenHorizontal,
+    paddingVertical: spacing.lg,
     paddingTop: spacing.sm,
     paddingBottom: spacing['4xl'],
   },
   sectionLabel: {
-    fontSize: typography.sizes.base,
-    fontWeight: typography.weights.medium,
     marginTop: spacing.lg,
     marginBottom: spacing.base,
   },
   permBanner: {
+    marginBottom: spacing.sm,
+    borderRadius: 16,
+  },
+  permBannerContent: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    borderWidth: 1,
-    borderRadius: borderRadius.lg,
-    paddingHorizontal: spacing.base,
-    paddingVertical: spacing.sm,
-    marginBottom: spacing.sm,
   },
   permBannerText: {
     flex: 1,
-    fontSize: typography.sizes.sm,
-    fontWeight: typography.weights.medium,
   },
   updateActions: {
     flexDirection: 'row',
@@ -493,16 +472,5 @@ const styles = StyleSheet.create({
   },
   updateButton: {
     flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: spacing.base,
-    borderRadius: borderRadius.lg,
-    borderWidth: 1,
-    gap: spacing.sm,
-  },
-  updateButtonText: {
-    fontSize: typography.sizes.base,
-    fontWeight: typography.weights.semibold,
   },
 });

@@ -10,7 +10,7 @@ import android.util.Log
  * requiring the user to open the app first.
  *
  * On BOOT_COMPLETED / MY_PACKAGE_REPLACED:
- *  1. Re-register the 6-hourly ingest sweep (WorkManager persists periodic
+ *  1. Re-register the 15-minute ingest sweep (WorkManager persists periodic
  *     work across reboots, but re-registering with KEEP is free insurance
  *     and covers app-update edge cases).
  *  2. Drain any pending sms_ingest_queue rows immediately — messages that

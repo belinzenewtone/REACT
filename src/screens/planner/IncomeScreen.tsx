@@ -1,18 +1,22 @@
 import React, { useEffect } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, StyleSheet, Alert } from 'react-native';
+import { View, StyleSheet, ScrollView, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
+import { Text, IconButton, useTheme } from 'react-native-paper';
 import { useSQLiteContext } from 'expo-sqlite';
-import { useThemeColors } from '../../hooks/useThemeColors';
 import { usePlannerStore } from '../../store';
 import { GlassCard } from '../../components/common/GlassCard';
 import { formatCurrency, formatDate } from '../../utils/formatters';
-import { spacing, typography, borderRadius } from '../../theme';
+import { spacing, borderRadius, BOTTOM_NAV_SAFE_AREA } from '../../theme';
 import { animateLayout } from '../../utils/animation';
 
+const SEMANTIC = {
+  success: '#7BC47B',
+};
+
 export function IncomeScreen() {
-  const colors = useThemeColors();
+  const theme = useTheme();
   const db = useSQLiteContext();
   const navigation = useNavigation<any>();
   const { incomes, loadAll, deleteIncome } = usePlannerStore();
@@ -38,74 +42,76 @@ export function IncomeScreen() {
   };
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.bgPrimary }]} edges={['top']}>
+    <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]} edges={['top']}>
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()}>
-            <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
-          </TouchableOpacity>
+          <IconButton
+            icon={() => <Ionicons name="arrow-back" size={22} color={theme.colors.onSurface} />}
+            onPress={() => navigation.goBack()}
+          />
           <View style={styles.headerTextCol}>
-            <Text style={[styles.title, { color: colors.textPrimary }]} numberOfLines={1}>Income</Text>
-            <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
+            <Text variant="titleLarge" style={{ color: theme.colors.onSurface }} numberOfLines={1}>
+              Income
+            </Text>
+            <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
               {incomes.length} entr{incomes.length === 1 ? 'y' : 'ies'} tracked
             </Text>
           </View>
-          <TouchableOpacity onPress={() => navigation.navigate('IncomeForm')}>
-            <Ionicons name="add" size={24} color={colors.accentPrimary} />
-          </TouchableOpacity>
+          <IconButton
+            icon={() => <Ionicons name="add" size={22} color={theme.colors.primary} />}
+            onPress={() => navigation.navigate('IncomeForm')}
+          />
         </View>
 
         {incomes.length > 0 && (
           <GlassCard variant="elevated" style={styles.summaryCard}>
-            <Text style={[styles.summaryLabel, { color: colors.textSecondary }]}>Total Income</Text>
-            <Text style={[styles.summaryAmount, { color: colors.success }]}>{formatCurrency(totalIncome)}</Text>
-            <Text style={[styles.summaryMeta, { color: colors.textTertiary }]}>{incomes.length} source{incomes.length > 1 ? 's' : ''}</Text>
+            <Text variant="bodyMedium" style={{ color: theme.colors.onSurfaceVariant }}>Total Income</Text>
+            <Text variant="headlineMedium" style={{ color: SEMANTIC.success }}>{formatCurrency(totalIncome)}</Text>
+            <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>{incomes.length} source{incomes.length > 1 ? 's' : ''}</Text>
           </GlassCard>
         )}
 
         {incomes.length === 0 ? (
           <View style={styles.empty}>
-            <View style={[styles.emptyIcon, { backgroundColor: colors.glassWhite }]}>
-              <Ionicons name="cash-outline" size={32} color={colors.success} />
+            <View style={[styles.emptyIcon, { backgroundColor: theme.colors.surfaceVariant }]}>
+              <Ionicons name="cash-outline" size={32} color={SEMANTIC.success} />
             </View>
-            <Text style={[styles.emptyTitle, { color: colors.textPrimary }]}>No income yet</Text>
-            <Text style={[styles.emptyText, { color: colors.textTertiary }]}>
+            <Text variant="titleLarge" style={{ color: theme.colors.onSurface }}>No income yet</Text>
+            <Text variant="bodyMedium" style={{ color: theme.colors.onSurfaceVariant, textAlign: 'center', marginTop: spacing.xs }}>
               Track your salary, side hustles, and other income sources.
             </Text>
           </View>
         ) : (
           incomes.map((income) => (
-            <TouchableOpacity
-              key={income.id}
-              onPress={() => navigation.navigate('IncomeForm', { incomeId: income.id })}
-            >
-              <GlassCard style={styles.card}>
-                <View style={styles.row}>
-                  <View style={styles.contentCol}>
-                    <Text style={[styles.source, { color: colors.textPrimary }]} numberOfLines={1}>
-                      {income.source}
+            <GlassCard key={income.id} style={styles.card}>
+              <View style={styles.row}>
+                <View style={styles.contentCol}>
+                  <Text variant="bodyLarge" style={{ color: theme.colors.onSurface }} numberOfLines={1}>
+                    {income.source}
+                  </Text>
+                  <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant, textTransform: 'capitalize' }}>
+                    {formatDate(income.date)}
+                    {income.is_recurring ? ` · ${income.frequency}` : ''}
+                  </Text>
+                  {income.note ? (
+                    <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }} numberOfLines={1}>
+                      {income.note}
                     </Text>
-                    <Text style={[styles.meta, { color: colors.textSecondary }]}>
-                      {formatDate(income.date)}
-                      {income.is_recurring ? ` · ${income.frequency}` : ''}
-                    </Text>
-                    {income.note ? (
-                      <Text style={[styles.note, { color: colors.textTertiary }]} numberOfLines={1}>
-                        {income.note}
-                      </Text>
-                    ) : null}
-                  </View>
-                  <View style={styles.trailingCol}>
-                    <Text style={[styles.amount, { color: colors.success }]}>
-                      {formatCurrency(income.amount)}
-                    </Text>
-                    <TouchableOpacity onPress={() => handleDelete(income.id, income.source)} style={styles.deleteButton}>
-                      <Ionicons name="trash-outline" size={16} color={colors.danger} />
-                    </TouchableOpacity>
-                  </View>
+                  ) : null}
                 </View>
-              </GlassCard>
-            </TouchableOpacity>
+                <View style={styles.trailingCol}>
+                  <Text variant="titleMedium" style={{ color: SEMANTIC.success }}>
+                    {formatCurrency(income.amount)}
+                  </Text>
+                  <IconButton
+                    icon={() => <Ionicons name="trash-outline" size={16} color={theme.colors.error} />}
+                    size={16}
+                    onPress={() => handleDelete(income.id, income.source)}
+                    style={{ margin: 0 }}
+                  />
+                </View>
+              </View>
+            </GlassCard>
           ))
         )}
       </ScrollView>
@@ -122,26 +128,15 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.sm,
   },
   headerTextCol: { alignItems: 'center' },
-  title: { fontSize: typography.sizes.lg, fontWeight: typography.weights.semibold },
-  subtitle: { fontSize: typography.sizes.xs, marginTop: 2 },
   summaryCard: {
-    marginHorizontal: spacing.lg,
     marginBottom: spacing.base,
   },
-  summaryLabel: {
-    fontSize: typography.sizes.sm,
-    fontWeight: typography.weights.medium,
+  content: {
+    paddingHorizontal: spacing.screenHorizontal,
+    paddingVertical: spacing.lg,
+    paddingTop: spacing.sm,
+    paddingBottom: BOTTOM_NAV_SAFE_AREA,
   },
-  summaryAmount: {
-    fontSize: typography.sizes['2xl'],
-    fontWeight: typography.weights.bold,
-    marginTop: spacing.xs,
-  },
-  summaryMeta: {
-    fontSize: typography.sizes.sm,
-    marginTop: spacing.xs,
-  },
-  content: { paddingHorizontal: spacing.screenHorizontal, paddingVertical: spacing.lg, paddingTop: spacing.sm },
   empty: {
     paddingVertical: spacing['3xl'],
     alignItems: 'center',
@@ -154,22 +149,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: spacing.base,
   },
-  emptyTitle: {
-    fontSize: typography.sizes.lg,
-    fontWeight: typography.weights.semibold,
-  },
-  emptyText: {
-    fontSize: typography.sizes.sm,
-    marginTop: spacing.xs,
-    textAlign: 'center',
-  },
   card: { marginBottom: spacing.base, padding: spacing.base },
   row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   contentCol: { flex: 1, marginRight: spacing.sm },
-  source: { fontSize: typography.sizes.base, fontWeight: typography.weights.medium },
-  meta: { fontSize: typography.sizes.sm, marginTop: 2, textTransform: 'capitalize' },
-  note: { fontSize: typography.sizes.xs, marginTop: 2 },
-  trailingCol: { alignItems: 'flex-end', gap: spacing.xs },
-  amount: { fontSize: typography.sizes.base, fontWeight: typography.weights.bold },
-  deleteButton: { padding: 2 },
+  trailingCol: { alignItems: 'flex-end' },
 });

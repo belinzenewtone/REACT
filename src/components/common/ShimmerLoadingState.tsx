@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { View, Animated, StyleSheet } from 'react-native';
-import { useThemeColors } from '../../hooks/useThemeColors';
+import { useTheme } from 'react-native-paper';
 import { spacing, borderRadius } from '../../theme';
 
 interface ShimmerLoadingStateProps {
@@ -9,7 +9,7 @@ interface ShimmerLoadingStateProps {
 }
 
 export function ShimmerLoadingState({ rows = 3, rowHeight = 72 }: ShimmerLoadingStateProps) {
-  const colors = useThemeColors();
+  const theme = useTheme();
   const shimmer = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -32,7 +32,7 @@ export function ShimmerLoadingState({ rows = 3, rowHeight = 72 }: ShimmerLoading
           key={index}
           style={[
             styles.row,
-            { height: rowHeight, backgroundColor: colors.glassWhite, opacity },
+            { height: rowHeight, backgroundColor: theme.colors.surfaceVariant, opacity },
           ]}
         />
       ))}

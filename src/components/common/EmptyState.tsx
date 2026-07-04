@@ -1,8 +1,8 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useThemeColors } from '../../hooks/useThemeColors';
-import { spacing, typography, borderRadius } from '../../theme';
+import { Card, Text, Button, useTheme } from 'react-native-paper';
+import { spacing } from '../../theme';
 
 interface EmptyStateProps {
   icon: keyof typeof Ionicons.glyphMap;
@@ -13,62 +13,55 @@ interface EmptyStateProps {
 }
 
 export function EmptyState({ icon, title, subtitle, actionLabel, onAction }: EmptyStateProps) {
-  const colors = useThemeColors();
+  const theme = useTheme();
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.glassWhite, borderColor: colors.border }]}>
-      <View style={[styles.iconCircle, { backgroundColor: `${colors.accentPrimary}14` }]}>
-        <Ionicons name={icon} size={32} color={colors.accentPrimary} />
-      </View>
-      <Text style={[styles.title, { color: colors.textPrimary }]}>{title}</Text>
-      {subtitle ? <Text style={[styles.subtitle, { color: colors.textSecondary }]}>{subtitle}</Text> : null}
-      {actionLabel && onAction ? (
-        <TouchableOpacity
-          style={[styles.actionButton, { borderColor: colors.accentPrimary }]}
-          onPress={onAction}
-        >
-          <Text style={[styles.actionText, { color: colors.accentPrimary }]}>{actionLabel}</Text>
-        </TouchableOpacity>
-      ) : null}
-    </View>
+    <Card
+      style={[styles.container, { backgroundColor: theme.colors.surfaceVariant }]}
+      mode="elevated"
+    >
+      <Card.Content style={styles.content}>
+        <View style={[styles.iconCircle, { backgroundColor: `${theme.colors.primary}14` }]}>
+          <Ionicons name={icon} size={28} color={theme.colors.primary} />
+        </View>
+        <Text variant="titleMedium" style={{ color: theme.colors.onSurface, textAlign: 'center' }}>
+          {title}
+        </Text>
+        {subtitle ? (
+          <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant, textAlign: 'center', marginTop: spacing.xs }}>
+            {subtitle}
+          </Text>
+        ) : null}
+        {actionLabel && onAction ? (
+          <Button
+            mode="outlined"
+            compact
+            onPress={onAction}
+            style={{ marginTop: spacing.base }}
+            textColor={theme.colors.primary}
+          >
+            {actionLabel}
+          </Button>
+        ) : null}
+      </Card.Content>
+    </Card>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    borderRadius: borderRadius.xl,
-    borderWidth: 1,
-    padding: spacing.xl,
-    alignItems: 'center',
     marginTop: spacing.lg,
   },
+  content: {
+    alignItems: 'center',
+    paddingVertical: spacing.xl,
+  },
   iconCircle: {
-    width: 64,
-    height: 64,
-    borderRadius: borderRadius.full,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: spacing.base,
-  },
-  title: {
-    fontSize: typography.sizes.lg,
-    fontWeight: typography.weights.semibold,
-    textAlign: 'center',
-  },
-  subtitle: {
-    fontSize: typography.sizes.base,
-    marginTop: spacing.sm,
-    textAlign: 'center',
-  },
-  actionButton: {
-    marginTop: spacing.base,
-    borderWidth: 1,
-    borderRadius: borderRadius.lg,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
-  },
-  actionText: {
-    fontSize: typography.sizes.sm,
-    fontWeight: typography.weights.semibold,
   },
 });

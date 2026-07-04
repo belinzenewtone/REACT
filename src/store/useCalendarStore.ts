@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import type { SQLiteDatabase } from 'expo-sqlite';
 import { EventRepository, type EventRecord } from '../database/repositories/EventRepository';
 import { TaskRepository, type TaskRecord } from '../database/repositories/TaskRepository';
-import type { DayEvent } from '../components/calendar/DayAgenda';
+import type { DayEvent } from '../types';
 
 interface CalendarState {
   isLoading: boolean;

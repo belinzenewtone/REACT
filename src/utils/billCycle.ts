@@ -9,9 +9,9 @@
 
 import { addMonthsClamped } from './recurrence';
 
-export type BillCycleKind = 'daily' | 'weekly' | 'monthly' | 'yearly' | 'one_time';
+type BillCycleKind = 'daily' | 'weekly' | 'monthly' | 'yearly' | 'one_time';
 
-export interface BillCycleResult {
+interface BillCycleResult {
   /** ISO due date to persist (advanced when paid on a repeating cycle). */
   nextDueIso: string;
   /** Paid flag to persist (reset to false when the cycle advanced). */

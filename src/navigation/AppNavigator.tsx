@@ -149,7 +149,7 @@ export function AppNavigator() {
           const s = useAppStore.getState().settings;
           await enableBackgroundReceiver(s.smsBackgroundReceiver ?? false);
           await setFulizaLimit(s.fulizaLimit ?? 0);
-          // Register the 6-hourly ingest-queue sweep and drain any SMS rows
+          // Register the 15-minute ingest-queue sweep and drain any SMS rows
           // that accumulated while the app was closed/killed.
           await ensureIngestSweep();
         } catch {}

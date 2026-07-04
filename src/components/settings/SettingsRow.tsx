@@ -1,9 +1,9 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useThemeColors } from '../../hooks/useThemeColors';
+import { Text, TouchableRipple, useTheme } from 'react-native-paper';
 import { LifeOSSwitch } from '../common/LifeOSSwitch';
-import { spacing, typography, borderRadius } from '../../theme';
+import { spacing, borderRadius } from '../../theme';
 
 interface SettingsRowProps {
   icon?: keyof typeof Ionicons.glyphMap;
@@ -36,13 +36,13 @@ export function SettingsRow({
   disabled,
   isLast,
 }: SettingsRowProps) {
-  const colors = useThemeColors();
+  const theme = useTheme();
 
   const content = (
     <View
       style={[
         styles.row,
-        !isLast && { borderBottomColor: colors.border, borderBottomWidth: 1 },
+        !isLast && { borderBottomColor: theme.colors.outlineVariant, borderBottomWidth: 1 },
         disabled && { opacity: 0.5 },
       ]}
     >
@@ -51,28 +51,26 @@ export function SettingsRow({
           <View
             style={[
               styles.iconContainer,
-              { backgroundColor: (iconColor ?? colors.accentPrimary) + '20' },
+              { backgroundColor: `${iconColor ?? theme.colors.primary}20` },
             ]}
           >
             <Ionicons
               name={icon}
               size={18}
-              color={iconColor ?? colors.accentPrimary}
+              color={iconColor ?? theme.colors.primary}
             />
           </View>
         )}
         <View style={styles.textCol}>
           <Text
-            style={[
-              styles.label,
-              { color: destructive ? colors.danger : colors.textPrimary },
-            ]}
+            variant="bodyLarge"
+            style={{ color: destructive ? theme.colors.error : theme.colors.onSurface }}
             numberOfLines={1}
           >
             {label}
           </Text>
           {subtitle ? (
-            <Text style={[styles.subtitle, { color: colors.textSecondary }]} numberOfLines={2}>
+            <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }} numberOfLines={2}>
               {subtitle}
             </Text>
           ) : null}
@@ -81,14 +79,14 @@ export function SettingsRow({
 
       <View style={styles.right}>
         {value ? (
-          <Text style={[styles.value, { color: colors.textSecondary }]} numberOfLines={1}>
+          <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }} numberOfLines={1}>
             {value}
           </Text>
         ) : null}
         {toggle ? (
           <LifeOSSwitch value={!!toggleValue} onValueChange={onToggleChange ?? (() => {})} disabled={disabled} />
         ) : showChevron ? (
-          <Ionicons name="chevron-forward" size={18} color={colors.textTertiary} />
+          <Ionicons name="chevron-forward" size={18} color={theme.colors.outline} />
         ) : null}
       </View>
     </View>
@@ -99,9 +97,9 @@ export function SettingsRow({
   }
 
   return (
-    <TouchableOpacity onPress={onPress} activeOpacity={0.7} disabled={disabled}>
+    <TouchableRipple onPress={onPress} disabled={disabled}>
       {content}
-    </TouchableOpacity>
+    </TouchableRipple>
   );
 }
 
@@ -129,21 +127,9 @@ const styles = StyleSheet.create({
   textCol: {
     flex: 1,
   },
-  label: {
-    fontSize: typography.sizes.base,
-    fontWeight: typography.weights.medium,
-  },
-  subtitle: {
-    fontSize: typography.sizes.xs,
-    marginTop: 2,
-  },
   right: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-  },
-  value: {
-    fontSize: typography.sizes.sm,
-    fontWeight: typography.weights.medium,
   },
 });

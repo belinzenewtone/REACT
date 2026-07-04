@@ -1,14 +1,14 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, StyleSheet, Alert } from 'react-native';
+import { View, StyleSheet, ScrollView, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import { useSQLiteContext } from 'expo-sqlite';
-import { useThemeColors } from '../../hooks/useThemeColors';
+import { Text, Chip, Button, IconButton, useTheme } from 'react-native-paper';
 import { useCalendarStore } from '../../store';
 import { EventRepository, type EventRecord } from '../../database/repositories/EventRepository';
 import { formatDateTime } from '../../utils/formatters';
-import { spacing, typography, borderRadius } from '../../theme';
+import { spacing, borderRadius } from '../../theme';
 import { cancelEventReminders } from '../../services/notificationService';
 import { haptic } from '../../services/haptics';
 import { useDataVersion } from '../../store/dataVersion';
@@ -16,8 +16,14 @@ import type { RootStackParamList } from '../../navigation/types';
 
 type EventDetailRouteProp = RouteProp<RootStackParamList, 'EventDetail'>;
 
+const PRIORITY_COLORS: Record<string, string> = {
+  low: '#7FC8F8',
+  medium: '#F5CB5C',
+  high: '#F2B8B5',
+};
+
 export function EventDetailScreen() {
-  const colors = useThemeColors();
+  const theme = useTheme();
   const db = useSQLiteContext();
   const navigation = useNavigation<any>();
   const route = useRoute<EventDetailRouteProp>();
@@ -52,43 +58,57 @@ export function EventDetailScreen() {
 
   if (!event) {
     return (
-      <SafeAreaView style={[styles.container, { backgroundColor: colors.bgPrimary }]} edges={['top']}>
+      <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]} edges={['top']}>
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()}>
-            <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
-          </TouchableOpacity>
+          <IconButton
+            icon={() => <Ionicons name="arrow-back" size={24} color={theme.colors.onSurface} />}
+            size={24}
+            onPress={() => navigation.goBack()}
+            style={{ margin: 0 }}
+          />
         </View>
       </SafeAreaView>
     );
   }
 
-  const priorityColor = colors.priority[event.importance];
+  const priorityColor = PRIORITY_COLORS[event.importance] ?? theme.colors.onSurfaceVariant;
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.bgPrimary }]} edges={['top']}>
+    <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]} edges={['top']}>
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()}>
-            <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
-          </TouchableOpacity>
-          <Text style={[styles.title, { color: colors.textPrimary }]} numberOfLines={1}>Event</Text>
-          <TouchableOpacity onPress={handleDelete}>
-            <Ionicons name="trash-outline" size={22} color={colors.danger} />
-          </TouchableOpacity>
+          <IconButton
+            icon={() => <Ionicons name="arrow-back" size={24} color={theme.colors.onSurface} />}
+            size={24}
+            onPress={() => navigation.goBack()}
+            style={{ margin: 0 }}
+          />
+          <Text variant="titleLarge" style={{ color: theme.colors.onSurface }} numberOfLines={1}>Event</Text>
+          <IconButton
+            icon={() => <Ionicons name="trash-outline" size={22} color={theme.colors.error} />}
+            size={22}
+            onPress={handleDelete}
+            style={{ margin: 0 }}
+          />
         </View>
 
-        <View style={[styles.card, { backgroundColor: colors.glassWhite, borderColor: colors.border }]}>
-          <View style={[styles.priorityBadge, { backgroundColor: `${priorityColor}20` }]}>
-            <Text style={[styles.priorityText, { color: priorityColor }]}>
-              {event.importance.toUpperCase()}
-            </Text>
-          </View>
-          <Text style={[styles.eventTitle, { color: colors.textPrimary }]} numberOfLines={3}>{event.title}</Text>
-          <Text style={[styles.typeText, { color: colors.textSecondary }]}>
+        <View style={[styles.card, { backgroundColor: theme.colors.surfaceVariant, borderColor: theme.colors.outlineVariant }]}>
+          <Chip
+            style={{ backgroundColor: `${priorityColor}20`, marginBottom: spacing.base }}
+            textStyle={{ color: priorityColor }}
+          >
+            {event.importance.toUpperCase()}
+          </Chip>
+          <Text variant="headlineSmall" style={{ color: theme.colors.onSurface, textAlign: 'center' }} numberOfLines={3}>
+            {event.title}
+          </Text>
+          <Text variant="bodyMedium" style={{ color: theme.colors.onSurfaceVariant, textTransform: 'capitalize', marginTop: 4 }}>
             {event.type} · {event.kind}
           </Text>
           {event.description ? (
-            <Text style={[styles.description, { color: colors.textSecondary }]}>{event.description}</Text>
+            <Text variant="bodyMedium" style={{ color: theme.colors.onSurfaceVariant, textAlign: 'center', marginTop: spacing.base }}>
+              {event.description}
+            </Text>
           ) : null}
         </View>
 
@@ -99,23 +119,26 @@ export function EventDetailScreen() {
         <DetailRow label="Repeat" value={event.repeat_rule} />
         {event.all_day === 1 ? <DetailRow label="All day" value="Yes" /> : null}
 
-        <TouchableOpacity
-          style={[styles.editButton, { backgroundColor: colors.accentPrimary }]}
+        <Button
+          mode="contained"
           onPress={() => navigation.navigate('EventForm', { eventId })}
+          style={{ marginTop: spacing.xl }}
         >
-          <Text style={[styles.editButtonText, { color: colors.textInverse }]} numberOfLines={1}>Edit Event</Text>
-        </TouchableOpacity>
+          Edit Event
+        </Button>
       </ScrollView>
     </SafeAreaView>
   );
 }
 
 function DetailRow({ label, value }: { label: string; value: string }) {
-  const colors = useThemeColors();
+  const theme = useTheme();
   return (
-    <View style={[styles.row, { borderBottomColor: colors.border }]}>
-      <Text style={[styles.rowLabel, { color: colors.textSecondary }]}>{label}</Text>
-      <Text style={[styles.rowValue, { color: colors.textPrimary }]}>{value}</Text>
+    <View style={[styles.row, { borderBottomColor: theme.colors.outlineVariant }]}>
+      <Text variant="bodyMedium" style={{ color: theme.colors.onSurfaceVariant }}>{label}</Text>
+      <Text variant="bodyMedium" style={{ color: theme.colors.onSurface, textAlign: 'right', flex: 1, marginLeft: spacing.base, textTransform: 'capitalize' }}>
+        {value}
+      </Text>
     </View>
   );
 }
@@ -130,12 +153,9 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingVertical: spacing.sm,
   },
-  title: {
-    fontSize: typography.sizes.lg,
-    fontWeight: typography.weights.semibold,
-  },
   content: {
-    paddingHorizontal: spacing.screenHorizontal, paddingVertical: spacing.lg,
+    paddingHorizontal: spacing.screenHorizontal,
+    paddingVertical: spacing.lg,
   },
   card: {
     borderRadius: borderRadius['2xl'],
@@ -144,56 +164,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: spacing.xl,
   },
-  priorityBadge: {
-    paddingHorizontal: spacing.base,
-    paddingVertical: spacing.sm,
-    borderRadius: borderRadius.full,
-    marginBottom: spacing.base,
-  },
-  priorityText: {
-    fontSize: typography.sizes.xs,
-    fontWeight: typography.weights.bold,
-  },
-  eventTitle: {
-    fontSize: typography.sizes.xl,
-    fontWeight: typography.weights.bold,
-    textAlign: 'center',
-  },
-  typeText: {
-    fontSize: typography.sizes.sm,
-    textTransform: 'capitalize',
-    marginTop: 4,
-  },
-  description: {
-    fontSize: typography.sizes.base,
-    textAlign: 'center',
-    marginTop: spacing.base,
-  },
   row: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     paddingVertical: spacing.base,
     borderBottomWidth: 1,
-  },
-  rowLabel: {
-    fontSize: typography.sizes.base,
-  },
-  rowValue: {
-    fontSize: typography.sizes.base,
-    fontWeight: typography.weights.medium,
-    textAlign: 'right',
-    flex: 1,
-    marginLeft: spacing.base,
-    textTransform: 'capitalize',
-  },
-  editButton: {
-    marginTop: spacing.xl,
-    paddingVertical: spacing.base,
-    borderRadius: borderRadius.lg,
-    alignItems: 'center',
-  },
-  editButtonText: {
-    fontSize: typography.sizes.base,
-    fontWeight: typography.weights.semibold,
   },
 });

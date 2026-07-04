@@ -1,8 +1,8 @@
 import React from 'react';
-import { View, TouchableOpacity, Text, StyleSheet } from 'react-native';
+import { View, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useThemeColors } from '../../hooks/useThemeColors';
-import { spacing, typography, borderRadius } from '../../theme';
+import { Button, useTheme } from 'react-native-paper';
+import { spacing } from '../../theme';
 
 interface QuickActionsProps {
   onAddTransaction?: () => void;
@@ -11,59 +11,41 @@ interface QuickActionsProps {
 }
 
 export function QuickActions({ onAddTransaction, onAddTask, onViewFinance }: QuickActionsProps) {
-  const colors = useThemeColors();
+  const theme = useTheme();
 
   return (
     <View style={styles.container}>
-      <TouchableOpacity
-        style={[styles.primaryButton, { backgroundColor: colors.accentPrimary }]}
+      <Button
+        mode="contained"
+        icon={() => <Ionicons name="add-circle" size={20} color={theme.colors.onPrimary} />}
         onPress={onAddTransaction}
-        activeOpacity={0.8}
+        style={styles.primaryButton}
+        labelStyle={styles.primaryLabel}
       >
-        <Ionicons name="add-circle" size={20} color={colors.textInverse} />
-        <Text style={[styles.primaryText, { color: colors.textInverse }]} numberOfLines={1} ellipsizeMode="tail">
-          Add Transaction
-        </Text>
-      </TouchableOpacity>
+        Add Transaction
+      </Button>
 
       <View style={styles.secondaryRow}>
-        <SecondaryButton
-          icon="checkbox-outline"
-          label="Add Task"
+        <Button
+          mode="outlined"
+          icon={() => <Ionicons name="checkbox-outline" size={18} color={theme.colors.primary} />}
           onPress={onAddTask}
-        />
-        <SecondaryButton
-          icon="wallet-outline"
-          label="View Finance"
+          style={styles.secondaryButton}
+          labelStyle={styles.secondaryLabel}
+        >
+          Add Task
+        </Button>
+        <Button
+          mode="outlined"
+          icon={() => <Ionicons name="wallet-outline" size={18} color={theme.colors.primary} />}
           onPress={onViewFinance}
-        />
+          style={styles.secondaryButton}
+          labelStyle={styles.secondaryLabel}
+        >
+          View Finance
+        </Button>
       </View>
     </View>
-  );
-}
-
-function SecondaryButton({
-  icon,
-  label,
-  onPress,
-}: {
-  icon: keyof typeof Ionicons.glyphMap;
-  label: string;
-  onPress?: () => void;
-}) {
-  const colors = useThemeColors();
-
-  return (
-    <TouchableOpacity
-      style={[styles.secondaryButton, { backgroundColor: colors.glassWhite, borderColor: colors.border }]}
-      onPress={onPress}
-      activeOpacity={0.7}
-    >
-      <Ionicons name={icon} size={18} color={colors.accentPrimary} />
-      <Text style={[styles.secondaryText, { color: colors.textPrimary }]} numberOfLines={1} ellipsizeMode="tail">
-        {label}
-      </Text>
-    </TouchableOpacity>
   );
 }
 
@@ -72,17 +54,11 @@ const styles = StyleSheet.create({
     gap: spacing.base,
   },
   primaryButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: spacing.base,
-    borderRadius: borderRadius.lg,
-    gap: spacing.sm,
+    borderRadius: spacing.md,
   },
-  primaryText: {
-    fontSize: typography.sizes.base,
-    fontWeight: typography.weights.semibold,
-    flexShrink: 1,
+  primaryLabel: {
+    fontSize: 15,
+    fontWeight: '600',
   },
   secondaryRow: {
     flexDirection: 'row',
@@ -90,17 +66,10 @@ const styles = StyleSheet.create({
   },
   secondaryButton: {
     flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: spacing.base,
-    borderRadius: borderRadius.lg,
-    borderWidth: 1,
-    gap: spacing.sm,
+    borderRadius: spacing.md,
   },
-  secondaryText: {
-    fontSize: typography.sizes.base,
-    fontWeight: typography.weights.medium,
-    flexShrink: 1,
+  secondaryLabel: {
+    fontSize: 15,
+    fontWeight: '500',
   },
 });

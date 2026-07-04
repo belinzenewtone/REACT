@@ -29,9 +29,13 @@ class SmsProcessWorker(
     params: WorkerParameters,
 ) : CoroutineWorker(appContext, params) {
 
+    /** How this message reached the worker: realtime broadcast or reconciliation scan. */
+    private var origin: String = ORIGIN_REALTIME
+
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
         val queueId = inputData.getLong(KEY_QUEUE_ID, -1L)
         val fallbackBody = inputData.getString(KEY_SMS_BODY)
+        origin = inputData.getString(KEY_ORIGIN) ?: ORIGIN_REALTIME
 
         val db = DbWriter.getInstance(applicationContext)
 
@@ -115,7 +119,7 @@ class SmsProcessWorker(
                     if (dupReason == SmsDedupeEngine.Result.NEW) {
                         val rowId = db.insertTransaction(tx)
                         if (rowId >= 0) {
-                            val label = if (tx.parseRoute == SmsParser.ParseRoute.REVIEW) "imported_review" else "imported_realtime"
+                            val label = importLabel(tx.parseRoute)
                             db.insertAudit(tx.mpesaCode, smsBody, tx.amount, tx.counterparty, label, null, tx.confidence.name.lowercase())
                             SmsReceiverModule.instance?.emitNewTransaction(tx)
                         } else {
@@ -156,7 +160,7 @@ class SmsProcessWorker(
                 return Result.retry()
             }
 
-            val outcomeLabel = if (tx.parseRoute == SmsParser.ParseRoute.REVIEW) "imported_review" else "imported_realtime"
+            val outcomeLabel = importLabel(tx.parseRoute)
             db.insertAudit(tx.mpesaCode, smsBody, tx.amount, tx.counterparty, outcomeLabel, null, tx.confidence.name.lowercase())
 
             // Fuliza repayment: update outstanding balance from available limit
@@ -185,6 +189,18 @@ class SmsProcessWorker(
             db.insertAudit(null, smsBody, null, null, "import_failed", e.message?.take(200))
             return Result.retry()
         }
+    }
+
+    /**
+     * Audit outcome label: review routing wins, otherwise the origin decides —
+     * `imported_realtime` (broadcast) vs `imported_scan` (recovered by the
+     * periodic inbox reconciliation sweep). Import Health shows these
+     * distinctly, so users can see which capture path found each message.
+     */
+    private fun importLabel(route: SmsParser.ParseRoute): String = when {
+        route == SmsParser.ParseRoute.REVIEW -> "imported_review"
+        origin == ORIGIN_SCAN                -> "imported_scan"
+        else                                 -> "imported_realtime"
     }
 
     private fun getFulizaLimit(): Float {
@@ -230,6 +246,9 @@ class SmsProcessWorker(
     companion object {
         const val KEY_SMS_BODY = "sms_body"
         const val KEY_QUEUE_ID = "queue_id"
+        const val KEY_ORIGIN = "origin"
+        const val ORIGIN_REALTIME = "realtime"
+        const val ORIGIN_SCAN = "scan"
         const val KEY_FULIZA_LIMIT = "fuliza_limit_kes"
         const val NOTIF_CHANNEL_ID = "lifeos_sms_channel"
         const val NOTIF_ID_PROCESS = 9001

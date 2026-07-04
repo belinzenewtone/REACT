@@ -1,13 +1,16 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { View, StyleSheet, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { useSQLiteContext } from 'expo-sqlite';
-import { useThemeColors } from '../../hooks/useThemeColors';
-import { spacing, typography, borderRadius } from '../../theme';
+import {
+  Card,
+  Text,
+  useTheme,
+} from 'react-native-paper';
+import { spacing } from '../../theme';
 import { formatCurrency } from '../../utils/formatters';
-import { GlassCard } from '../../components/common/GlassCard';
+import { PageScaffold } from '../../components/common/PageScaffold';
 import type { RootStackParamList } from '../../navigation/types';
 
 type MerchantDetailRoute = RouteProp<RootStackParamList, 'MerchantDetail'>;
@@ -20,17 +23,18 @@ type Transaction = {
   transaction_type: string;
 };
 
-function StatColumn({ label, value, colors }: { label: string; value: string; colors: any }) {
+function StatColumn({ label, value }: { label: string; value: string }) {
+  const theme = useTheme();
   return (
     <View style={styles.statCol}>
-      <Text style={[styles.statValue, { color: colors.textPrimary }]}>{value}</Text>
-      <Text style={[styles.statLabel, { color: colors.textSecondary }]}>{label}</Text>
+      <Text variant="titleMedium" style={{ color: theme.colors.onSurface }}>{value}</Text>
+      <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>{label}</Text>
     </View>
   );
 }
 
 export function MerchantDetailScreen() {
-  const colors = useThemeColors();
+  const theme = useTheme();
   const navigation = useNavigation<any>();
   const route = useRoute<MerchantDetailRoute>();
   const db = useSQLiteContext();
@@ -64,120 +68,130 @@ export function MerchantDetailScreen() {
   const INCOME_TYPES = new Set(['RECEIVED', 'DEPOSIT']);
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.bgPrimary }]} edges={['top']}>
+    <PageScaffold
+      eyebrow="Merchant"
+      title={merchant || 'Merchant'}
+      subtitle={`${transactions.length} transaction${transactions.length !== 1 ? 's' : ''}`}
+      onBack={() => navigation.goBack()}
+    >
       <ScrollView contentContainerStyle={styles.content}>
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()}>
-            <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
-          </TouchableOpacity>
-          <View style={styles.headerCenter}>
-            <Text style={[styles.eyebrow, { color: colors.textSecondary }]}>Merchant</Text>
-            <Text style={[styles.title, { color: colors.textPrimary }]} numberOfLines={1}>
-              {merchant || 'Merchant'}
-            </Text>
-          </View>
-          <View style={{ width: 24 }} />
-        </View>
-
-        <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
-          {transactions.length} transaction{transactions.length !== 1 ? 's' : ''}
-        </Text>
-
         {transactions.length === 0 && !isLoading ? (
           <View style={styles.emptyState}>
-            <Ionicons name="receipt-outline" size={48} color={colors.textTertiary} />
-            <Text style={[styles.emptyTitle, { color: colors.textPrimary }]}>No transactions</Text>
-            <Text style={[styles.emptyDesc, { color: colors.textSecondary }]}>
+            <Ionicons name="receipt-outline" size={48} color={theme.colors.onSurfaceVariant} />
+            <Text variant="titleMedium" style={{ color: theme.colors.onSurface, marginTop: spacing.base, textAlign: 'center' }}>
+              No transactions
+            </Text>
+            <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant, textAlign: 'center', marginTop: spacing.sm }}>
               No transactions found for this merchant.
             </Text>
           </View>
         ) : (
           <>
-            <GlassCard style={styles.statsCard}>
-            <View style={styles.statsRow}>
-              <StatColumn label="Total Spend" value={formatCurrency(totalSpend)} colors={colors} />
-              <View style={[styles.statDivider, { backgroundColor: colors.border }]} />
-              <StatColumn label="Transactions" value={`${transactions.length}`} colors={colors} />
-              <View style={[styles.statDivider, { backgroundColor: colors.border }]} />
-              <StatColumn label="Avg. Amount" value={formatCurrency(avgAmount)} colors={colors} />
-            </View>
-          </GlassCard>
-
-          <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>Transaction History</Text>
-          <GlassCard>
-            {transactions.map((tx, i) => {
-              const isIncome = INCOME_TYPES.has(tx.transaction_type?.toUpperCase());
-              const dateStr = new Date(tx.date).toLocaleDateString('en-KE', {
-                month: 'short', day: '2-digit', year: 'numeric',
-              });
-              const timeStr = new Date(tx.date).toLocaleTimeString('en-KE', {
-                hour: '2-digit', minute: '2-digit',
-              });
-              return (
-                <View key={tx.id}>
-                  <View style={styles.txRow}>
-                    <View style={styles.txInfo}>
-                      <Text style={[styles.txCategory, { color: colors.textPrimary }]}>
-                        {tx.category.charAt(0).toUpperCase() + tx.category.slice(1).toLowerCase()}
-                      </Text>
-                      <Text style={[styles.txDate, { color: colors.textSecondary }]}>
-                        {dateStr} · {timeStr}
-                      </Text>
-                    </View>
-                    <Text
-                      style={[
-                        styles.txAmount,
-                        { color: isIncome ? colors.success : colors.textPrimary },
-                      ]}
-                    >
-                      {isIncome ? '+' : ''}{formatCurrency(tx.amount)}
-                    </Text>
-                  </View>
-                  {i < transactions.length - 1 && (
-                    <View style={[styles.divider, { backgroundColor: colors.border }]} />
-                  )}
+            <Card style={[styles.statsCard, { backgroundColor: theme.colors.surfaceVariant }]} mode="elevated">
+              <Card.Content>
+                <View style={styles.statsRow}>
+                  <StatColumn label="Total Spend" value={formatCurrency(totalSpend)} />
+                  <View style={[styles.statDivider, { backgroundColor: theme.colors.outlineVariant }]} />
+                  <StatColumn label="Transactions" value={`${transactions.length}`} />
+                  <View style={[styles.statDivider, { backgroundColor: theme.colors.outlineVariant }]} />
+                  <StatColumn label="Avg. Amount" value={formatCurrency(avgAmount)} />
                 </View>
-              );
-            })}
-          </GlassCard>
+              </Card.Content>
+            </Card>
+
+            <Text variant="labelLarge" style={[styles.sectionLabel, { color: theme.colors.onSurfaceVariant }]}>
+              Transaction History
+            </Text>
+
+            <Card style={{ backgroundColor: theme.colors.surfaceVariant }} mode="elevated">
+              <Card.Content>
+                {transactions.map((tx, i) => {
+                  const isIncome = INCOME_TYPES.has(tx.transaction_type?.toUpperCase());
+                  const dateStr = new Date(tx.date).toLocaleDateString('en-KE', {
+                    month: 'short', day: '2-digit', year: 'numeric',
+                  });
+                  const timeStr = new Date(tx.date).toLocaleTimeString('en-KE', {
+                    hour: '2-digit', minute: '2-digit',
+                  });
+                  return (
+                    <View key={tx.id}>
+                      <View style={styles.txRow}>
+                        <View style={styles.txInfo}>
+                          <Text variant="bodyMedium" style={{ color: theme.colors.onSurface }}>
+                            {tx.category.charAt(0).toUpperCase() + tx.category.slice(1).toLowerCase()}
+                          </Text>
+                          <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
+                            {dateStr} · {timeStr}
+                          </Text>
+                        </View>
+                        <Text
+                          variant="bodyMedium"
+                          style={[
+                            styles.txAmount,
+                            { color: isIncome ? '#34D399' : theme.colors.onSurface },
+                          ]}
+                        >
+                          {isIncome ? '+' : ''}{formatCurrency(tx.amount)}
+                        </Text>
+                      </View>
+                      {i < transactions.length - 1 && (
+                        <View style={[styles.divider, { backgroundColor: theme.colors.outlineVariant }]} />
+                      )}
+                    </View>
+                  );
+                })}
+              </Card.Content>
+            </Card>
           </>
         )}
       </ScrollView>
-    </SafeAreaView>
+    </PageScaffold>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
-  header: {
+  content: {
+    paddingTop: spacing.sm,
+    paddingBottom: spacing['4xl'],
+  },
+  statsCard: {
+    marginBottom: spacing.base,
+  },
+  statsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-evenly',
+  },
+  statCol: {
+    alignItems: 'center',
+    gap: 4,
+  },
+  statDivider: {
+    width: 1,
+    height: 36,
+  },
+  sectionLabel: {
+    marginTop: spacing.lg,
+    marginBottom: spacing.sm,
+  },
+  txRow: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: spacing.sm,
   },
-  headerCenter: { flex: 1, alignItems: 'center' },
-  eyebrow: { fontSize: typography.sizes.xs, fontWeight: typography.weights.medium },
-  title: { fontSize: typography.sizes.xl, fontWeight: typography.weights.bold },
-  subtitle: { fontSize: typography.sizes.sm, marginBottom: spacing.base },
-  content: { paddingHorizontal: spacing.screenHorizontal, paddingVertical: spacing.lg, paddingBottom: spacing['4xl'] },
-  statsCard: { marginBottom: spacing.base },
-  statsRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-evenly' },
-  statCol: { alignItems: 'center', gap: 4 },
-  statValue: { fontSize: typography.sizes.lg, fontWeight: typography.weights.bold },
-  statLabel: { fontSize: typography.sizes.xs },
-  statDivider: { width: 1, height: 36 },
-  sectionLabel: {
-    fontSize: typography.sizes.sm,
-    fontWeight: typography.weights.medium,
-    marginTop: spacing.lg,
-    marginBottom: spacing.sm,
+  txInfo: {
+    flex: 1,
   },
-  txRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: spacing.sm },
-  txInfo: { flex: 1 },
-  txCategory: { fontSize: typography.sizes.sm },
-  txDate: { fontSize: typography.sizes.xs, marginTop: 2 },
-  txAmount: { fontSize: typography.sizes.sm, fontWeight: typography.weights.medium },
-  divider: { height: 1 },
-  emptyState: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: spacing['2xl'] },
-  emptyTitle: { fontSize: typography.sizes.lg, fontWeight: typography.weights.semibold, marginTop: spacing.base, textAlign: 'center' },
-  emptyDesc: { fontSize: typography.sizes.sm, textAlign: 'center', marginTop: spacing.sm },
+  txAmount: {
+    fontWeight: '500',
+  },
+  divider: {
+    height: 1,
+  },
+  emptyState: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: spacing['2xl'],
+  },
 });

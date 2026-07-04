@@ -1,14 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import {
-  Modal,
-  View,
-  Text,
-  TouchableOpacity,
-  StyleSheet,
-} from 'react-native';
+import { Modal, View, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useThemeColors } from '../../hooks/useThemeColors';
-import { spacing, typography, borderRadius } from '../../theme';
+import { Text, IconButton, Button, SegmentedButtons, TextInput, useTheme } from 'react-native-paper';
+import { Ionicons } from '@expo/vector-icons';
+import { spacing, borderRadius } from '../../theme';
 
 interface TimePickerModalProps {
   visible: boolean;
@@ -18,7 +13,7 @@ interface TimePickerModalProps {
 }
 
 export function TimePickerModal({ visible, value, onConfirm, onCancel }: TimePickerModalProps) {
-  const colors = useThemeColors();
+  const theme = useTheme();
   const [hour, setHour] = useState(6);
   const [minute, setMinute] = useState(30);
   const [period, setPeriod] = useState<'AM' | 'PM'>('AM');
@@ -39,16 +34,11 @@ export function TimePickerModal({ visible, value, onConfirm, onCancel }: TimePic
     }
   }, [visible, value]);
 
-  const adjust = (
-    setter: React.Dispatch<React.SetStateAction<number>>,
-    current: number,
-    delta: number,
-    max: number
-  ) => {
-    let next = current + delta;
-    if (next > max) next = 1;
-    if (next < 1) next = max;
-    setter(next);
+  const adjustHour = (delta: number) => {
+    let next = hour + delta;
+    if (next > 12) next = 1;
+    if (next < 1) next = 12;
+    setHour(next);
   };
 
   const adjustMinute = (delta: number) => {
@@ -56,6 +46,23 @@ export function TimePickerModal({ visible, value, onConfirm, onCancel }: TimePic
     if (next >= 60) next = 0;
     if (next < 0) next = 55;
     setMinute(next);
+  };
+
+  const handleHourChange = (text: string) => {
+    const digits = text.replace(/[^0-9]/g, '').slice(0, 2);
+    if (digits === '') return;
+    let h = parseInt(digits, 10);
+    if (h < 1) h = 1;
+    if (h > 12) h = 12;
+    setHour(h);
+  };
+
+  const handleMinuteChange = (text: string) => {
+    const digits = text.replace(/[^0-9]/g, '').slice(0, 2);
+    if (digits === '') return;
+    let m = parseInt(digits, 10);
+    if (m > 59) m = 59;
+    setMinute(m);
   };
 
   const handleConfirm = () => {
@@ -69,94 +76,89 @@ export function TimePickerModal({ visible, value, onConfirm, onCancel }: TimePic
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onCancel}>
       <SafeAreaView
-        style={[styles.overlay, { backgroundColor: colors.glassBlack }]}
+        style={[styles.overlay, { backgroundColor: 'rgba(0,0,0,0.6)' }]}
         edges={['top', 'bottom']}
       >
-        <View style={[styles.container, { backgroundColor: colors.bgSecondary }]}>
+        <View style={[styles.container, { backgroundColor: theme.colors.surfaceVariant }]}>
           <View style={styles.header}>
-            <TouchableOpacity onPress={onCancel}>
-              <Text style={[styles.action, { color: colors.textSecondary }]}>Cancel</Text>
-            </TouchableOpacity>
-            <Text style={[styles.title, { color: colors.textPrimary }]}>Delivery time</Text>
-            <TouchableOpacity onPress={handleConfirm}>
-              <Text style={[styles.action, { color: colors.accentPrimary }]}>Set</Text>
-            </TouchableOpacity>
+            <Button mode="text" onPress={onCancel} textColor={theme.colors.onSurfaceVariant}>
+              Cancel
+            </Button>
+            <Text variant="titleMedium" style={{ color: theme.colors.onSurface }}>Delivery time</Text>
+            <Button mode="text" onPress={handleConfirm} textColor={theme.colors.primary}>
+              Set
+            </Button>
           </View>
 
           <View style={styles.picker}>
-            <Wheel
-              onIncrement={() => adjust(setHour, hour, 1, 12)}
-              onDecrement={() => adjust(setHour, hour, -1, 12)}
-              label={String(hour).padStart(2, '0')}
-            />
-            <Text style={[styles.colon, { color: colors.textPrimary }]}>:</Text>
-            <Wheel
-              onIncrement={() => adjustMinute(5)}
-              onDecrement={() => adjustMinute(-5)}
-              label={String(minute).padStart(2, '0')}
-            />
-            <View style={styles.periodContainer}>
-              <TouchableOpacity
-                style={[
-                  styles.periodButton,
-                  period === 'AM' && { backgroundColor: colors.accentPrimary },
-                ]}
-                onPress={() => setPeriod('AM')}
-              >
-                <Text
-                  style={[
-                    styles.periodText,
-                    { color: period === 'AM' ? colors.textInverse : colors.textSecondary },
-                  ]}
-                >
-                  AM
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[
-                  styles.periodButton,
-                  period === 'PM' && { backgroundColor: colors.accentPrimary },
-                ]}
-                onPress={() => setPeriod('PM')}
-              >
-                <Text
-                  style={[
-                    styles.periodText,
-                    { color: period === 'PM' ? colors.textInverse : colors.textSecondary },
-                  ]}
-                >
-                  PM
-                </Text>
-              </TouchableOpacity>
+            <View style={styles.wheel}>
+              <IconButton
+                icon={() => <Ionicons name="chevron-up" size={18} color={theme.colors.onSurfaceVariant} />}
+                size={18}
+                onPress={() => adjustHour(1)}
+                style={{ margin: 0 }}
+              />
+              <TextInput
+                mode="outlined"
+                dense
+                style={[styles.input, { backgroundColor: theme.colors.surfaceVariant }]}
+                textColor={theme.colors.onSurface}
+                value={String(hour).padStart(2, '0')}
+                onChangeText={handleHourChange}
+                keyboardType="number-pad"
+                maxLength={2}
+                textAlign="center"
+              />
+              <IconButton
+                icon={() => <Ionicons name="chevron-down" size={18} color={theme.colors.onSurfaceVariant} />}
+                size={18}
+                onPress={() => adjustHour(-1)}
+                style={{ margin: 0 }}
+              />
             </View>
+
+            <Text variant="titleMedium" style={{ color: theme.colors.onSurface }}>:</Text>
+
+            <View style={styles.wheel}>
+              <IconButton
+                icon={() => <Ionicons name="chevron-up" size={18} color={theme.colors.onSurfaceVariant} />}
+                size={18}
+                onPress={() => adjustMinute(5)}
+                style={{ margin: 0 }}
+              />
+              <TextInput
+                mode="outlined"
+                dense
+                style={[styles.input, { backgroundColor: theme.colors.surfaceVariant }]}
+                textColor={theme.colors.onSurface}
+                value={String(minute).padStart(2, '0')}
+                onChangeText={handleMinuteChange}
+                keyboardType="number-pad"
+                maxLength={2}
+                textAlign="center"
+              />
+              <IconButton
+                icon={() => <Ionicons name="chevron-down" size={18} color={theme.colors.onSurfaceVariant} />}
+                size={18}
+                onPress={() => adjustMinute(-5)}
+                style={{ margin: 0 }}
+              />
+            </View>
+
+            <SegmentedButtons
+              value={period}
+              onValueChange={(v) => setPeriod(v as 'AM' | 'PM')}
+              density="small"
+              buttons={[
+                { value: 'AM', label: 'AM' },
+                { value: 'PM', label: 'PM' },
+              ]}
+              style={{ marginLeft: spacing.base }}
+            />
           </View>
         </View>
       </SafeAreaView>
     </Modal>
-  );
-}
-
-function Wheel({
-  label,
-  onIncrement,
-  onDecrement,
-}: {
-  label: string;
-  onIncrement: () => void;
-  onDecrement: () => void;
-}) {
-  const colors = useThemeColors();
-
-  return (
-    <View style={styles.wheel}>
-      <TouchableOpacity onPress={onIncrement}>
-        <Text style={[styles.arrow, { color: colors.textSecondary }]}>▲</Text>
-      </TouchableOpacity>
-      <Text style={[styles.wheelLabel, { color: colors.textPrimary }]}>{label}</Text>
-      <TouchableOpacity onPress={onDecrement}>
-        <Text style={[styles.arrow, { color: colors.textSecondary }]}>▼</Text>
-      </TouchableOpacity>
-    </View>
   );
 }
 
@@ -177,51 +179,24 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingVertical: spacing.base,
   },
-  title: {
-    fontSize: typography.sizes.lg,
-    fontWeight: typography.weights.semibold,
-  },
-  action: {
-    fontSize: typography.sizes.base,
-    fontWeight: typography.weights.medium,
-  },
   picker: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: spacing.xl,
-    gap: spacing.lg,
+    paddingVertical: spacing.lg,
+    gap: spacing.base,
   },
   wheel: {
     alignItems: 'center',
-    gap: spacing.base,
-  },
-  arrow: {
-    fontSize: typography.sizes.lg,
-    paddingHorizontal: spacing.base,
-  },
-  wheelLabel: {
-    fontSize: typography.sizes['4xl'],
-    fontWeight: typography.weights.bold,
-    minWidth: 64,
-    textAlign: 'center',
-  },
-  colon: {
-    fontSize: typography.sizes['4xl'],
-    fontWeight: typography.weights.bold,
-  },
-  periodContainer: {
     justifyContent: 'center',
-    marginLeft: spacing.base,
+    width: 72,
     gap: spacing.sm,
   },
-  periodButton: {
-    paddingHorizontal: spacing.base,
-    paddingVertical: spacing.sm,
-    borderRadius: borderRadius.md,
-  },
-  periodText: {
-    fontSize: typography.sizes.sm,
-    fontWeight: typography.weights.semibold,
+  input: {
+    width: 64,
+    height: 48,
+    textAlign: 'center',
+    paddingHorizontal: 0,
+    paddingVertical: 0,
   },
 });

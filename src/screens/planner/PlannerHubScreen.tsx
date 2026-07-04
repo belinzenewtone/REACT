@@ -1,10 +1,10 @@
 import React from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
+import { View, StyleSheet } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import { useThemeColors } from '../../hooks/useThemeColors';
-import { spacing, typography, borderRadius } from '../../theme';
+import { Card, Text, useTheme } from 'react-native-paper';
+import { Ionicons } from '@expo/vector-icons';
+import { PageScaffold } from '../../components/common/PageScaffold';
+import { spacing } from '../../theme';
 
 const HUB_SECTIONS = [
   { icon: 'wallet-outline', label: 'Budgets', color: '#34D399', screen: 'Budgets' },
@@ -18,94 +18,64 @@ const HUB_SECTIONS = [
 ];
 
 export function PlannerHubScreen() {
-  const colors = useThemeColors();
+  const theme = useTheme();
   const navigation = useNavigation<any>();
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.bgPrimary }]} edges={['top']}>
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()}>
-            <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
-          </TouchableOpacity>
-          <View style={styles.headerText}>
-            <Text style={[styles.title, { color: colors.textPrimary }]} numberOfLines={1}>Finance Hub</Text>
-          </View>
-          <View style={{ width: 24 }} />
-        </View>
-
-        <View style={styles.list}>
-          {HUB_SECTIONS.map((section, index) => (
-            <TouchableOpacity
-              key={section.screen}
-              style={[
-                styles.row,
-                { backgroundColor: colors.bgElevated, borderColor: colors.border },
-                index === 0 && { borderTopLeftRadius: borderRadius.xl, borderTopRightRadius: borderRadius.xl },
-                index === HUB_SECTIONS.length - 1 && {
-                  borderBottomLeftRadius: borderRadius.xl,
-                  borderBottomRightRadius: borderRadius.xl,
-                },
-              ]}
-              onPress={() => navigation.navigate(section.screen)}
-              activeOpacity={0.7}
-            >
+    <PageScaffold title="Finance Hub" onBack={() => navigation.goBack()}>
+      <View style={styles.list}>
+        {HUB_SECTIONS.map((section) => (
+          <Card
+            key={section.screen}
+            mode="elevated"
+            style={[styles.card, { backgroundColor: theme.colors.surfaceVariant }]}
+            onPress={() => navigation.navigate(section.screen)}
+          >
+            <Card.Content style={styles.row}>
               <View style={[styles.iconCircle, { backgroundColor: `${section.color}20` }]}>
-                <Ionicons name={section.icon as keyof typeof Ionicons.glyphMap} size={22} color={section.color} />
+                <Ionicons
+                  name={section.icon as keyof typeof Ionicons.glyphMap}
+                  size={22}
+                  color={section.color}
+                />
               </View>
-              <Text style={[styles.rowLabel, { color: colors.textPrimary }]} numberOfLines={1}>{section.label}</Text>
-              <Ionicons name="chevron-forward" size={20} color={colors.textTertiary} />
-            </TouchableOpacity>
-          ))}
-        </View>
-      </ScrollView>
-    </SafeAreaView>
+              <Text
+                variant="bodyLarge"
+                style={[styles.label, { color: theme.colors.onSurface }]}
+                numberOfLines={1}
+              >
+                {section.label}
+              </Text>
+              <Ionicons name="chevron-forward" size={20} color={theme.colors.outline} />
+            </Card.Content>
+          </Card>
+        ))}
+      </View>
+    </PageScaffold>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingBottom: spacing.sm,
-  },
-  headerText: {
-    alignItems: 'center',
-  },
-  title: {
-    fontSize: typography.sizes.lg,
-    fontWeight: typography.weights.semibold,
-  },
-  content: {
-    paddingHorizontal: spacing.screenHorizontal, paddingVertical: spacing.lg,
-    paddingTop: spacing.sm,
-  },
   list: {
-    borderRadius: borderRadius.xl,
-    overflow: 'hidden',
+    gap: spacing.sm,
+  },
+  card: {
+    borderRadius: 16,
   },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: spacing.base,
-    paddingVertical: spacing.md,
-    borderBottomWidth: 1,
+    gap: spacing.base,
+    paddingVertical: spacing.sm,
   },
   iconCircle: {
     width: 40,
     height: 40,
-    borderRadius: borderRadius.full,
+    borderRadius: 20,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  rowLabel: {
+  label: {
     flex: 1,
-    fontSize: typography.sizes.base,
-    fontWeight: typography.weights.medium,
-    marginLeft: spacing.base,
   },
 });
