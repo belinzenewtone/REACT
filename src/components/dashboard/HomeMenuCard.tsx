@@ -1,7 +1,8 @@
 import React from 'react';
 import { View, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Card, Text, TouchableRipple, useTheme } from 'react-native-paper';
+import { Text, TouchableRipple, useTheme } from 'react-native-paper';
+import { FrostCard } from '../common/FrostCard';
 import { formatDateTime } from '../../utils/formatters';
 import { spacing, borderRadius } from '../../theme';
 
@@ -39,8 +40,8 @@ export function HomeMenuCard({
   };
 
   return (
-    <Card style={{ backgroundColor: theme.colors.surfaceVariant }} mode="elevated">
-      <Card.Content style={{ paddingVertical: spacing.sm }}>
+    <FrostCard glow="none" contentStyle={{ paddingVertical: spacing.sm, paddingHorizontal: spacing.base }}>
+      <>
         {MENU_ITEMS.map((item, index) => {
           const props = { pendingTaskCount, nextEvent };
           const value = item.value(props);
@@ -74,8 +75,8 @@ export function HomeMenuCard({
             </TouchableRipple>
           );
         })}
-      </Card.Content>
-    </Card>
+      </>
+    </FrostCard>
   );
 }
 

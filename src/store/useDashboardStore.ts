@@ -135,11 +135,21 @@ export const useDashboardStore = create<DashboardState>((set) => ({
         hasLoadedOnce: true,
       });
     } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      // SQLite statement finalized mid-query — happens when the native context
+      // is torn down during an OTA reload or hot reload. Retry silently.
+      if (message.includes('NativeStatement') || message.includes('finalized')) {
+        set({ isLoading: false });
+        setTimeout(() => {
+          useDashboardStore.getState().loadDashboard(db).catch(() => {});
+        }, 700);
+        return;
+      }
       console.error('Failed to load dashboard:', error);
       set({
         isLoading: false,
         hasLoadedOnce: true,
-        error: error instanceof Error ? error.message : 'Failed to load dashboard',
+        error: message,
       });
     }
   },

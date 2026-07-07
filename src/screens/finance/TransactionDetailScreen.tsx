@@ -15,6 +15,7 @@ import { TransactionRepository, type TransactionRecord } from '../../database/re
 import { CATEGORY_COLORS, CATEGORY_ICONS } from '../../constants';
 import { formatCurrency, formatDateTime } from '../../utils/formatters';
 import { spacing, borderRadius } from '../../theme';
+import { GlassCard } from '../../components/common/GlassCard';
 import { checkBudgetThresholds } from '../../services/budgetAlertService';
 import { PageScaffold } from '../../components/common/PageScaffold';
 import type { RootStackParamList } from '../../navigation/types';
@@ -107,7 +108,7 @@ export function TransactionDetailScreen() {
         </View>
       }
     >
-      <Card style={[styles.card, { backgroundColor: theme.colors.surfaceVariant }]} mode="elevated">
+      <GlassCard style={styles.card}>
         <Card.Content style={styles.cardContent}>
           <View style={[styles.iconContainer, { backgroundColor: `${categoryColor}20` }]}>
             <Ionicons name={iconName} size={32} color={categoryColor} />
@@ -122,9 +123,9 @@ export function TransactionDetailScreen() {
             {formatCurrency(transaction.amount)}
           </Text>
         </Card.Content>
-      </Card>
+      </GlassCard>
 
-      <Card style={[styles.detailsCard, { backgroundColor: theme.colors.surfaceVariant }]} mode="elevated">
+      <GlassCard style={styles.detailsCard}>
         <Card.Content>
           <DetailRow label="Date" value={formatDateTime(transaction.date)} />
           <DetailRow label="Status" value={transaction.status} />
@@ -136,7 +137,7 @@ export function TransactionDetailScreen() {
           ) : null}
           {transaction.fee ? <DetailRow label="Fee" value={formatCurrency(transaction.fee)} /> : null}
         </Card.Content>
-      </Card>
+      </GlassCard>
 
       <Button
         mode="contained"

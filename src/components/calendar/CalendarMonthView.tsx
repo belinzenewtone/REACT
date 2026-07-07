@@ -212,7 +212,7 @@ export function CalendarMonthView({
                         </View>
                         <View style={styles.indicators}>
                           {day.hasEvent && (
-                            <View style={[styles.dot, { backgroundColor: isSelected ? theme.colors.onPrimary : theme.colors.secondary }]} />
+                            <View style={[styles.dot, { backgroundColor: isSelected ? theme.colors.onPrimary : theme.colors.primary }]} />
                           )}
                           {day.hasTask && (
                             <View style={[styles.dot, { backgroundColor: isSelected ? theme.colors.onPrimary : SUCCESS }]} />

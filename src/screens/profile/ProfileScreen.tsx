@@ -37,20 +37,21 @@ const TOOL_HUB: ToolItem[] = [
 function ToolHubCard({ item, onPress }: { item: ToolItem; onPress: () => void }) {
   const theme = useTheme();
   return (
-    <Card
-      mode="elevated"
-      style={[styles.toolCard, { backgroundColor: theme.colors.surfaceVariant }]}
+    <TouchableRipple
       onPress={onPress}
+      rippleColor={`${item.color}44`}
+      style={[styles.toolCard, { backgroundColor: `${item.color}14`, borderRadius: 12, overflow: 'hidden' }]}
+      borderless
     >
-      <Card.Content style={styles.toolContent}>
-        <View style={[styles.toolIconBox, { backgroundColor: `${item.color}26` }]}>
+      <View style={styles.toolContent}>
+        <View style={[styles.toolIconBox, { backgroundColor: `${item.color}28` }]}>
           <Ionicons name={item.icon as any} size={24} color={item.color} />
         </View>
         <Text variant="bodySmall" style={{ color: theme.colors.onSurface, textAlign: 'center' }} numberOfLines={1}>
           {item.label}
         </Text>
-      </Card.Content>
-    </Card>
+      </View>
+    </TouchableRipple>
   );
 }
 

@@ -34,6 +34,7 @@ import {
 import { CATEGORY_COLORS } from '../../constants';
 import { formatCurrency, formatDate } from '../../utils/formatters';
 import { spacing, borderRadius } from '../../theme';
+import { GlassCard } from '../../components/common/GlassCard';
 
 const ALL_FIELDS: { key: keyof CsvColumnMapping; label: string }[] = [
   { key: 'amount', label: 'Amount *' },
@@ -215,7 +216,7 @@ export function CsvImportScreen() {
             </Text>
 
             {validRows.slice(0, 5).map((row, idx) => (
-              <Card key={`valid-${idx}`} style={[styles.previewCard, { backgroundColor: theme.colors.surfaceVariant }]} mode="elevated">
+              <GlassCard key={`valid-${idx}`} style={styles.previewCard}>
                 <Card.Content>
                   <View style={styles.previewRow}>
                     <Text variant="bodyMedium" style={{ color: theme.colors.onSurface, flex: 1 }} numberOfLines={1}>
@@ -229,7 +230,7 @@ export function CsvImportScreen() {
                     {row.category} · {formatDate(row.date)}
                   </Text>
                 </Card.Content>
-              </Card>
+              </GlassCard>
             ))}
 
             {invalidRows.slice(0, 3).map((row, idx) => (

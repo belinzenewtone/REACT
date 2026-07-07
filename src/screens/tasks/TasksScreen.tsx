@@ -14,6 +14,7 @@ import { Card, Text, Checkbox, IconButton, TextInput, TouchableRipple, useTheme 
 import { useCalendarStore } from '../../store';
 import { TaskRepository, type TaskRecord } from '../../database/repositories/TaskRepository';
 import { spacing, borderRadius } from '../../theme';
+import { GlassCard } from '../../components/common/GlassCard';
 import { animateLayout } from '../../utils/animation';
 import { syncTaskReminders } from '../../services/notificationSyncService';
 import { cancelTaskReminders } from '../../services/notificationService';
@@ -442,9 +443,8 @@ function TaskCard({
   const isDone = task.status === 'completed';
 
   return (
-    <Card
-      mode="elevated"
-      style={[styles.card, { backgroundColor: theme.colors.surfaceVariant }]}
+    <GlassCard
+      style={styles.card}
       onPress={onPress}
     >
       <Card.Content style={styles.cardRow}>
@@ -492,7 +492,7 @@ function TaskCard({
           </View>
         </TouchableRipple>
       </Card.Content>
-    </Card>
+    </GlassCard>
   );
 }
 

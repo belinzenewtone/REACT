@@ -37,9 +37,11 @@ import { ImportCsvSheet } from '../../components/finance/ImportCsvSheet';
 import { ImportSmsSheet, type SmsScanPeriod } from '../../components/finance/ImportSmsSheet';
 import { importHistoricalSms, checkPermissions, requestSmsPermissions } from '../../../modules/lifeos-sms';
 import { checkAllBudgetThresholds } from '../../services/budgetAlertService';
+import { LinearGradient } from 'expo-linear-gradient';
 import { formatCurrency, formatRelativeDay, toLocalIso } from '../../utils/formatters';
 import { isOutflow, isInflow } from '../../utils/transactionType';
 import { spacing, borderRadius, BOTTOM_NAV_SAFE_AREA } from '../../theme';
+import { FrostCard } from '../../components/common/FrostCard';
 
 import type { TransactionListItemData } from '../../components/finance/TransactionListItem';
 import type { TransactionPeriod } from '../../store/useTransactionStore';
@@ -398,11 +400,42 @@ function FinanceScreenContent() {
           </Chip>
         </ScrollView>
 
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.metricsRow}>
-          <MetricCard label="Today" amount={todaySpend} />
-          <MetricCard label="Week" amount={weekSpend} />
-          <MetricCard label="Month" amount={monthTotals.expense} />
-        </ScrollView>
+        <View style={styles.heroSection}>
+          <FrostCard glow="blue">
+            <Text variant="bodyMedium" style={{ color: theme.colors.onSurfaceVariant }}>
+              Spent this month
+            </Text>
+            <Text variant="headlineMedium" style={{
+              color: theme.colors.onSurface,
+              fontSize: 34,
+              fontWeight: '800',
+              letterSpacing: -1,
+              marginTop: spacing.sm,
+            }}>
+              {formatCurrency(monthTotals.expense, { decimals: 0 })}
+            </Text>
+            <View style={styles.heroMetrics}>
+              <View style={styles.heroMetric}>
+                <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>Today</Text>
+                <Text variant="titleMedium" style={{ color: theme.colors.onSurface }}>
+                  {formatCurrency(todaySpend, { decimals: 0 })}
+                </Text>
+              </View>
+              <View style={styles.heroMetric}>
+                <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>This week</Text>
+                <Text variant="titleMedium" style={{ color: theme.colors.onSurface }}>
+                  {formatCurrency(weekSpend, { decimals: 0 })}
+                </Text>
+              </View>
+              <View style={styles.heroMetric}>
+                <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>Income</Text>
+                <Text variant="titleMedium" style={{ color: theme.colors.primary }}>
+                  {formatCurrency(monthTotals.income, { decimals: 0 })}
+                </Text>
+              </View>
+            </View>
+          </FrostCard>
+        </View>
 
         {topAlertBudget && (
           <Card
@@ -534,20 +567,6 @@ export function FinanceScreen() {
   return <FinanceScreenContent />;
 }
 
-function MetricCard({ label, amount }: { label: string; amount: number }) {
-  const theme = useTheme();
-  return (
-    <Card style={[styles.metricCard, { backgroundColor: theme.colors.surfaceVariant }]} mode="elevated">
-      <Card.Content>
-        <Text variant="bodyMedium" style={{ color: theme.colors.onSurfaceVariant }}>{label}</Text>
-        <Text variant="headlineMedium" style={{ color: theme.colors.onSurface, marginTop: spacing.sm }} numberOfLines={1}>
-          {formatCurrency(amount, { decimals: 0 })}
-        </Text>
-      </Card.Content>
-    </Card>
-  );
-}
-
 function InsightCard({
   label,
   action,
@@ -604,6 +623,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.screenHorizontal,
     gap: spacing.base,
     marginBottom: spacing.base,
+  },
+  heroSection: {
+    paddingHorizontal: spacing.screenHorizontal,
+    marginBottom: spacing.base,
+  },
+  heroMetrics: {
+    flexDirection: 'row',
+    gap: 24,
+    marginTop: spacing.lg,
+  },
+  heroMetric: {
+    flex: 1,
   },
   metricCard: {
     minWidth: 140,

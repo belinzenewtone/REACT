@@ -35,6 +35,7 @@ import { RecurringRuleRepository } from '../../database/repositories/RecurringRu
 import { PageScaffold } from '../../components/common/PageScaffold';
 import { formatDateTime } from '../../utils/formatters';
 import { spacing, borderRadius } from '../../theme';
+import { GlassCard } from '../../components/common/GlassCard';
 
 type ExportFormat = 'csv' | 'json' | 'pdf';
 type DateWindow = 'week' | 'month' | 'last30' | 'custom' | 'all';
@@ -127,7 +128,7 @@ function ExportDropdown<T extends string>({
 
       <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
         <View style={styles.dropdownOverlay}>
-          <Card style={[styles.dropdownSheet, { backgroundColor: theme.colors.surfaceVariant }]} mode="elevated">
+          <GlassCard style={styles.dropdownSheet}>
             <Card.Content>
               <Text variant="labelMedium" style={{ color: theme.colors.onSurfaceVariant, marginBottom: spacing.base }}>
                 {label}
@@ -154,7 +155,7 @@ function ExportDropdown<T extends string>({
                 );
               })}
             </Card.Content>
-          </Card>
+          </GlassCard>
         </View>
       </Modal>
     </View>
@@ -412,7 +413,7 @@ export function ExportScreen() {
     >
       <View style={styles.content}>
         {/* ── Format ── */}
-        <Card style={{ backgroundColor: theme.colors.surfaceVariant }} mode="elevated">
+        <GlassCard>
           <Card.Content>
             <Text variant="labelMedium" style={[styles.sectionLabel, { color: theme.colors.onSurfaceVariant }]}>
               FORMAT
@@ -454,10 +455,10 @@ export function ExportScreen() {
                   : 'Formatted document — share or save as PDF'}
             </Text>
           </Card.Content>
-        </Card>
+        </GlassCard>
 
         {/* ── Date Window (dropdown) ── */}
-        <Card style={{ backgroundColor: theme.colors.surfaceVariant, marginTop: spacing.base }} mode="elevated">
+        <GlassCard style={{ marginTop: spacing.base }}>
           <Card.Content>
             <Text variant="labelMedium" style={[styles.sectionLabel, { color: theme.colors.onSurfaceVariant }]}>
               DATE WINDOW
@@ -505,10 +506,10 @@ export function ExportScreen() {
               />
             )}
           </Card.Content>
-        </Card>
+        </GlassCard>
 
         {/* ── Encrypt file ── */}
-        <Card style={{ backgroundColor: theme.colors.surfaceVariant, marginTop: spacing.base }} mode="elevated">
+        <GlassCard style={{ marginTop: spacing.base }}>
           <Card.Content>
             <View style={styles.encryptRow}>
               <View style={styles.encryptInfo}>
@@ -536,10 +537,10 @@ export function ExportScreen() {
               />
             )}
           </Card.Content>
-        </Card>
+        </GlassCard>
 
         {/* ── Export Preview ── */}
-        <Card style={{ backgroundColor: theme.colors.surfaceVariant, marginTop: spacing.base }} mode="elevated">
+        <GlassCard style={{ marginTop: spacing.base }}>
           <Card.Content>
             <View style={styles.previewHeader}>
               <Text variant="labelMedium" style={[styles.sectionLabel, { color: theme.colors.onSurfaceVariant, marginBottom: 0 }]}>
@@ -595,7 +596,7 @@ export function ExportScreen() {
               })}
             </ScrollView>
           </Card.Content>
-        </Card>
+        </GlassCard>
 
         {/* ── Export Button ── */}
         <Button
@@ -637,7 +638,7 @@ export function ExportScreen() {
           </View>
         ) : (
           exports.map((item) => (
-            <Card key={item.id} style={{ backgroundColor: theme.colors.surfaceVariant, marginBottom: spacing.sm }} mode="elevated">
+            <GlassCard key={item.id} style={{ marginBottom: spacing.sm }}>
               <Card.Content>
                 <View style={styles.historyRow}>
                   <View style={[styles.historyIcon, {
@@ -662,7 +663,7 @@ export function ExportScreen() {
                   <View style={[styles.statusDot, { backgroundColor: '#34D399' }]} />
                 </View>
               </Card.Content>
-            </Card>
+            </GlassCard>
           ))
         )}
       </View>

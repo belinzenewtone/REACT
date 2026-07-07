@@ -2,7 +2,7 @@
   "expo": {
     "name": "PersonalOS",
     "slug": "RFINAL",
-    "version": "1.0.68",
+    "version": "1.0.70",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "splash": {
@@ -87,7 +87,10 @@
       "policy": "appVersion"
     },
     "updates": {
-      "url": "https://u.expo.dev/f7df9ed3-50f4-44bd-9f01-61d89d031c84"
+      "url": "https://u.expo.dev/f7df9ed3-50f4-44bd-9f01-61d89d031c84",
+      "requestHeaders": {
+        "expo-channel-name": "production"
+      }
     }
   }
 }

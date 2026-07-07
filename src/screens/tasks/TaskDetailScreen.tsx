@@ -9,6 +9,7 @@ import { useCalendarStore } from '../../store';
 import { TaskRepository, type TaskRecord } from '../../database/repositories/TaskRepository';
 import { formatDateTime } from '../../utils/formatters';
 import { spacing, borderRadius } from '../../theme';
+import { GlassCard } from '../../components/common/GlassCard';
 import { syncTaskReminders } from '../../services/notificationSyncService';
 import { cancelTaskReminders } from '../../services/notificationService';
 import { haptic } from '../../services/haptics';
@@ -77,7 +78,7 @@ export function TaskDetailScreen() {
     task.priority === 'high'
       ? theme.colors.error
       : task.priority === 'medium'
-      ? theme.colors.secondary
+      ? '#F5CB5C'
       : theme.colors.primary;
   const isCompleted = task.status === 'completed';
 
@@ -92,7 +93,7 @@ export function TaskDetailScreen() {
         />
       }
     >
-      <Card mode="elevated" style={[styles.card, { backgroundColor: theme.colors.surfaceVariant }]}>
+      <GlassCard style={styles.card}>
         <Card.Content style={styles.cardContent}>
           <Chip
             style={{ backgroundColor: `${priorityColor}33`, marginBottom: spacing.base }}
@@ -120,13 +121,13 @@ export function TaskDetailScreen() {
             </View>
           ) : null}
         </Card.Content>
-      </Card>
+      </GlassCard>
 
       <Button
         mode="contained"
         onPress={handleToggleComplete}
-        style={{ backgroundColor: isCompleted ? theme.colors.primary : theme.colors.secondary, marginTop: spacing.base }}
-        textColor={isCompleted ? theme.colors.onPrimary : theme.colors.onSecondary}
+        style={{ backgroundColor: isCompleted ? theme.colors.primary : theme.colors.tertiary, marginTop: spacing.base }}
+        textColor={isCompleted ? theme.colors.onPrimary : theme.colors.onTertiary}
       >
         {isCompleted ? 'Mark as Active' : 'Mark as Completed'}
       </Button>

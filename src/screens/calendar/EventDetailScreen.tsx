@@ -9,6 +9,7 @@ import { useCalendarStore } from '../../store';
 import { EventRepository, type EventRecord } from '../../database/repositories/EventRepository';
 import { formatDateTime } from '../../utils/formatters';
 import { spacing, borderRadius } from '../../theme';
+import { GlassCard } from '../../components/common/GlassCard';
 import { cancelEventReminders } from '../../services/notificationService';
 import { haptic } from '../../services/haptics';
 import { useDataVersion } from '../../store/dataVersion';
@@ -92,7 +93,8 @@ export function EventDetailScreen() {
           />
         </View>
 
-        <View style={[styles.card, { backgroundColor: theme.colors.surfaceVariant, borderColor: theme.colors.outlineVariant }]}>
+        <GlassCard style={{ borderRadius: borderRadius['2xl'], marginBottom: spacing.xl }}>
+          <View style={{ padding: spacing.xl, alignItems: 'center' }}>
           <Chip
             style={{ backgroundColor: `${priorityColor}20`, marginBottom: spacing.base }}
             textStyle={{ color: priorityColor }}
@@ -110,7 +112,8 @@ export function EventDetailScreen() {
               {event.description}
             </Text>
           ) : null}
-        </View>
+          </View>
+        </GlassCard>
 
         <DetailRow label="Starts" value={formatDateTime(event.date)} />
         {event.end_date ? <DetailRow label="Ends" value={formatDateTime(event.end_date)} /> : null}

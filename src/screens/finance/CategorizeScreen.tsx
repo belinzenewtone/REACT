@@ -20,6 +20,7 @@ import { PageScaffold } from '../../components/common/PageScaffold';
 import { CATEGORIZE_CATEGORIES } from '../../constants';
 import { formatCurrency, formatDateTime } from '../../utils/formatters';
 import { spacing, borderRadius } from '../../theme';
+import { GlassCard } from '../../components/common/GlassCard';
 import { animateLayout } from '../../utils/animation';
 import { checkBudgetThresholds } from '../../services/budgetAlertService';
 import { useDataVersion } from '../../store/dataVersion';
@@ -147,7 +148,7 @@ function MerchantGroupCard({
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
 
   return (
-    <Card style={[styles.card, { backgroundColor: theme.colors.surfaceVariant }]} mode="elevated">
+    <GlassCard style={styles.card}>
       <Card.Content>
         <View style={styles.cardHeaderRow}>
           <View style={styles.cardHeaderText}>
@@ -212,7 +213,7 @@ function MerchantGroupCard({
           </View>
         </Modal>
       </Card.Content>
-    </Card>
+    </GlassCard>
   );
 }
 

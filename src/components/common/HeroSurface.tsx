@@ -13,14 +13,19 @@ interface HeroSurfaceProps {
   footer?: ReactNode;
 }
 
+/** Rebuilt on FrostCard technique: gradient + glow rings + frost film + hairline. No native blur dependency. */
 export function HeroSurface({ eyebrow, title, subtitle, leading, action, footer }: HeroSurfaceProps) {
   const theme = useTheme();
 
   return (
-    <LinearGradient
-      colors={[`${theme.colors.primary}26`, theme.colors.background]}
-      style={styles.surface}
-    >
+    <View style={styles.surface}>
+      <LinearGradient
+        colors={[`${theme.colors.primary}22`, 'transparent']}
+        style={[StyleSheet.absoluteFill, styles.surface]}
+        pointerEvents="none"
+      />
+      <View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.film]} />
+      <View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.hairline]} />
       <View style={styles.topRow}>
         {leading ? <View style={styles.leadingSlot}>{leading}</View> : null}
         <View style={styles.textCol}>
@@ -41,7 +46,7 @@ export function HeroSurface({ eyebrow, title, subtitle, leading, action, footer 
         {action ? <View style={styles.actionSlot}>{action}</View> : null}
       </View>
       {footer ? <View style={styles.footer}>{footer}</View> : null}
-    </LinearGradient>
+    </View>
   );
 }
 
@@ -49,9 +54,19 @@ const styles = StyleSheet.create({
   surface: {
     borderBottomLeftRadius: 28,
     borderBottomRightRadius: 28,
+    overflow: 'hidden',
     paddingHorizontal: 20,
     paddingTop: 6,
     paddingBottom: 14,
+  },
+  film: {
+    backgroundColor: 'rgba(20,22,28,0.45)',
+  },
+  hairline: {
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.10)',
+    borderBottomLeftRadius: 28,
+    borderBottomRightRadius: 28,
   },
   topRow: {
     flexDirection: 'row',

@@ -1,7 +1,8 @@
 import React from 'react';
 import { View, StyleSheet } from 'react-native';
-import { Card, Text, TouchableRipple, useTheme } from 'react-native-paper';
+import { Text, useTheme } from 'react-native-paper';
 import { spacing } from '../../theme';
+import { FrostCard } from '../common/FrostCard';
 
 interface WeeklyResetCardProps {
   pendingTaskCount: number;
@@ -12,23 +13,19 @@ export function WeeklyResetCard({ pendingTaskCount, onPress }: WeeklyResetCardPr
   const theme = useTheme();
 
   return (
-    <Card style={{ backgroundColor: theme.colors.surfaceVariant }} mode="elevated">
-      <TouchableRipple onPress={onPress}>
-        <Card.Content>
-          <View style={styles.header}>
-            <Text variant="titleLarge" style={{ color: theme.colors.onSurface }}>
-              Weekly reset
-            </Text>
-            <Text variant="labelLarge" style={{ color: theme.colors.primary }}>
-              Open Weekly Review
-            </Text>
-          </View>
-          <Text variant="bodyMedium" style={{ color: theme.colors.onSurfaceVariant, marginTop: spacing.sm }}>
-            Clear {pendingTaskCount} pending task{pendingTaskCount === 1 ? '' : 's'} before the week closes.
-          </Text>
-        </Card.Content>
-      </TouchableRipple>
-    </Card>
+    <FrostCard glow="teal" onPress={onPress}>
+      <View style={styles.header}>
+        <Text variant="titleLarge" style={{ color: theme.colors.onSurface }}>
+          Weekly reset
+        </Text>
+        <Text variant="labelLarge" style={{ color: theme.colors.primary }}>
+          Open Weekly Review
+        </Text>
+      </View>
+      <Text variant="bodyMedium" style={{ color: theme.colors.onSurfaceVariant, marginTop: spacing.sm }}>
+        Clear {pendingTaskCount} pending task{pendingTaskCount === 1 ? '' : 's'} before the week closes.
+      </Text>
+    </FrostCard>
   );
 }
 

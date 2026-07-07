@@ -54,7 +54,7 @@ if (process.platform === 'win32') {
   }
 }
 const isWin = process.platform === 'win32';
-const gradlew = isWin ? 'gradlew.bat' : './gradlew';
+const gradlew = isWin ? '.\\gradlew.bat --no-daemon' : './gradlew';
 const gradleTask = target === 'aab' ? 'bundleRelease' : 'assembleRelease';
 
 const dim = (s) => '\x1b[2m' + s + '\x1b[0m';

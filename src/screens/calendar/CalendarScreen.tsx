@@ -25,6 +25,7 @@ import { useCalendarStore, useAppStore } from '../../store';
 import { useDataVersion } from '../../store/dataVersion';
 import { CalendarMonthView } from '../../components/calendar/CalendarMonthView';
 import { spacing, BOTTOM_NAV_SAFE_AREA } from '../../theme';
+import { GlassCard } from '../../components/common/GlassCard';
 import { animateLayout } from '../../utils/animation';
 import { syncTaskReminders } from '../../services/notificationSyncService';
 import { cancelEventReminders } from '../../services/notificationService';
@@ -130,7 +131,7 @@ export function CalendarScreen() {
   const dayItemGroups = useMemo(
     () =>
       [
-        { key: 'task', label: 'Tasks', color: theme.colors.secondary, items: filteredDayItems.filter((i) => i.type === 'task') },
+        { key: 'task', label: 'Tasks', color: SUCCESS, items: filteredDayItems.filter((i) => i.type === 'task') },
         { key: 'event', label: 'Events', color: theme.colors.primary, items: filteredDayItems.filter((i) => i.type === 'event') },
         { key: 'birthday', label: 'Birthdays', color: '#EC4899', items: filteredDayItems.filter((i) => i.type === 'birthday') },
         { key: 'anniversary', label: 'Anniversaries', color: '#22C55E', items: filteredDayItems.filter((i) => i.type === 'anniversary') },
@@ -279,10 +280,9 @@ export function CalendarScreen() {
                     </Text>
                   </View>
                   {group.items.map((item: any) => (
-                    <Card
+                    <GlassCard
                       key={item.id}
-                      mode="elevated"
-                      style={[styles.dayItemCard, { backgroundColor: theme.colors.surfaceVariant }]}
+                      style={styles.dayItemCard}
                       onPress={() =>
                         item.type === 'task'
                           ? navigation.navigate('TaskDetail', { taskId: item.id })
@@ -302,7 +302,7 @@ export function CalendarScreen() {
                           )}
                         </View>
                       </Card.Content>
-                    </Card>
+                    </GlassCard>
                   ))}
                 </View>
               ))
@@ -332,10 +332,9 @@ export function CalendarScreen() {
               tasks.map((task: any) => {
                 const isDone = task.status === 'completed';
                 return (
-                  <Card
+                  <GlassCard
                     key={task.id}
-                    mode="elevated"
-                    style={[styles.taskCard, { backgroundColor: theme.colors.surfaceVariant }]}
+                    style={styles.taskCard}
                     onPress={() => navigation.navigate('TaskDetail', { taskId: task.id })}
                   >
                     <Card.Content style={styles.taskRow}>
@@ -377,7 +376,7 @@ export function CalendarScreen() {
                         />
                       )}
                     </Card.Content>
-                  </Card>
+                  </GlassCard>
                 );
               })
             )}
@@ -404,10 +403,9 @@ export function CalendarScreen() {
               </View>
             ) : (
               events.map((event: any) => (
-                <Card
+                <GlassCard
                   key={event.id}
-                  mode="elevated"
-                  style={[styles.eventCard, { backgroundColor: theme.colors.surfaceVariant }]}
+                  style={styles.eventCard}
                   onPress={() => navigation.navigate('EventDetail', { eventId: event.id })}
                 >
                   <Card.Content style={styles.eventRow}>
@@ -427,7 +425,7 @@ export function CalendarScreen() {
                       onPress={() => handleDeleteEvent(event.id, event.title)}
                     />
                   </Card.Content>
-                </Card>
+                </GlassCard>
               ))
             )}
           </>

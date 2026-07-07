@@ -1,6 +1,6 @@
 import { StatusBar } from 'expo-status-bar';
 import React, { useEffect, useRef, useState } from 'react';
-import { AppState, Platform, UIManager } from 'react-native';
+import { AppState, Platform, UIManager, useColorScheme } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { PaperProvider } from 'react-native-paper';
@@ -11,8 +11,8 @@ import { DATABASE_NAME, migrateDatabaseAsync } from './src/database';
 import { AppNavigator } from './src/navigation/AppNavigator';
 import { TopBanner } from './src/components/common/TopBanner';
 import { useAppStore } from './src/store';
-import { colors } from './src/theme';
-import { lifeosPaperTheme } from './src/theme/paperTheme';
+import { colors, lightColors } from './src/theme';
+import { lifeosPaperTheme, lifeosPaperThemeLight } from './src/theme/paperTheme';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -77,15 +77,25 @@ function OtaUpdateBanner() {
 }
 
 export default function App() {
+  const systemColorScheme = useColorScheme();
+  const themeMode = useAppStore((s) => s.settings.theme);
+
+  const isDark =
+    themeMode === 'dark' ||
+    (themeMode === 'system' && (systemColorScheme === 'dark' || systemColorScheme == null));
+
+  const paperTheme = isDark ? lifeosPaperTheme : lifeosPaperThemeLight;
+  const bgColor = isDark ? colors.bgPrimary : lightColors.bgPrimary;
+
   return (
-    <GestureHandlerRootView style={{ flex: 1, backgroundColor: colors.bgPrimary }}>
-      <PaperProvider theme={lifeosPaperTheme}>
+    <GestureHandlerRootView style={{ flex: 1, backgroundColor: bgColor }}>
+      <PaperProvider theme={paperTheme}>
         <SafeAreaProvider>
           <SQLiteProvider databaseName={DATABASE_NAME} onInit={migrateDatabaseAsync}>
             <AppNavigator />
             <SplashHider />
             <OtaUpdateBanner />
-            <StatusBar style="light" />
+            <StatusBar style={isDark ? 'light' : 'dark'} />
           </SQLiteProvider>
         </SafeAreaProvider>
       </PaperProvider>

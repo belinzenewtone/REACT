@@ -5,6 +5,7 @@ import { Card, Text, useTheme } from 'react-native-paper';
 import { Ionicons } from '@expo/vector-icons';
 import { PageScaffold } from '../../components/common/PageScaffold';
 import { spacing } from '../../theme';
+import { GlassCard } from '../../components/common/GlassCard';
 
 const HUB_SECTIONS = [
   { icon: 'wallet-outline', label: 'Budgets', color: '#34D399', screen: 'Budgets' },
@@ -25,10 +26,9 @@ export function PlannerHubScreen() {
     <PageScaffold title="Finance Hub" onBack={() => navigation.goBack()}>
       <View style={styles.list}>
         {HUB_SECTIONS.map((section) => (
-          <Card
+          <GlassCard
             key={section.screen}
-            mode="elevated"
-            style={[styles.card, { backgroundColor: theme.colors.surfaceVariant }]}
+            style={styles.card}
             onPress={() => navigation.navigate(section.screen)}
           >
             <Card.Content style={styles.row}>
@@ -48,7 +48,7 @@ export function PlannerHubScreen() {
               </Text>
               <Ionicons name="chevron-forward" size={20} color={theme.colors.outline} />
             </Card.Content>
-          </Card>
+          </GlassCard>
         ))}
       </View>
     </PageScaffold>

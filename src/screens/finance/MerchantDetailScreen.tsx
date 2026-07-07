@@ -9,6 +9,7 @@ import {
   useTheme,
 } from 'react-native-paper';
 import { spacing } from '../../theme';
+import { GlassCard } from '../../components/common/GlassCard';
 import { formatCurrency } from '../../utils/formatters';
 import { PageScaffold } from '../../components/common/PageScaffold';
 import type { RootStackParamList } from '../../navigation/types';
@@ -87,7 +88,7 @@ export function MerchantDetailScreen() {
           </View>
         ) : (
           <>
-            <Card style={[styles.statsCard, { backgroundColor: theme.colors.surfaceVariant }]} mode="elevated">
+            <GlassCard style={styles.statsCard}>
               <Card.Content>
                 <View style={styles.statsRow}>
                   <StatColumn label="Total Spend" value={formatCurrency(totalSpend)} />
@@ -97,13 +98,13 @@ export function MerchantDetailScreen() {
                   <StatColumn label="Avg. Amount" value={formatCurrency(avgAmount)} />
                 </View>
               </Card.Content>
-            </Card>
+            </GlassCard>
 
             <Text variant="labelLarge" style={[styles.sectionLabel, { color: theme.colors.onSurfaceVariant }]}>
               Transaction History
             </Text>
 
-            <Card style={{ backgroundColor: theme.colors.surfaceVariant }} mode="elevated">
+            <GlassCard>
               <Card.Content>
                 {transactions.map((tx, i) => {
                   const isIncome = INCOME_TYPES.has(tx.transaction_type?.toUpperCase());
@@ -141,7 +142,7 @@ export function MerchantDetailScreen() {
                   );
                 })}
               </Card.Content>
-            </Card>
+            </GlassCard>
           </>
         )}
       </ScrollView>

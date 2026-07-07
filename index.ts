@@ -29,6 +29,7 @@ if (
   } as any;
 }
 
+
 import { registerRootComponent } from 'expo';
 
 import App from './App';

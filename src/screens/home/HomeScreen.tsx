@@ -23,6 +23,8 @@ import { TopBanner } from '../../components/common/TopBanner';
 import { ShimmerLoadingState } from '../../components/common/ShimmerLoadingState';
 import { formatCurrency } from '../../utils/formatters';
 import { spacing, BOTTOM_NAV_SAFE_AREA } from '../../theme';
+import { FrostCard } from '../../components/common/FrostCard';
+import { LinearGradient } from 'expo-linear-gradient';
 
 function HomeScreenContent() {
   const theme = useTheme();
@@ -67,6 +69,18 @@ function HomeScreenContent() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]} edges={['top']}>
+      {/* Ambient aurora glow behind the header/greeting */}
+      <View pointerEvents="none" style={styles.aurora}>
+        <LinearGradient
+          colors={['rgba(18,48,74,0.55)', 'rgba(14,27,46,0.25)', 'rgba(10,10,11,0)']}
+          start={{ x: 0.2, y: 0 }}
+          end={{ x: 0.8, y: 1 }}
+          style={StyleSheet.absoluteFill}
+        />
+        <View style={[styles.auroraRing, { top: -140, right: -90, width: 340, height: 340, backgroundColor: 'rgba(87,185,255,0.08)' }]} />
+        <View style={[styles.auroraRing, { top: -100, right: -50, width: 250, height: 250, backgroundColor: 'rgba(87,185,255,0.09)' }]} />
+        <View style={[styles.auroraRing, { top: 60, left: -120, width: 280, height: 280, backgroundColor: 'rgba(94,234,212,0.05)' }]} />
+      </View>
       <TopBanner tone="error" message={error ?? ''} visible={!!error} />
       <ScrollView
         contentContainerStyle={styles.content}
@@ -104,9 +118,9 @@ function HomeScreenContent() {
         ) : (
           <>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.metricsRow}>
-              <MetricCard label="Today" amount={todaySpend} />
-              <MetricCard label="Week" amount={weekSpend} />
-              <MetricCard label="Month" amount={expense} />
+              <MetricCard label="Today" amount={todaySpend} glow="blue" />
+              <MetricCard label="Week" amount={weekSpend} glow="teal" />
+              <MetricCard label="Month" amount={expense} glow="blue" />
             </ScrollView>
 
             <View style={styles.section}>
@@ -137,19 +151,17 @@ export function HomeScreen() {
   return <HomeScreenContent />;
 }
 
-function MetricCard({ label, amount }: { label: string; amount: number }) {
+function MetricCard({ label, amount, glow }: { label: string; amount: number; glow?: 'blue' | 'teal' | 'none' }) {
   const theme = useTheme();
   return (
-    <Card style={[styles.metricCard, { backgroundColor: theme.colors.surfaceVariant }]} mode="elevated">
-      <Card.Content>
-        <Text variant="bodyMedium" style={{ color: theme.colors.onSurfaceVariant }}>
-          {label}
-        </Text>
-        <Text variant="headlineMedium" style={{ color: theme.colors.onSurface, marginTop: spacing.sm }} numberOfLines={1}>
-          {formatCurrency(amount, { decimals: 0 })}
-        </Text>
-      </Card.Content>
-    </Card>
+    <FrostCard style={styles.metricCard} glow={glow ?? 'blue'}>
+      <Text variant="bodyMedium" style={{ color: theme.colors.onSurfaceVariant }}>
+        {label}
+      </Text>
+      <Text variant="headlineMedium" style={{ color: theme.colors.onSurface, marginTop: spacing.sm }} numberOfLines={1}>
+        {formatCurrency(amount, { decimals: 0 })}
+      </Text>
+    </FrostCard>
   );
 }
 
@@ -195,5 +207,17 @@ const styles = StyleSheet.create({
   },
   section: {
     marginBottom: spacing.xl,
+  },
+  aurora: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 420,
+    overflow: 'hidden',
+  },
+  auroraRing: {
+    position: 'absolute',
+    borderRadius: 999,
   },
 });

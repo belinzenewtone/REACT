@@ -89,7 +89,7 @@ function StatusBadge({ status }: { status: TransactionListItemData['status'] }) 
 
   const statusStyles = {
     completed: { color: theme.colors.primary, label: 'Completed' },
-    pending: { color: theme.colors.secondary, label: 'Pending' },
+    pending: { color: '#F5CB5C', label: 'Pending' },
     failed: { color: theme.colors.error, label: 'Failed' },
     reversed: { color: theme.colors.onSurfaceVariant, label: 'Reversed' },
   };

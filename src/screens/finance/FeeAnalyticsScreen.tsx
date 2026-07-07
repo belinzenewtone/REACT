@@ -14,6 +14,7 @@ import {
   useTheme,
 } from 'react-native-paper';
 import { spacing } from '../../theme';
+import { GlassCard } from '../../components/common/GlassCard';
 import { formatCurrency } from '../../utils/formatters';
 import { PageScaffold } from '../../components/common/PageScaffold';
 
@@ -143,7 +144,7 @@ export function FeeAnalyticsScreen() {
           </View>
         ) : (
           <>
-            <Card style={[styles.totalCard, { backgroundColor: theme.colors.surfaceVariant }]} mode="elevated">
+            <GlassCard style={styles.totalCard}>
               <Card.Content>
                 <Text variant="bodyMedium" style={{ color: theme.colors.onSurfaceVariant }}>
                   This Month's Charges
@@ -152,14 +153,14 @@ export function FeeAnalyticsScreen() {
                   {formatCurrency(totalFees)}
                 </Text>
               </Card.Content>
-            </Card>
+            </GlassCard>
 
             {categories.length > 0 && (
               <>
                 <Text variant="labelLarge" style={[styles.sectionLabel, { color: theme.colors.onSurfaceVariant }]}>
                   By Category
                 </Text>
-                <Card style={{ backgroundColor: theme.colors.surfaceVariant }} mode="elevated">
+                <GlassCard>
                   <Card.Content>
                     {categories.map((cat, i) => (
                       <View key={cat.category}>
@@ -170,7 +171,7 @@ export function FeeAnalyticsScreen() {
                       </View>
                     ))}
                   </Card.Content>
-                </Card>
+                </GlassCard>
               </>
             )}
 
@@ -179,7 +180,7 @@ export function FeeAnalyticsScreen() {
                 <Text variant="labelLarge" style={[styles.sectionLabel, { color: theme.colors.onSurfaceVariant }]}>
                   Transactions
                 </Text>
-                <Card style={{ backgroundColor: theme.colors.surfaceVariant }} mode="elevated">
+                <GlassCard>
                   <Card.Content>
                     {transactions.map((tx, i) => (
                       <View key={tx.id}>
@@ -202,7 +203,7 @@ export function FeeAnalyticsScreen() {
                       </View>
                     ))}
                   </Card.Content>
-                </Card>
+                </GlassCard>
               </>
             )}
           </>
