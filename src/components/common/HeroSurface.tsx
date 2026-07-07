@@ -17,6 +17,10 @@ interface HeroSurfaceProps {
 export function HeroSurface({ eyebrow, title, subtitle, leading, action, footer }: HeroSurfaceProps) {
   const theme = useTheme();
 
+  const isDark = theme.dark;
+  const filmBg = isDark ? 'rgba(20,22,28,0.45)' : 'rgba(241,245,249,0.40)';
+  const hairlineBorder = isDark ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.06)';
+
   return (
     <View style={styles.surface}>
       <LinearGradient
@@ -24,8 +28,8 @@ export function HeroSurface({ eyebrow, title, subtitle, leading, action, footer 
         style={[StyleSheet.absoluteFill, styles.surface]}
         pointerEvents="none"
       />
-      <View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.film]} />
-      <View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.hairline]} />
+      <View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: filmBg }]} />
+      <View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.hairline, { borderColor: hairlineBorder }]} />
       <View style={styles.topRow}>
         {leading ? <View style={styles.leadingSlot}>{leading}</View> : null}
         <View style={styles.textCol}>
@@ -59,12 +63,8 @@ const styles = StyleSheet.create({
     paddingTop: 6,
     paddingBottom: 14,
   },
-  film: {
-    backgroundColor: 'rgba(20,22,28,0.45)',
-  },
   hairline: {
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.10)',
     borderBottomLeftRadius: 28,
     borderBottomRightRadius: 28,
   },

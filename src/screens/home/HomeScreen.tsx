@@ -72,14 +72,16 @@ function HomeScreenContent() {
       {/* Ambient aurora glow behind the header/greeting */}
       <View pointerEvents="none" style={styles.aurora}>
         <LinearGradient
-          colors={['rgba(18,48,74,0.55)', 'rgba(14,27,46,0.25)', 'rgba(10,10,11,0)']}
+          colors={theme.dark
+            ? ['rgba(18,48,74,0.55)', 'rgba(14,27,46,0.25)', 'rgba(10,10,11,0)']
+            : ['rgba(186,230,253,0.30)', 'rgba(224,242,254,0.12)', 'rgba(248,250,252,0)']}
           start={{ x: 0.2, y: 0 }}
           end={{ x: 0.8, y: 1 }}
           style={StyleSheet.absoluteFill}
         />
-        <View style={[styles.auroraRing, { top: -140, right: -90, width: 340, height: 340, backgroundColor: 'rgba(87,185,255,0.08)' }]} />
-        <View style={[styles.auroraRing, { top: -100, right: -50, width: 250, height: 250, backgroundColor: 'rgba(87,185,255,0.09)' }]} />
-        <View style={[styles.auroraRing, { top: 60, left: -120, width: 280, height: 280, backgroundColor: 'rgba(94,234,212,0.05)' }]} />
+        <View style={[styles.auroraRing, { top: -140, right: -90, width: 340, height: 340, backgroundColor: theme.dark ? 'rgba(87,185,255,0.08)' : 'rgba(3,105,161,0.05)' }]} />
+        <View style={[styles.auroraRing, { top: -100, right: -50, width: 250, height: 250, backgroundColor: theme.dark ? 'rgba(87,185,255,0.09)' : 'rgba(3,105,161,0.06)' }]} />
+        <View style={[styles.auroraRing, { top: 60, left: -120, width: 280, height: 280, backgroundColor: theme.dark ? 'rgba(94,234,212,0.05)' : 'rgba(15,118,110,0.04)' }]} />
       </View>
       <TopBanner tone="error" message={error ?? ''} visible={!!error} />
       <ScrollView

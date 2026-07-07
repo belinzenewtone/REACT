@@ -64,9 +64,9 @@ export const colors = {
 
 export const lightColors = {
   ...colors,
-  bgPrimary: '#F8FAFC',
-  bgSecondary: '#FFFFFF',
-  bgElevated: '#F1F5F9',
+  bgPrimary: '#E8EDF3',
+  bgSecondary: '#F8FAFC',
+  bgElevated: '#EEF2F7',
   bgTertiary: '#E2E8F0',
   textPrimary: '#0F172A',
   textSecondary: '#475569',
