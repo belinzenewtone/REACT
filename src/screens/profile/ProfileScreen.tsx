@@ -10,6 +10,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
+import * as FileSystem from 'expo-file-system';
 import { useNavigation } from '@react-navigation/native';
 import { format } from 'date-fns';
 import { Card, Text, Button, IconButton, TextInput, TouchableRipple, useTheme } from 'react-native-paper';
@@ -117,7 +118,9 @@ export function ProfileScreen() {
       quality: 0.8,
     });
     if (!result.canceled && result.assets[0]) {
-      setProfile(profile ? { ...profile, avatarUri: result.assets[0].uri, updatedAt: new Date().toISOString() } : null);
+      const dest = `${FileSystem.documentDirectory}avatar.jpg`;
+      await FileSystem.copyAsync({ from: result.assets[0].uri, to: dest });
+      setProfile(profile ? { ...profile, avatarUri: dest, updatedAt: new Date().toISOString() } : null);
       setSuccessMessage('Profile photo updated');
     }
   };
@@ -173,9 +176,6 @@ export function ProfileScreen() {
                     </Text>
                   </View>
                 )}
-                <View style={[styles.avatarEditBadge, { backgroundColor: theme.colors.surfaceVariant, borderColor: theme.colors.background }]}>
-                  <Ionicons name="camera" size={12} color={theme.colors.onSurface} />
-                </View>
               </View>
             </TouchableRipple>
 
@@ -370,10 +370,6 @@ const styles = StyleSheet.create({
   avatarRingInner: { width: 74, height: 74, justifyContent: 'center', alignItems: 'center' },
   avatar: { width: 74, height: 74, borderRadius: 37, justifyContent: 'center', alignItems: 'center' },
   avatarImage: { width: 74, height: 74, borderRadius: 37 },
-  avatarEditBadge: {
-    position: 'absolute', bottom: -2, right: -2, width: 24, height: 24, borderRadius: 12,
-    borderWidth: 2, justifyContent: 'center', alignItems: 'center',
-  },
   heroInfo: { flex: 1, gap: 4 },
   memberBadge: { alignSelf: 'flex-start', paddingHorizontal: spacing.sm, paddingVertical: 4, borderRadius: 9999 },
   heroButtons: { flexDirection: 'row', gap: spacing.sm },
