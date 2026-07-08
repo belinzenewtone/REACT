@@ -23,6 +23,11 @@ interface AppState {
   updateSettings: (settings: Partial<AppSettings>) => void;
   setTheme: (theme: ThemeMode) => void;
 
+  // Fired budget alerts (key: category|level|yearMonth) to prevent duplicate notifications
+  firedBudgetAlerts: Record<string, string>;
+  markBudgetAlertFired: (key: string) => void;
+  clearFiredBudgetAlerts: (prefix?: string) => void;
+
   // Profile
   profile: UserProfile | null;
   setProfile: (profile: UserProfile | null) => void;
@@ -44,27 +49,29 @@ const defaultSettings: AppSettings = {
   dateFormat: DEFAULT_DATE_FORMAT,
   timeFormat: '24h',
   decimalPrecision: 2,
-  notificationsEnabled: true,
+  notificationsEnabled: false, // require explicit user opt-in via onboarding / settings
   notificationTypes: {
     reminders: true,
     budgetAlerts: true,
     dailyDigest: true,
     recurringRules: true,
+    transactionAlerts: true,
   },
   lockTimeoutMinutes: 5,
   defaultTransactionCategory: 'uncategorized',
-  fulizaLimit: 10000,
+  fulizaLimit: 0,
   hapticFeedback: true,
   screenLockEnabled: false,
   pinCode: '',
   fingerprintEnabled: false,
   assistantQuickSuggestions: true,
+  calendarSwipe: true,
   budgetThresholdAlerts: true,
   alertThresholds: { high: 90, medium: 75, low: 50 },
   dailyDigestMorningSummary: true,
   dailyDigestDeliveryTime: '06:30',
   appUpdates: true,
-  smsBackgroundReceiver: true,
+  smsBackgroundReceiver: false,
 };
 
 export const useAppStore = create<AppState>()(
@@ -85,6 +92,21 @@ export const useAppStore = create<AppState>()(
       setTheme: (theme) =>
         set((state) => ({ settings: { ...state.settings, theme } })),
 
+      firedBudgetAlerts: {},
+      markBudgetAlertFired: (key) =>
+        set((state) => ({
+          firedBudgetAlerts: { ...state.firedBudgetAlerts, [key]: new Date().toISOString() },
+        })),
+      clearFiredBudgetAlerts: (prefix) =>
+        set((state) => {
+          if (!prefix) return { firedBudgetAlerts: {} };
+          const next: Record<string, string> = {};
+          for (const [k, v] of Object.entries(state.firedBudgetAlerts)) {
+            if (!k.startsWith(prefix)) next[k] = v;
+          }
+          return { firedBudgetAlerts: next };
+        }),
+
       profile: null,
       setProfile: (profile) => set({ profile }),
       updateProfile: (updates) =>
@@ -101,6 +123,7 @@ export const useAppStore = create<AppState>()(
     }),
     {
       name: 'app-store',
+      version: 1,
       storage: createJSONStorage(() => fileStorage),
       partialize: (state) => ({
         hasCompletedOnboarding: state.hasCompletedOnboarding,
@@ -109,7 +132,17 @@ export const useAppStore = create<AppState>()(
         profile: state.profile,
         onboardingStep: state.onboardingStep,
         onboardingGoal: state.onboardingGoal,
+        firedBudgetAlerts: state.firedBudgetAlerts,
       }),
+      migrate: (persistedState: any, version) => {
+        // v0 -> v1: the old hardcoded Fuliza default (10000) was a sentinel for
+        // "not configured". Reset it so the user is prompted for their real limit
+        // when Fuliza activity is detected.
+        if (version < 1 && persistedState?.settings?.fulizaLimit === 10000) {
+          persistedState.settings.fulizaLimit = 0;
+        }
+        return persistedState as AppState;
+      },
       onRehydrateStorage: () => (state) => {
         // Require the PIN immediately on cold start (before first render of app content)
         // if screen lock is on, so there's no flash of unlocked content.

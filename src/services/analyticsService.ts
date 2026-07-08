@@ -3,13 +3,7 @@ import { TransactionRepository } from '../database/repositories/TransactionRepos
 import { BudgetRepository } from '../database/repositories/BudgetRepository';
 import { TaskRepository } from '../database/repositories/TaskRepository';
 
-export interface CategoryBreakdownItem {
-  category: string;
-  amount: number;
-  color: string;
-}
-
-export interface WeeklyTrendItem {
+interface WeeklyTrendItem {
   week: string;
   amount: number;
 }
@@ -21,31 +15,31 @@ export interface WeeklyCategorySpendItem {
   total: number;
 }
 
-export interface MonthlyTrendItem {
+interface MonthlyTrendItem {
   month: string;
   expense: number;
   income: number;
 }
 
-export interface BudgetVsActualItem {
+interface BudgetVsActualItem {
   category: string;
   budgeted: number;
   actual: number;
 }
 
-export interface MerchantSpendItem {
+interface MerchantSpendItem {
   merchant: string;
   amount: number;
 }
 
-export interface InsightItem {
+interface InsightItem {
   icon: string;
   title: string;
   description: string;
   color: string;
 }
 
-export interface ProductivityData {
+interface ProductivityData {
   tasksCompleted: number;
   tasksPending: number;
   completionRate: number;
@@ -56,7 +50,6 @@ export interface AnalyticsData {
   totalIncome: number;
   net: number;
   averageTransaction: number;
-  categoryBreakdown: CategoryBreakdownItem[];
   weeklyTrend: WeeklyTrendItem[];
   weeklyCategorySpend: WeeklyCategorySpendItem[];
   monthlyTrend: MonthlyTrendItem[];
@@ -69,7 +62,8 @@ export interface AnalyticsData {
 export async function computeAnalytics(
   db: SQLiteDatabase,
   startDate: string,
-  endDate: string
+  endDate: string,
+  rangeLabel: 'this_week' | 'this_month' | 'custom' = 'this_month'
 ): Promise<AnalyticsData> {
   const txRepo = new TransactionRepository(db);
   const budgetRepo = new BudgetRepository(db);
@@ -87,7 +81,7 @@ export async function computeAnalytics(
   const merchantMap = new Map<string, number>();
 
   for (const tx of transactions) {
-    if (tx.transaction_type === 'expense') {
+    if (tx.transaction_type === 'expense' || tx.transaction_type === 'transfer' || tx.transaction_type === 'fuliza') {
       totalSpend += tx.amount;
       categoryMap.set(tx.category, (categoryMap.get(tx.category) ?? 0) + tx.amount);
       merchantMap.set(tx.merchant, (merchantMap.get(tx.merchant) ?? 0) + tx.amount);
@@ -113,7 +107,7 @@ export async function computeAnalytics(
     uncategorized: '#6B7280',
   };
 
-  const categoryBreakdown: CategoryBreakdownItem[] = Array.from(categoryMap.entries())
+  const categorySpendSorted = Array.from(categoryMap.entries())
     .map(([category, amount]) => ({
       category,
       amount,
@@ -138,9 +132,10 @@ export async function computeAnalytics(
   // Budget vs actual
   const start = new Date(startDate);
   const budgets = await budgetRepo.findAll();
+  // Use local wall-clock month to match SMS-imported transaction storage.
   const spentByCategory = await budgetRepo.getSpentByCategory(
-    start.getUTCFullYear(),
-    start.getUTCMonth() + 1
+    start.getFullYear(),
+    start.getMonth() + 1
   );
   const spentMap = new Map(spentByCategory.map((s) => [s.category, s.spent]));
 
@@ -162,13 +157,17 @@ export async function computeAnalytics(
   const completionRate = totalTasks > 0 ? (tasksCompleted / totalTasks) * 100 : 0;
 
   // Generate insights
+  const rangeTitle =
+    rangeLabel === 'this_week' ? 'This week' :
+    rangeLabel === 'this_month' ? 'This month' :
+    'This period';
   const insights: InsightItem[] = [];
   if (totalSpend > 0) {
     insights.push({
       icon: 'cash-outline',
-      title: `Month so far: KSh ${totalSpend.toLocaleString()}`,
-      description: `Across ${categoryBreakdown.length} categories`,
-      color: categoryBreakdown[0]?.color ?? '#4DB8FF',
+      title: `${rangeTitle}: KSh ${totalSpend.toLocaleString()}`,
+      description: `Across ${categorySpendSorted.length} categor${categorySpendSorted.length === 1 ? 'y' : 'ies'}`,
+      color: categorySpendSorted[0]?.color ?? '#4DB8FF',
     });
   }
   if (tasksPending > 0) {
@@ -188,11 +187,11 @@ export async function computeAnalytics(
       color: '#34D399',
     });
   }
-  if (categoryBreakdown.length > 0) {
+  if (categorySpendSorted.length > 0) {
     insights.push({
-      icon: 'pie-chart-outline',
-      title: `Top category: ${categoryBreakdown[0].category}`,
-      description: `KSh ${categoryBreakdown[0].amount.toLocaleString()} spent`,
+      icon: 'bar-chart-outline',
+      title: `Top category: ${categorySpendSorted[0].category}`,
+      description: `KSh ${categorySpendSorted[0].amount.toLocaleString()} spent`,
       color: '#8B5CF6',
     });
   }
@@ -206,7 +205,6 @@ export async function computeAnalytics(
     totalIncome,
     net: totalIncome - totalSpend,
     averageTransaction,
-    categoryBreakdown,
     weeklyTrend,
     weeklyCategorySpend,
     monthlyTrend,
@@ -238,7 +236,7 @@ function computeWeeklyCategorySpend(
 
     for (const tx of transactions) {
       if (
-        tx.transaction_type === 'expense' &&
+        (tx.transaction_type === 'expense' || tx.transaction_type === 'transfer' || tx.transaction_type === 'fuliza') &&
         new Date(tx.date) >= weekStart &&
         new Date(tx.date) <= weekEnd
       ) {
@@ -281,7 +279,7 @@ function computeWeeklyTrend(transactions: { date: string; transaction_type: stri
     const amount = transactions
       .filter(
         (tx) =>
-          tx.transaction_type === 'expense' &&
+          (tx.transaction_type === 'expense' || tx.transaction_type === 'transfer' || tx.transaction_type === 'fuliza') &&
           new Date(tx.date) >= weekStart &&
           new Date(tx.date) <= weekEnd
       )
@@ -302,7 +300,9 @@ function computeMonthlyTrend(transactions: { date: string; transaction_type: str
 
   for (let i = 11; i >= 0; i--) {
     const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-    const monthKey = d.toISOString().slice(0, 7);
+    // Local YYYY-MM key so it matches the local datetime strings stored by
+    // the SMS parser.
+    const monthKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
     const monthName = d.toLocaleString('default', { month: 'short' });
 
     let expense = 0;
@@ -310,7 +310,7 @@ function computeMonthlyTrend(transactions: { date: string; transaction_type: str
 
     for (const tx of transactions) {
       if (tx.date.startsWith(monthKey)) {
-        if (tx.transaction_type === 'expense') expense += tx.amount;
+        if (tx.transaction_type === 'expense' || tx.transaction_type === 'transfer' || tx.transaction_type === 'fuliza') expense += tx.amount;
         else if (tx.transaction_type === 'income') income += tx.amount;
       }
     }

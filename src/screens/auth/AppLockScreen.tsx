@@ -1,10 +1,16 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Vibration, Alert } from 'react-native';
+import { View, StyleSheet, Vibration, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useThemeColors } from '../../hooks/useThemeColors';
+import {
+  Text,
+  Button,
+  IconButton,
+  TouchableRipple,
+  useTheme,
+} from 'react-native-paper';
 import { useAppStore } from '../../store';
-import { spacing, typography, borderRadius, motion } from '../../theme';
+import { spacing, motion } from '../../theme';
 import { promptBiometrics } from '../../utils/biometrics';
 
 const KEYPAD_ROWS: (string | null)[][] = [
@@ -15,7 +21,7 @@ const KEYPAD_ROWS: (string | null)[][] = [
 ];
 
 export function AppLockScreen() {
-  const colors = useThemeColors();
+  const theme = useTheme();
   const settings = useAppStore((state) => state.settings);
   const updateSettings = useAppStore((state) => state.updateSettings);
   const setIsAppLocked = useAppStore((state) => state.setIsAppLocked);
@@ -86,19 +92,25 @@ export function AppLockScreen() {
   };
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.bgPrimary }]}>
+    <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
       <View style={styles.content}>
-        <View style={[styles.iconCircle, { backgroundColor: `${colors.accentPrimary}20` }]}>
+        <View style={[styles.iconCircle, { backgroundColor: `${theme.colors.primary}20` }]}>
           <Ionicons
             name={checkingFingerprint ? 'finger-print' : 'lock-closed'}
             size={32}
-            color={colors.accentPrimary}
+            color={theme.colors.primary}
           />
         </View>
-        <Text style={[styles.title, { color: colors.textPrimary }]}>
+        <Text variant="headlineSmall" style={{ color: theme.colors.onSurface }} numberOfLines={1}>
           {checkingFingerprint ? 'Fingerprint required' : 'Enter your PIN'}
         </Text>
-        <Text style={[styles.subtitle, { color: error ? colors.danger : colors.textSecondary }]}>
+        <Text
+          variant="bodyMedium"
+          style={{
+            color: error ? theme.colors.error : theme.colors.onSurfaceVariant,
+            marginTop: spacing.sm,
+          }}
+        >
           {checkingFingerprint
             ? 'Confirm your fingerprint to continue'
             : error
@@ -107,12 +119,15 @@ export function AppLockScreen() {
         </Text>
 
         {settings.fingerprintEnabled && !checkingFingerprint && (
-          <TouchableOpacity onPress={attemptFingerprint} style={styles.retryFingerprint}>
-            <Ionicons name="finger-print-outline" size={18} color={colors.accentPrimary} />
-            <Text style={[styles.retryFingerprintText, { color: colors.accentPrimary }]}>
-              Try fingerprint again
-            </Text>
-          </TouchableOpacity>
+          <Button
+            mode="text"
+            icon={({ color }) => <Ionicons name="finger-print-outline" size={18} color={color} />}
+            onPress={attemptFingerprint}
+            textColor={theme.colors.primary}
+            style={{ marginTop: spacing.lg }}
+          >
+            Try fingerprint again
+          </Button>
         )}
 
         <View style={styles.dotsRow}>
@@ -122,9 +137,13 @@ export function AppLockScreen() {
               style={[
                 styles.dot,
                 {
-                  borderColor: error ? colors.danger : colors.border,
+                  borderColor: error ? theme.colors.error : theme.colors.outline,
                   backgroundColor:
-                    index < entered.length ? (error ? colors.danger : colors.accentPrimary) : 'transparent',
+                    index < entered.length
+                      ? error
+                        ? theme.colors.error
+                        : theme.colors.primary
+                      : 'transparent',
                 },
               ]}
             />
@@ -138,33 +157,39 @@ export function AppLockScreen() {
                 if (key === null) return <View key={keyIndex} style={styles.key} />;
                 if (key === 'backspace') {
                   return (
-                    <TouchableOpacity
+                    <IconButton
                       key={keyIndex}
+                      icon={() => <Ionicons name="backspace-outline" size={24} color={theme.colors.onSurface} />}
                       style={styles.key}
+                      size={24}
                       onPress={() => handleKeyPress('backspace')}
-                    >
-                      <Ionicons name="backspace-outline" size={24} color={colors.textPrimary} />
-                    </TouchableOpacity>
+                    />
                   );
                 }
                 return (
-                  <TouchableOpacity
+                  <TouchableRipple
                     key={keyIndex}
-                    style={[styles.key, { backgroundColor: colors.glassWhite }]}
+                    style={[styles.key, { backgroundColor: theme.colors.surfaceVariant }]}
                     onPress={() => handleKeyPress(key)}
-                    activeOpacity={0.7}
                   >
-                    <Text style={[styles.keyText, { color: colors.textPrimary }]}>{key}</Text>
-                  </TouchableOpacity>
+                    <Text variant="headlineSmall" style={{ color: theme.colors.onSurface }}>
+                      {key}
+                    </Text>
+                  </TouchableRipple>
                 );
               })}
             </View>
           ))}
         </View>
 
-        <TouchableOpacity onPress={handleForgotPin} style={styles.forgotButton}>
-          <Text style={[styles.forgotText, { color: colors.textSecondary }]}>Forgot PIN?</Text>
-        </TouchableOpacity>
+        <Button
+          mode="text"
+          onPress={handleForgotPin}
+          textColor={theme.colors.onSurfaceVariant}
+          style={{ marginTop: spacing.xl }}
+        >
+          Forgot PIN?
+        </Button>
       </View>
     </SafeAreaView>
   );
@@ -187,24 +212,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: spacing.lg,
-  },
-  title: {
-    fontSize: typography.sizes['2xl'],
-    fontWeight: typography.weights.bold,
-  },
-  subtitle: {
-    fontSize: typography.sizes.sm,
-    marginTop: spacing.sm,
-  },
-  retryFingerprint: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    marginTop: spacing.lg,
-  },
-  retryFingerprintText: {
-    fontSize: typography.sizes.sm,
-    fontWeight: typography.weights.semibold,
   },
   dotsRow: {
     flexDirection: 'row',
@@ -231,17 +238,5 @@ const styles = StyleSheet.create({
     borderRadius: 36,
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  keyText: {
-    fontSize: typography.sizes['2xl'],
-    fontWeight: typography.weights.semibold,
-  },
-  forgotButton: {
-    marginTop: spacing.xl,
-    padding: spacing.sm,
-  },
-  forgotText: {
-    fontSize: typography.sizes.sm,
-    fontWeight: typography.weights.medium,
   },
 });

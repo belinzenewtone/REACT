@@ -1,24 +1,29 @@
 import React, { useState, useEffect } from 'react';
 import {
   View,
-  Text,
-  TouchableOpacity,
-  ScrollView,
   StyleSheet,
   Alert,
   ActivityIndicator,
+  ScrollView,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import { useSQLiteContext } from 'expo-sqlite';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system';
-import { useThemeColors } from '../../hooks/useThemeColors';
+import {
+  Card,
+  Text,
+  Button,
+  Chip,
+  TextInput,
+  useTheme,
+} from 'react-native-paper';
 import type { RootStackParamList } from '../../navigation/types';
 import { useTransactionStore } from '../../store';
 import { TransactionRepository } from '../../database/repositories/TransactionRepository';
-import { GlassCard } from '../../components/common/GlassCard';
+import { checkBudgetThresholds } from '../../services/budgetAlertService';
+import { PageScaffold } from '../../components/common/PageScaffold';
 import {
   parseCsvContent,
   detectColumnMapping,
@@ -28,7 +33,8 @@ import {
 } from '../../services/csvImportService';
 import { CATEGORY_COLORS } from '../../constants';
 import { formatCurrency, formatDate } from '../../utils/formatters';
-import { spacing, typography, borderRadius } from '../../theme';
+import { spacing, borderRadius } from '../../theme';
+import { GlassCard } from '../../components/common/GlassCard';
 
 const ALL_FIELDS: { key: keyof CsvColumnMapping; label: string }[] = [
   { key: 'amount', label: 'Amount *' },
@@ -43,7 +49,7 @@ const ALL_FIELDS: { key: keyof CsvColumnMapping; label: string }[] = [
 type CsvImportRouteProp = RouteProp<RootStackParamList, 'CsvImport'>;
 
 export function CsvImportScreen() {
-  const colors = useThemeColors();
+  const theme = useTheme();
   const db = useSQLiteContext();
   const navigation = useNavigation<any>();
   const route = useRoute<CsvImportRouteProp>();
@@ -123,6 +129,7 @@ export function CsvImportScreen() {
     setIsLoading(true);
     try {
       const repo = new TransactionRepository(db);
+      const expenseCategories = new Set<string>();
       for (const row of validRows) {
         await repo.create({
           amount: row.amount,
@@ -135,8 +142,14 @@ export function CsvImportScreen() {
           description: row.description,
           recordSource: 'csv',
         });
+        if (row.transactionType === 'expense') {
+          expenseCategories.add(CATEGORY_COLORS[row.category] ? row.category : 'uncategorized');
+        }
       }
       await loadTransactions(repo, true);
+      for (const category of expenseCategories) {
+        await checkBudgetThresholds(db, category);
+      }
       Alert.alert('Import complete', `${validRows.length} transactions imported.`);
       navigation.goBack();
     } catch (error) {
@@ -148,163 +161,139 @@ export function CsvImportScreen() {
   };
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.bgPrimary }]} edges={['top']}>
-      <ScrollView contentContainerStyle={styles.content}>
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()}>
-            <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
-          </TouchableOpacity>
-          <Text style={[styles.title, { color: colors.textPrimary }]}>Import CSV</Text>
-          <View style={{ width: 24 }} />
-        </View>
-
-        <TouchableOpacity
-          style={[styles.pickButton, { backgroundColor: colors.accentPrimary }]}
+    <PageScaffold
+      title="Import CSV"
+      onBack={() => navigation.goBack()}
+    >
+      <View style={styles.content}>
+        <Button
+          mode="contained"
           onPress={pickFile}
+          loading={isLoading}
           disabled={isLoading}
+          style={styles.pickButton}
+          icon={() => <Ionicons name="document-outline" size={18} color={theme.colors.onPrimary} />}
         >
-          {isLoading ? (
-            <ActivityIndicator color={colors.textInverse} />
-          ) : (
-            <>
-              <Ionicons name="document-outline" size={18} color={colors.textInverse} />
-              <Text style={[styles.pickButtonText, { color: colors.textInverse }]}>Pick CSV file</Text>
-            </>
-          )}
-        </TouchableOpacity>
+          Pick CSV file
+        </Button>
 
         {headers.length > 0 && (
           <>
-            <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>Column mapping</Text>
+            <Text variant="titleMedium" style={{ color: theme.colors.onSurface, marginBottom: spacing.base }}>
+              Column mapping
+            </Text>
             {ALL_FIELDS.map((field) => (
               <View key={field.key} style={styles.mappingRow}>
-                <Text style={[styles.mappingLabel, { color: colors.textSecondary }]}>{field.label}</Text>
+                <Text variant="bodyMedium" style={{ color: theme.colors.onSurfaceVariant, marginBottom: spacing.sm }}>
+                  {field.label}
+                </Text>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                   <View style={styles.chipRow}>
-                    <TouchableOpacity
-                      style={[
-                        styles.chip,
-                        { backgroundColor: mapping[field.key] === '' ? colors.accentPrimary : colors.glassWhite, borderColor: colors.border },
-                      ]}
+                    <Chip
+                      selected={mapping[field.key] === ''}
                       onPress={() => updateMapping(field.key, '')}
+                      style={styles.chip}
                     >
-                      <Text style={{ color: mapping[field.key] === '' ? colors.textInverse : colors.textPrimary, fontSize: 12 }}>
-                        None
-                      </Text>
-                    </TouchableOpacity>
+                      None
+                    </Chip>
                     {headers.map((h) => (
-                      <TouchableOpacity
+                      <Chip
                         key={h}
-                        style={[
-                          styles.chip,
-                          { backgroundColor: mapping[field.key] === h ? colors.accentPrimary : colors.glassWhite, borderColor: colors.border },
-                        ]}
+                        selected={mapping[field.key] === h}
                         onPress={() => updateMapping(field.key, h)}
+                        style={styles.chip}
                       >
-                        <Text style={{ color: mapping[field.key] === h ? colors.textInverse : colors.textPrimary, fontSize: 12 }}>
-                          {h}
-                        </Text>
-                      </TouchableOpacity>
+                        {h}
+                      </Chip>
                     ))}
                   </View>
                 </ScrollView>
               </View>
             ))}
 
-            <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>
+            <Text variant="titleMedium" style={{ color: theme.colors.onSurface, marginTop: spacing.base, marginBottom: spacing.base }}>
               Preview ({validRows.length} valid, {invalidRows.length} invalid)
             </Text>
 
             {validRows.slice(0, 5).map((row, idx) => (
               <GlassCard key={`valid-${idx}`} style={styles.previewCard}>
-                <View style={styles.previewRow}>
-                  <Text style={[styles.previewTitle, { color: colors.textPrimary }]} numberOfLines={1}>
-                    {row.merchant}
+                <Card.Content>
+                  <View style={styles.previewRow}>
+                    <Text variant="bodyMedium" style={{ color: theme.colors.onSurface, flex: 1 }} numberOfLines={1}>
+                      {row.merchant}
+                    </Text>
+                    <Text variant="bodyMedium" style={{ color: row.transactionType === 'income' ? '#34D399' : theme.colors.error, fontWeight: 'bold' }}>
+                      {formatCurrency(row.amount)}
+                    </Text>
+                  </View>
+                  <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant, marginTop: 2 }}>
+                    {row.category} · {formatDate(row.date)}
                   </Text>
-                  <Text style={[styles.previewAmount, { color: row.transactionType === 'income' ? colors.success : colors.danger }]}>
-                    {formatCurrency(row.amount)}
-                  </Text>
-                </View>
-                <Text style={[styles.previewMeta, { color: colors.textSecondary }]}>
-                  {row.category} · {formatDate(row.date)}
-                </Text>
+                </Card.Content>
               </GlassCard>
             ))}
 
             {invalidRows.slice(0, 3).map((row, idx) => (
-              <GlassCard key={`invalid-${idx}`} style={styles.invalidCard}>
-                <Text style={[styles.errorText, { color: colors.danger }]}>
-                  {row.errors.join(', ')}
-                </Text>
-                <Text style={[styles.previewMeta, { color: colors.textSecondary }]}>
-                  {row.merchant || '(no merchant)'} · {row.amount || '(no amount)'}
-                </Text>
-              </GlassCard>
+              <Card key={`invalid-${idx}`} style={[styles.previewCard, { backgroundColor: theme.colors.errorContainer, borderColor: theme.colors.error, borderWidth: 1 }]} mode="elevated">
+                <Card.Content>
+                  <Text variant="bodySmall" style={{ color: theme.colors.error }}>
+                    {row.errors.join(', ')}
+                  </Text>
+                  <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant, marginTop: 2 }}>
+                    {row.merchant || '(no merchant)'} · {row.amount || '(no amount)'}
+                  </Text>
+                </Card.Content>
+              </Card>
             ))}
 
-            <TouchableOpacity
-              style={[styles.importButton, { backgroundColor: validRows.length > 0 ? colors.success : colors.textTertiary }]}
+            <Button
+              mode="contained"
               onPress={handleImport}
               disabled={validRows.length === 0 || isLoading}
+              loading={isLoading}
+              style={[
+                styles.importButton,
+                { backgroundColor: validRows.length > 0 ? '#34D399' : theme.colors.onSurfaceVariant },
+              ]}
             >
-              <Text style={[styles.importButtonText, { color: colors.textInverse }]}>
-                Import {validRows.length} transactions
-              </Text>
-            </TouchableOpacity>
+              Import {validRows.length} transactions
+            </Button>
           </>
         )}
-      </ScrollView>
-    </SafeAreaView>
+      </View>
+    </PageScaffold>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingBottom: spacing.sm,
+  content: {
+    paddingTop: spacing.sm,
+    paddingBottom: spacing['4xl'],
   },
-  title: { fontSize: typography.sizes.lg, fontWeight: typography.weights.semibold },
-  content: { padding: spacing.lg },
   pickButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: spacing.base,
-    borderRadius: borderRadius.lg,
-    gap: spacing.sm,
     marginBottom: spacing.xl,
+    borderRadius: borderRadius.lg,
   },
-  pickButtonText: { fontSize: typography.sizes.base, fontWeight: typography.weights.semibold },
-  sectionTitle: {
-    fontSize: typography.sizes.lg,
-    fontWeight: typography.weights.semibold,
+  mappingRow: {
     marginBottom: spacing.base,
-    marginTop: spacing.base,
   },
-  mappingRow: { marginBottom: spacing.base },
-  mappingLabel: { fontSize: typography.sizes.sm, marginBottom: spacing.sm },
-  chipRow: { flexDirection: 'row', gap: spacing.sm },
+  chipRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
   chip: {
-    paddingHorizontal: spacing.base,
-    paddingVertical: spacing.sm,
     borderRadius: borderRadius.full,
-    borderWidth: 1,
   },
-  previewCard: { marginBottom: spacing.sm, padding: spacing.base },
-  invalidCard: { marginBottom: spacing.sm, padding: spacing.base, borderWidth: 1, borderColor: '#FF6B6B' },
-  previewRow: { flexDirection: 'row', justifyContent: 'space-between' },
-  previewTitle: { fontSize: typography.sizes.base, fontWeight: typography.weights.medium, flex: 1 },
-  previewAmount: { fontSize: typography.sizes.base, fontWeight: typography.weights.bold },
-  previewMeta: { fontSize: typography.sizes.sm, marginTop: 2 },
-  errorText: { fontSize: typography.sizes.sm, fontWeight: typography.weights.medium },
+  previewCard: {
+    marginBottom: spacing.sm,
+  },
+  previewRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
   importButton: {
     marginTop: spacing.xl,
-    paddingVertical: spacing.base,
     borderRadius: borderRadius.lg,
-    alignItems: 'center',
+    paddingVertical: 4,
   },
-  importButtonText: { fontSize: typography.sizes.base, fontWeight: typography.weights.semibold },
 });

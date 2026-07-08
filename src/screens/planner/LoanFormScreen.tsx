@@ -1,23 +1,26 @@
 import React, { useEffect, useState } from 'react';
-import { Animated, View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet, Alert } from 'react-native';
+import { Animated, View, StyleSheet, ScrollView, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
+import { Text, IconButton, Button, TextInput, useTheme } from 'react-native-paper';
 import { TopBanner } from '../../components/common/TopBanner';
 import { useSQLiteContext } from 'expo-sqlite';
-import { useThemeColors } from '../../hooks/useThemeColors';
 import { usePlannerStore } from '../../store';
 import { FulizaLoanRepository } from '../../database/repositories/FulizaLoanRepository';
 import { useFormFadeIn } from '../../hooks/useFormFadeIn';
 import { DateField } from '../../components/common/DateField';
-import { spacing, typography, borderRadius } from '../../theme';
+import { Dropdown } from '../../components/common/Dropdown';
+import { spacing, borderRadius } from '../../theme';
+import { haptic } from '../../services/haptics';
 import type { RootStackParamList } from '../../navigation/types';
 
 type LoanFormRouteProp = RouteProp<RootStackParamList, 'LoanForm'>;
 const STATUSES = ['active', 'repaid', 'defaulted'] as const;
+const STATUS_OPTIONS = STATUSES.map((s) => ({ value: s, label: s.charAt(0).toUpperCase() + s.slice(1) }));
 
 export function LoanFormScreen() {
-  const colors = useThemeColors();
+  const theme = useTheme();
   const db = useSQLiteContext();
   const navigation = useNavigation<any>();
   const route = useRoute<LoanFormRouteProp>();
@@ -29,6 +32,7 @@ export function LoanFormScreen() {
   const [isReady, setIsReady] = useState(!isEditing);
   const contentOpacity = useFormFadeIn(isReady);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
   const [drawCode, setDrawCode] = useState('');
   const [drawAmount, setDrawAmount] = useState('');
   const [totalRepaid, setTotalRepaid] = useState('');
@@ -64,6 +68,9 @@ export function LoanFormScreen() {
       return;
     }
 
+    setIsSaving(true);
+    haptic('light');
+
     const data = {
       drawCode: drawCode.trim() || undefined,
       drawAmountKes: amount,
@@ -83,10 +90,11 @@ export function LoanFormScreen() {
         await createLoan(db, data);
         setSuccessMsg('Loan added');
       }
-      setTimeout(() => navigation.goBack(), 900);
+      setTimeout(() => navigation.goBack(), 400);
     } catch (error) {
       console.error('Failed to save loan:', error);
       Alert.alert('Error', 'Failed to save loan');
+      setIsSaving(false);
     }
   };
 
@@ -106,87 +114,80 @@ export function LoanFormScreen() {
   };
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.bgPrimary }]} edges={['top']}>
+    <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]} edges={['top']}>
       <TopBanner tone="success" message={successMsg ?? ''} visible={!!successMsg} />
       <Animated.View style={{ flex: 1, opacity: contentOpacity }}>
-      <ScrollView contentContainerStyle={styles.content}>
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()}>
-            <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
-          </TouchableOpacity>
-          <Text style={[styles.title, { color: colors.textPrimary }]}>
-            {isEditing ? 'Edit Loan' : 'Add Loan'}
-          </Text>
-          {isEditing ? (
-            <TouchableOpacity onPress={handleDelete}>
-              <Ionicons name="trash-outline" size={22} color={colors.danger} />
-            </TouchableOpacity>
-          ) : (
-            <View style={{ width: 24 }} />
-          )}
-        </View>
+        <ScrollView contentContainerStyle={styles.content}>
+          <View style={styles.header}>
+            <IconButton
+              icon={() => <Ionicons name="arrow-back" size={22} color={theme.colors.onSurface} />}
+              onPress={() => navigation.goBack()}
+            />
+            <Text variant="titleLarge" style={{ color: theme.colors.onSurface }} numberOfLines={1}>
+              {isEditing ? 'Edit Loan' : 'Add Loan'}
+            </Text>
+            {isEditing ? (
+              <IconButton
+                icon={() => <Ionicons name="trash-outline" size={22} color={theme.colors.error} />}
+                onPress={handleDelete}
+              />
+            ) : (
+              <View style={{ width: 44 }} />
+            )}
+          </View>
 
-        <Input label="Loan name / code" value={drawCode} onChangeText={setDrawCode} placeholder="e.g. Fuliza draw" />
-        <Input label="Draw amount" value={drawAmount} onChangeText={setDrawAmount} placeholder="0.00" keyboardType="decimal-pad" />
-        <Input label="Total repaid" value={totalRepaid} onChangeText={setTotalRepaid} placeholder="0.00" keyboardType="decimal-pad" />
-        <DateField label="Draw date" value={drawDate} onChange={setDrawDate} />
-        <DateField label="Last repayment date (optional)" value={lastRepaymentDate} onChange={setLastRepaymentDate} />
+          <TextInput
+            mode="outlined"
+            dense
+            label="Loan name / code"
+            value={drawCode}
+            onChangeText={setDrawCode}
+            placeholder="e.g. Fuliza draw"
+            style={styles.input}
+          />
+          <TextInput
+            mode="outlined"
+            dense
+            label="Draw amount"
+            value={drawAmount}
+            onChangeText={setDrawAmount}
+            placeholder="0.00"
+            keyboardType="decimal-pad"
+            style={styles.input}
+          />
+          <TextInput
+            mode="outlined"
+            dense
+            label="Total repaid"
+            value={totalRepaid}
+            onChangeText={setTotalRepaid}
+            placeholder="0.00"
+            keyboardType="decimal-pad"
+            style={styles.input}
+          />
+          <DateField label="Draw date" value={drawDate} onChange={setDrawDate} />
+          <DateField label="Last repayment date (optional)" value={lastRepaymentDate} onChange={setLastRepaymentDate} />
 
-        <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>Status</Text>
-        <View style={styles.segmentContainer}>
-          {STATUSES.map((s) => {
-            const selected = status === s;
-            return (
-              <TouchableOpacity
-                key={s}
-                style={[styles.segment, selected && { backgroundColor: colors.accentPrimary }]}
-                onPress={() => setStatus(s)}
-              >
-                <Text style={[styles.segmentText, { color: selected ? colors.textInverse : colors.textSecondary }]}>
-                  {s.charAt(0).toUpperCase() + s.slice(1)}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
+          <Dropdown
+            label="Status"
+            value={status}
+            options={STATUS_OPTIONS}
+            onChange={(value) => setStatus(value as 'active' | 'repaid' | 'defaulted')}
+          />
 
-        <TouchableOpacity style={[styles.saveButton, { backgroundColor: colors.accentPrimary }]} onPress={handleSave}>
-          <Text style={[styles.saveButtonText, { color: colors.textInverse }]}>
-            {isEditing ? 'Update Loan' : 'Add Loan'}
-          </Text>
-        </TouchableOpacity>
-      </ScrollView>
+          <Button
+            mode="contained"
+            onPress={handleSave}
+            disabled={isSaving}
+            loading={isSaving}
+            style={[styles.saveButton, { backgroundColor: theme.colors.primary }]}
+            textColor={theme.colors.onPrimary}
+          >
+            {isSaving ? 'Saving…' : isEditing ? 'Update Loan' : 'Add Loan'}
+          </Button>
+        </ScrollView>
       </Animated.View>
     </SafeAreaView>
-  );
-}
-
-function Input({
-  label,
-  value,
-  onChangeText,
-  placeholder,
-  keyboardType,
-}: {
-  label: string;
-  value: string;
-  onChangeText: (text: string) => void;
-  placeholder?: string;
-  keyboardType?: 'default' | 'decimal-pad' | 'numeric';
-}) {
-  const colors = useThemeColors();
-  return (
-    <View style={[styles.inputGroup, { backgroundColor: colors.glassWhite, borderColor: colors.border }]}>
-      <Text style={[styles.label, { color: colors.textSecondary }]}>{label}</Text>
-      <TextInput
-        style={[styles.input, { color: colors.textPrimary }]}
-        placeholder={placeholder}
-        placeholderTextColor={colors.textTertiary}
-        value={value}
-        onChangeText={onChangeText}
-        keyboardType={keyboardType}
-      />
-    </View>
   );
 }
 
@@ -198,37 +199,14 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingVertical: spacing.sm,
   },
-  title: { fontSize: typography.sizes.lg, fontWeight: typography.weights.semibold },
-  content: { padding: spacing.lg },
-  inputGroup: {
-    borderRadius: borderRadius.lg,
-    borderWidth: 1,
-    paddingHorizontal: spacing.base,
-    paddingVertical: spacing.sm,
+  content: { paddingHorizontal: spacing.screenHorizontal, paddingVertical: spacing.lg },
+  input: {
     marginBottom: spacing.base,
+    backgroundColor: 'transparent',
   },
-  label: { fontSize: typography.sizes.xs, marginBottom: 2 },
-  input: { fontSize: typography.sizes.base, paddingVertical: 4 },
-  sectionLabel: {
-    fontSize: typography.sizes.base,
-    fontWeight: typography.weights.medium,
-    marginTop: spacing.lg,
-    marginBottom: spacing.sm,
-  },
-  segmentContainer: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.base },
-  segment: {
-    flex: 1,
-    paddingVertical: spacing.sm,
-    borderRadius: borderRadius.md,
-    alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.06)',
-  },
-  segmentText: { fontSize: typography.sizes.sm, fontWeight: typography.weights.medium, textTransform: 'capitalize' },
   saveButton: {
     marginTop: spacing.xl,
     paddingVertical: spacing.base,
     borderRadius: borderRadius.lg,
-    alignItems: 'center',
   },
-  saveButtonText: { fontSize: typography.sizes.base, fontWeight: typography.weights.semibold },
 });

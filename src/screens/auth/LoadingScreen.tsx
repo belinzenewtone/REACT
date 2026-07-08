@@ -1,13 +1,13 @@
 import React from 'react';
 import { View, ActivityIndicator, StyleSheet } from 'react-native';
-import { useThemeColors } from '../../hooks/useThemeColors';
+import { useTheme } from 'react-native-paper';
 
 export function LoadingScreen() {
-  const colors = useThemeColors();
+  const theme = useTheme();
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.bgPrimary }]}>
-      <ActivityIndicator size="large" color={colors.accentPrimary} />
+    <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
+      <ActivityIndicator size="large" color={theme.colors.primary} />
     </View>
   );
 }

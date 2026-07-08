@@ -39,18 +39,23 @@ yarn-error.*
 # typescript
 *.tsbuildinfo
 
-# generated native folders
-/ios
-/android
+# test output
+coverage/
+.sync_probe.txt
 
-# local-expo-build
-keystore.properties
-credentials.json
-
-# build logs
+# logs
+*.log
 expo-err.txt
 expo-out.txt
 expo-output.txt
 
+# generated native folders
+/ios
+/android
+
 # Gradle build artifacts
 modules/lifeos-sms/android/build/
+
+# local-expo-build
+keystore.properties
+credentials.json

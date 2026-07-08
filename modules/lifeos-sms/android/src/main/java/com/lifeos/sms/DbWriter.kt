@@ -21,17 +21,71 @@ internal class DbWriter private constructor(context: Context) {
     private val db: SQLiteDatabase
 
     init {
-        val path = context.applicationContext.getDatabasePath("lifeos.db").absolutePath
-        File(path).parentFile?.mkdirs()
+        // IMPORTANT: expo-sqlite (JS layer) stores DBs under `filesDir/SQLite/<name>`,
+        // NOT the Android-default `databases/` directory. If we open the wrong path
+        // we write to a separate file — the JS layer never sees our rows, so imports
+        // appear successful but the UI stays empty. Match expo-sqlite's location.
+        val app = context.applicationContext
+        val sqliteDir = File(app.filesDir, "SQLite")
+        sqliteDir.mkdirs()
+        val target = File(sqliteDir, "lifeos.db")
+
+        // One-time migration: earlier builds wrote to `databases/lifeos.db`.
+        // Copy that file (and its WAL/SHM sidecars) into the correct location
+        // ONLY if the target does not yet exist, so we do not overwrite the
+        // authoritative JS-managed DB.
+        try {
+            val legacy = app.getDatabasePath("lifeos.db")
+            if (legacy.exists() && !target.exists()) {
+                Log.w(TAG, "Migrating legacy DB from ${legacy.absolutePath} → ${target.absolutePath}")
+                legacy.copyTo(target, overwrite = false)
+                File(legacy.absolutePath + "-wal").takeIf { it.exists() }
+                    ?.copyTo(File(target.absolutePath + "-wal"), overwrite = false)
+                File(legacy.absolutePath + "-shm").takeIf { it.exists() }
+                    ?.copyTo(File(target.absolutePath + "-shm"), overwrite = false)
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Legacy DB migration skipped: ${e.message}")
+        }
+
+        val path = target.absolutePath
+        Log.i(TAG, "Opening SQLite at $path (matching expo-sqlite location)")
         db = SQLiteDatabase.openDatabase(
             path,
             null,
             SQLiteDatabase.OPEN_READWRITE or SQLiteDatabase.CREATE_IF_NECESSARY
         )
-        db.execSQL("PRAGMA journal_mode=WAL")
-        db.execSQL("PRAGMA synchronous=NORMAL")
-        db.execSQL("PRAGMA foreign_keys=ON")
+        // PRAGMAs return a result row on Android's SQLite wrapper, so they must be
+        // executed via rawQuery. Using execSQL throws:
+        // "Queries can be performed using SQLiteDatabase query or rawQuery methods only."
+        // Only switch to WAL if it isn't already enabled; this avoids an exclusive-lock
+        // race when expo-sqlite already has the database open.
+        val currentMode = db.rawQuery("PRAGMA journal_mode", null).use { c ->
+            if (c.moveToFirst()) c.getString(0)?.lowercase() else null
+        }
+        if (currentMode != "wal") {
+            val newMode = db.rawQuery("PRAGMA journal_mode=WAL", null).use { c ->
+                if (c.moveToFirst()) c.getString(0)?.lowercase() else null
+            }
+            Log.i(TAG, "Set journal_mode to $newMode (was $currentMode)")
+        }
+        db.rawQuery("PRAGMA synchronous=NORMAL", null).use { it.moveToFirst() }
+        db.rawQuery("PRAGMA foreign_keys=ON", null).use { it.moveToFirst() }
         ensureImportAuditTable()
+        ensureIngestQueueTable()
+    }
+
+    /**
+     * Force a WAL checkpoint so any writes done through this connection become
+     * immediately visible to other connections opened on the same DB file
+     * (specifically expo-sqlite on the JS side). Called after every batch import.
+     */
+    fun checkpoint() {
+        try {
+            db.rawQuery("PRAGMA wal_checkpoint(RESTART)", null).use { it.moveToFirst() }
+        } catch (e: Exception) {
+            Log.w(TAG, "wal_checkpoint failed: ${e.message}")
+        }
     }
 
     companion object {
@@ -44,6 +98,12 @@ internal class DbWriter private constructor(context: Context) {
                 INSTANCE ?: DbWriter(context.applicationContext).also { INSTANCE = it }
             }
     }
+
+    // ─── Transaction helpers ─────────────────────────────────────────────────
+
+    fun beginTransaction() = db.beginTransaction()
+    fun setTransactionSuccessful() = db.setTransactionSuccessful()
+    fun endTransaction() = db.endTransaction()
 
     // ─── Auto-migrate import_audit if absent ──────────────────────────────────
 
@@ -59,13 +119,286 @@ internal class DbWriter private constructor(context: Context) {
                 outcome       TEXT NOT NULL,
                 failure_reason TEXT,
                 confidence    TEXT,
-                created_at    TEXT NOT NULL DEFAULT (datetime('now'))
+                created_at    TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
             )
             """.trimIndent()
         )
     }
 
+    // ─── Durable SMS ingest queue ─────────────────────────────────────────────
+    //
+    // Every incoming SMS is persisted here BEFORE any parsing happens, so a
+    // crash/kill between receive and ledger-insert can never lose a message.
+    // Rows are terminal-marked ('done') after processing — including duplicate/
+    // ignored/quarantined outcomes — and failed rows carry exponential
+    // next_retry_at timestamps drained by the periodic sweep worker.
+
+    private fun ensureIngestQueueTable() {
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS sms_ingest_queue (
+                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                body          TEXT NOT NULL,
+                body_hash     TEXT NOT NULL UNIQUE,
+                status        TEXT NOT NULL DEFAULT 'pending',
+                attempts      INTEGER NOT NULL DEFAULT 0,
+                last_error    TEXT,
+                received_at   TEXT NOT NULL DEFAULT (datetime('now')),
+                next_retry_at TEXT NOT NULL DEFAULT (datetime('now')),
+                claimed_at    TEXT
+            )
+            """.trimIndent()
+        )
+        db.execSQL(
+            "CREATE INDEX IF NOT EXISTS idx_ingest_pending ON sms_ingest_queue (status, next_retry_at)"
+        )
+        // Dedupe lookups (existsBySourceHash / existsByMpesaCode) must be
+        // index hits, not table scans — they run per-candidate in the
+        // reconciliation sweep and per-message in realtime processing.
+        try {
+            db.execSQL("CREATE INDEX IF NOT EXISTS idx_tx_source_hash ON transactions (source_hash)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS idx_tx_mpesa_code ON transactions (mpesa_code)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS idx_tx_semantic_hash ON transactions (semantic_hash)")
+        } catch (e: Exception) {
+            // transactions table may not exist yet on a fresh install before the
+            // JS migration runs — indexes get created on the next process start.
+            Log.w(TAG, "dedupe index creation deferred: ${e.message}")
+        }
+    }
+
+    /**
+     * Persist an incoming SMS body. Returns the queue row id, or the existing
+     * row id when this exact body was already enqueued (duplicate broadcast),
+     * or -1 on failure. Idempotent on body hash.
+     */
+    fun enqueueIngest(body: String): Long {
+        val hash = sha256(body.trim())
+        try {
+            db.compileStatement(
+                "INSERT OR IGNORE INTO sms_ingest_queue (body, body_hash) VALUES (?, ?)"
+            ).use { stmt ->
+                stmt.bindString(1, body)
+                stmt.bindString(2, hash)
+                val rowId = stmt.executeInsert()
+                if (rowId >= 0) return rowId
+            }
+            // Already enqueued — return the existing id.
+            return db.rawQuery(
+                "SELECT id FROM sms_ingest_queue WHERE body_hash = ? LIMIT 1",
+                arrayOf(hash)
+            ).use { c -> if (c.moveToFirst()) c.getLong(0) else -1L }
+        } catch (e: Exception) {
+            Log.e(TAG, "enqueueIngest failed: ${e.message}", e)
+            return -1L
+        }
+    }
+
+    /**
+     * Variant for the inbox reconciliation scan: enqueue ONLY if this body has
+     * never been seen by the queue. Returns true when a new row was inserted.
+     * Single INSERT OR IGNORE — no follow-up SELECT on the hot no-op path.
+     */
+    fun enqueueIngestIfNew(body: String): Boolean {
+        return try {
+            db.compileStatement(
+                "INSERT OR IGNORE INTO sms_ingest_queue (body, body_hash) VALUES (?, ?)"
+            ).use { stmt ->
+                stmt.bindString(1, body)
+                stmt.bindString(2, sha256(body.trim()))
+                stmt.executeInsert() >= 0
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "enqueueIngestIfNew failed: ${e.message}")
+            false
+        }
+    }
+
+    /** Terminal success — the message reached a final outcome (imported, duplicate, ignored, quarantined). */
+    fun markIngestDone(id: Long) {
+        if (id < 0) return
+        try {
+            db.execSQL(
+                "UPDATE sms_ingest_queue SET status = 'done', last_error = NULL, claimed_at = NULL WHERE id = ?",
+                arrayOf(id.toString())
+            )
+        } catch (e: Exception) {
+            Log.w(TAG, "markIngestDone failed: ${e.message}")
+        }
+    }
+
+    /**
+     * Transient failure — bump attempts and schedule an exponential retry
+     * (5min · 2^attempts, capped at 6h). After [maxAttempts] the row is marked
+     * 'failed' and only a manual Reconcile/Retry will pick it up.
+     */
+    fun markIngestFailed(id: Long, error: String?, maxAttempts: Int = 8) {
+        if (id < 0) return
+        try {
+            val attempts = db.rawQuery(
+                "SELECT attempts FROM sms_ingest_queue WHERE id = ?", arrayOf(id.toString())
+            ).use { c -> if (c.moveToFirst()) c.getInt(0) else 0 } + 1
+            val delayMin = minOf(5L shl (attempts - 1).coerceAtMost(10), 360L)
+            val status = if (attempts >= maxAttempts) "failed" else "pending"
+            db.execSQL(
+                """UPDATE sms_ingest_queue
+                   SET attempts = ?, status = ?, last_error = ?,
+                       next_retry_at = datetime('now', '+' || ? || ' minutes'),
+                       claimed_at = NULL
+                   WHERE id = ?""",
+                arrayOf(attempts.toString(), status, error?.take(200) ?: "", delayMin.toString(), id.toString())
+            )
+        } catch (e: Exception) {
+            Log.w(TAG, "markIngestFailed failed: ${e.message}")
+        }
+    }
+
+    /**
+     * Atomically claim an ingest row for processing. Returns true if this caller
+     * won the race; false if another worker already claimed it.
+     */
+    fun claimIngestRow(id: Long): Boolean {
+        if (id < 0) return false
+        return try {
+            db.execSQL(
+                """UPDATE sms_ingest_queue
+                   SET status = 'processing', claimed_at = datetime('now')
+                   WHERE id = ? AND status IN ('pending', 'failed')""",
+                arrayOf(id.toString())
+            )
+            db.rawQuery("SELECT changes()", null).use { c -> c.moveToFirst() && c.getInt(0) == 1 }
+        } catch (e: Exception) {
+            Log.w(TAG, "claimIngestRow failed: ${e.message}")
+            false
+        }
+    }
+
+    /** Read the authoritative body for a queue row. */
+    fun getIngestBody(id: Long): String? {
+        if (id < 0) return null
+        return try {
+            db.rawQuery("SELECT body FROM sms_ingest_queue WHERE id = ? LIMIT 1", arrayOf(id.toString()))
+                .use { c -> if (c.moveToFirst()) c.getString(0) else null }
+        } catch (e: Exception) {
+            Log.w(TAG, "getIngestBody failed: ${e.message}")
+            null
+        }
+    }
+
+    /**
+     * Pending rows whose retry time has arrived, plus rows stuck in processing
+     * for more than 5 minutes (e.g. a worker process was killed mid-flight).
+     * Drained by the sweep worker.
+     */
+    fun getPendingIngest(limit: Int = 50): List<Pair<Long, String>> {
+        val rows = mutableListOf<Pair<Long, String>>()
+        try {
+            db.rawQuery(
+                """SELECT id, body FROM sms_ingest_queue
+                   WHERE (
+                     status IN ('pending', 'failed') AND next_retry_at <= datetime('now')
+                   ) OR (
+                     status = 'processing' AND claimed_at < datetime('now', '-5 minutes')
+                   )
+                   ORDER BY id ASC LIMIT ?""",
+                arrayOf(limit.toString())
+            ).use { c ->
+                while (c.moveToNext()) rows.add(c.getLong(0) to (c.getString(1) ?: ""))
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "getPendingIngest failed: ${e.message}")
+        }
+        return rows
+    }
+
+    /** Queue health for Import Health: pending count, failed count, oldest pending age. */
+    fun getIngestQueueStats(): Map<String, Any?> {
+        var pending = 0L; var failed = 0L; var oldestPendingAt: String? = null
+        try {
+            db.rawQuery(
+                """SELECT
+                   SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END),
+                   SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END),
+                   MIN(CASE WHEN status = 'pending' THEN received_at END)
+                   FROM sms_ingest_queue""",
+                null
+            ).use { c ->
+                if (c.moveToFirst()) {
+                    pending = if (c.isNull(0)) 0 else c.getLong(0)
+                    failed = if (c.isNull(1)) 0 else c.getLong(1)
+                    oldestPendingAt = c.getString(2)
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "getIngestQueueStats failed: ${e.message}")
+        }
+        return mapOf(
+            "pending" to pending,
+            "failed" to failed,
+            "oldestPendingAt" to oldestPendingAt,
+        )
+    }
+
+    /** Re-arm 'failed' rows for the sweep (manual Retry from Import Health). */
+    fun requeueFailedIngest(): Int {
+        return try {
+            db.execSQL(
+                "UPDATE sms_ingest_queue SET status = 'pending', attempts = 0, next_retry_at = datetime('now') WHERE status = 'failed'"
+            )
+            db.rawQuery("SELECT changes()", null).use { c -> if (c.moveToFirst()) c.getInt(0) else 0 }
+        } catch (e: Exception) {
+            Log.w(TAG, "requeueFailedIngest failed: ${e.message}")
+            0
+        }
+    }
+
+    /** Prune terminal rows older than [days] to keep the queue table small. */
+    fun pruneIngestQueue(days: Int = 30) {
+        try {
+            db.execSQL(
+                "DELETE FROM sms_ingest_queue WHERE status = 'done' AND received_at < datetime('now', '-' || ? || ' days')",
+                arrayOf(days.toString())
+            )
+        } catch (e: Exception) {
+            Log.w(TAG, "pruneIngestQueue failed: ${e.message}")
+        }
+    }
+
     // ─── Deduplication checks ─────────────────────────────────────────────────
+
+    /**
+     * Preload existing transaction dedup keys (mpesa_code, source_hash, semantic_hash)
+     * from the DB into three sets in ONE query. Turns 30k dedup round-trips
+     * (3 queries × 10k rows) into a single sequential scan for bulk imports.
+     *
+     * We restrict to non-deleted rows and cap to the most recent [limit] rows
+     * (default 50k) to keep memory bounded on huge inboxes. Older rows still
+     * fall through to the per-row `existsBy*` DB checks.
+     */
+    fun preloadDedupeHashes(
+        seenCodes: MutableSet<String>,
+        seenSourceHashes: MutableSet<String>,
+        seenSemanticHashes: MutableSet<String>,
+        limit: Int = 50_000,
+    ) {
+        try {
+            db.rawQuery(
+                """SELECT mpesa_code, source_hash, semantic_hash
+                   FROM transactions
+                   WHERE deleted_at IS NULL
+                   ORDER BY date DESC
+                   LIMIT ?""",
+                arrayOf(limit.toString())
+            ).use { c ->
+                while (c.moveToNext()) {
+                    c.getString(0)?.let { seenCodes.add(it) }
+                    c.getString(1)?.let { seenSourceHashes.add(it) }
+                    c.getString(2)?.let { seenSemanticHashes.add(it) }
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "preloadDedupeHashes failed: ${e.message}")
+        }
+    }
 
     fun existsByMpesaCode(code: String): Boolean {
         return db.rawQuery(
@@ -111,6 +444,30 @@ internal class DbWriter private constructor(context: Context) {
         input.hashCode().toString()
     }
 
+    // ─── Merchant category learning ───────────────────────────────────────────
+
+    private fun normalizeMerchant(merchant: String?): String {
+        if (merchant.isNullOrBlank()) return ""
+        return merchant.lowercase()
+            .replace(Regex("""[^a-z0-9]+"""), " ")
+            .replace(Regex("""\s+"""), " ")
+            .trim()
+    }
+
+    private fun lookupMerchantCategory(merchant: String?): String? {
+        val normalized = normalizeMerchant(merchant)
+        if (normalized.isBlank()) return null
+        return db.rawQuery(
+            """SELECT category FROM merchant_categories
+               WHERE merchant = ? AND deleted_at IS NULL
+               ORDER BY user_corrected DESC, confidence DESC, updated_at DESC
+               LIMIT 1""",
+            arrayOf(normalized)
+        ).use { c ->
+            if (c.moveToFirst()) c.getString(0) else null
+        }
+    }
+
     // ─── Transaction insert ───────────────────────────────────────────────────
 
     /**
@@ -120,8 +477,9 @@ internal class DbWriter private constructor(context: Context) {
     fun insertTransaction(tx: SmsParser.ParsedTransaction): Long {
         val id = UUID.randomUUID().toString()
         val now = isoNow()
-        val sourceHash = sha256(tx.rawSms)
-        val appCategory = SmsParserConfig.refineAppCategory(tx.category, tx.counterparty)
+        val appCategory = lookupMerchantCategory(tx.counterparty)
+            ?: SmsParserConfig.refineAppCategory(tx.category, tx.counterparty, tx.amount)
+        Log.d(TAG, "Insert ${tx.mpesaCode} ${tx.category} -> $appCategory amount=${tx.amount} date=${tx.date} cp=${tx.counterparty}")
         val dateIso = epochToIso(tx.date)
         val syncState = when (tx.parseRoute) {
             SmsParser.ParseRoute.DIRECT    -> "pending"
@@ -146,7 +504,7 @@ internal class DbWriter private constructor(context: Context) {
                 stmt.bindString(6, "mpesa")
                 stmt.bindString(7, tx.transactionType)
                 stmt.bindString(8, tx.mpesaCode)
-                stmt.bindString(9, sourceHash)
+                stmt.bindString(9, tx.sourceHash)
                 stmt.bindString(10, tx.rawSms)
                 stmt.bindString(11, tx.description)
                 if (tx.balanceAfter != null) stmt.bindDouble(12, tx.balanceAfter) else stmt.bindNull(12)
@@ -209,6 +567,24 @@ internal class DbWriter private constructor(context: Context) {
         }
     }
 
+    // ─── Fuliza outstanding balance ───────────────────────────────────────────
+
+    /**
+     * Returns the current active Fuliza outstanding balance, or 0.0 if no active loan row exists.
+     */
+    fun getFulizaOutstanding(): Double {
+        return try {
+            db.rawQuery(
+                "SELECT draw_amount_kes - total_repaid_kes FROM fuliza_loans WHERE status = 'active' ORDER BY updated_at DESC LIMIT 1",
+                null
+            ).use { c ->
+                if (c.moveToFirst()) c.getDouble(0) else 0.0
+            }
+        } catch (e: Exception) {
+            0.0
+        }
+    }
+
     // ─── Import audit ─────────────────────────────────────────────────────────
 
     fun insertAudit(
@@ -223,8 +599,8 @@ internal class DbWriter private constructor(context: Context) {
         try {
             db.compileStatement(
                 """INSERT INTO import_audit
-                   (mpesa_code, raw_message, amount, merchant, outcome, failure_reason, confidence)
-                   VALUES (?,?,?,?,?,?,?)"""
+                   (mpesa_code, raw_message, amount, merchant, outcome, failure_reason, confidence, created_at)
+                   VALUES (?,?,?,?,?,?,?,?)"""
             ).use { stmt ->
                 if (mpesaCode != null) stmt.bindString(1, mpesaCode) else stmt.bindNull(1)
                 stmt.bindString(2, rawMessage.take(1000))
@@ -233,6 +609,7 @@ internal class DbWriter private constructor(context: Context) {
                 stmt.bindString(5, outcome)
                 if (failureReason != null) stmt.bindString(6, failureReason) else stmt.bindNull(6)
                 if (confidence != null) stmt.bindString(7, confidence) else stmt.bindNull(7)
+                stmt.bindString(8, isoNow())
                 stmt.executeInsert()
             }
         } catch (e: Exception) {
@@ -266,13 +643,21 @@ internal class DbWriter private constructor(context: Context) {
     }
 
     fun getStats(): Map<String, Any?> {
+        // Outcomes are written by workers as either exact strings ('imported_realtime',
+        // 'quarantined', 'ignored_not_mpesa', …) or as `${category}:${reason}` (e.g.
+        // 'parse_failed:no_code', 'duplicate_detected:mpesa_code'). Match via LIKE so
+        // the suffixed variants aren't miscategorised.
+        //
+        // Only rows whose outcome contains "imported" or "realtime" count toward
+        // the imported total. `retried`/`dismissed`/`ignored_*`/`fuliza_*` are
+        // administrative and shouldn't inflate the imported count.
         var imported = 0L; var skipped = 0L; var errors = 0L; var quarantined = 0L; var lastAt: String? = null
         db.rawQuery(
             """SELECT
-               SUM(CASE WHEN outcome NOT IN ('duplicate_detected','parse_failed','ignored_not_mpesa','quarantined','fuliza_notice') THEN 1 ELSE 0 END),
-               SUM(CASE WHEN outcome = 'duplicate_detected' THEN 1 ELSE 0 END),
-               SUM(CASE WHEN outcome IN ('parse_failed','import_failed') THEN 1 ELSE 0 END),
-               SUM(CASE WHEN outcome = 'quarantined' THEN 1 ELSE 0 END),
+               SUM(CASE WHEN outcome LIKE 'imported%' OR outcome LIKE 'retry_imported%' THEN 1 ELSE 0 END),
+               SUM(CASE WHEN outcome LIKE 'duplicate_detected%' THEN 1 ELSE 0 END),
+               SUM(CASE WHEN outcome LIKE 'parse_failed%' OR outcome LIKE 'import_failed%' THEN 1 ELSE 0 END),
+               SUM(CASE WHEN outcome LIKE 'quarantined%' THEN 1 ELSE 0 END),
                MAX(created_at)
                FROM import_audit""",
             null
@@ -333,6 +718,19 @@ internal class DbWriter private constructor(context: Context) {
         )
     }
 
+    /** Clears all rows from the import audit log. The transactions table is untouched. */
+    fun clearAuditLog(): Int {
+        return try {
+            db.execSQL("DELETE FROM import_audit")
+            db.rawQuery("SELECT changes()", null).use { c ->
+                if (c.moveToFirst()) c.getInt(0) else 0
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "clearAuditLog failed: ${e.message}", e)
+            0
+        }
+    }
+
     fun getQuarantinedById(id: Long): Map<String, Any?>? {
         return db.rawQuery(
             "SELECT id, raw_message, mpesa_code, amount, merchant FROM import_audit WHERE id = ? LIMIT 1",
@@ -346,6 +744,29 @@ internal class DbWriter private constructor(context: Context) {
                 "amount"     to if (c.isNull(3)) null else c.getDouble(3),
                 "merchant"   to c.getString(4),
             )
+        }
+    }
+
+    /** Diagnostic counters — used to verify JS and native are looking at the same DB file. */
+    fun getTransactionCount(): Long {
+        return try {
+            db.rawQuery("SELECT COUNT(*) FROM transactions WHERE deleted_at IS NULL", null).use { c ->
+                if (c.moveToFirst()) c.getLong(0) else 0L
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "getTransactionCount failed: ${e.message}")
+            -1L
+        }
+    }
+
+    fun getAuditCount(): Long {
+        return try {
+            db.rawQuery("SELECT COUNT(*) FROM import_audit", null).use { c ->
+                if (c.moveToFirst()) c.getLong(0) else 0L
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "getAuditCount failed: ${e.message}")
+            -1L
         }
     }
 

@@ -1,22 +1,24 @@
 import React from 'react';
-import { Switch, type SwitchProps } from 'react-native';
-import { useThemeColors } from '../../hooks/useThemeColors';
+import { type SwitchProps } from 'react-native';
+import { Switch, useTheme } from 'react-native-paper';
+import { haptic } from '../../services/haptics';
 
-interface LifeOSSwitchProps extends Omit<SwitchProps, 'trackColor' | 'thumbColor'> {
+interface LifeOSSwitchProps extends Omit<SwitchProps, 'value' | 'onValueChange' | 'trackColor' | 'thumbColor'> {
   value: boolean;
   onValueChange: (value: boolean) => void;
 }
 
 export function LifeOSSwitch({ value, onValueChange, ...rest }: LifeOSSwitchProps) {
-  const colors = useThemeColors();
+  const theme = useTheme();
 
   return (
     <Switch
       value={value}
-      onValueChange={onValueChange}
-      trackColor={{ false: colors.border, true: colors.accentPrimary }}
-      thumbColor={colors.textInverse}
-      ios_backgroundColor={colors.border}
+      onValueChange={(v) => {
+        haptic('light');
+        onValueChange(v);
+      }}
+      color={theme.colors.primary}
       {...rest}
     />
   );

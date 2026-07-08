@@ -4,9 +4,17 @@ import { TaskRepository, type TaskRecord } from '../database/repositories/TaskRe
 import { EventRepository, type EventRecord } from '../database/repositories/EventRepository';
 import { BudgetRepository, type BudgetRecord } from '../database/repositories/BudgetRepository';
 import { RecurringRuleRepository, type RecurringRuleDbRecord as RecurringRuleRecord } from '../database/repositories/RecurringRuleRepository';
+import { BillRepository, type BillDbRecord } from '../database/repositories/BillRepository';
+import { GoalRepository, type GoalDbRecord } from '../database/repositories/GoalRepository';
+import { IncomeRepository, type IncomeDbRecord } from '../database/repositories/IncomeRepository';
+import { FulizaLoanRepository, type FulizaLoanDbRecord } from '../database/repositories/FulizaLoanRepository';
 import type { SearchFilters } from '../store/useSearchStore';
 
-export type SearchResultType = 'transaction' | 'task' | 'event' | 'budget' | 'birthday' | 'anniversary' | 'countdown' | 'recurring';
+export type SearchResultType =
+  | 'transaction' | 'task' | 'event'
+  | 'birthday' | 'anniversary' | 'countdown'
+  | 'budget' | 'recurring'
+  | 'bill' | 'goal' | 'income' | 'loan';
 
 export interface SearchResults {
   transactions: TransactionRecord[];
@@ -17,8 +25,22 @@ export interface SearchResults {
   countdowns: EventRecord[];
   budgets: BudgetRecord[];
   recurring: RecurringRuleRecord[];
+  bills: BillDbRecord[];
+  goals: GoalDbRecord[];
+  incomes: IncomeDbRecord[];
+  loans: FulizaLoanDbRecord[];
 }
 
+const EMPTY: SearchResults = {
+  transactions: [], tasks: [], events: [], birthdays: [], anniversaries: [],
+  countdowns: [], budgets: [], recurring: [], bills: [], goals: [], incomes: [], loans: [],
+};
+
+/**
+ * Search across every user-visible entity in the app.
+ * Runs one SQL LIKE query per entity in parallel and caps each result set at
+ * `limit` rows so a typing user never triggers unbounded scans.
+ */
 export async function searchAll(
   db: SQLiteDatabase,
   query: string,
@@ -26,27 +48,35 @@ export async function searchAll(
   limit: number = 50
 ): Promise<SearchResults> {
   const trimmed = query.trim();
+  const hasFilters = Object.keys(filters).length > 0;
+  if (!trimmed && !hasFilters) return { ...EMPTY };
 
   const txRepo = new TransactionRepository(db);
   const taskRepo = new TaskRepository(db);
   const eventRepo = new EventRepository(db);
   const budgetRepo = new BudgetRepository(db);
   const recurringRepo = new RecurringRuleRepository(db);
+  const billRepo = new BillRepository(db);
+  const goalRepo = new GoalRepository(db);
+  const incomeRepo = new IncomeRepository(db);
+  const loanRepo = new FulizaLoanRepository(db);
 
-  const lowerQuery = trimmed.toLowerCase();
+  const runIfQuery = <T>(fn: () => Promise<T[]>): Promise<T[]> =>
+    trimmed ? fn() : Promise.resolve([] as T[]);
 
-  const [tasks, events, budgets] = await Promise.all([
-    trimmed ? taskRepo.search(trimmed, limit) : Promise.resolve<TaskRecord[]>([]),
-    trimmed ? eventRepo.search(trimmed, limit) : Promise.resolve<EventRecord[]>([]),
-    budgetRepo.findAll(),
+  const [tasks, events, budgets, recurring, bills, goals, incomes, loans] = await Promise.all([
+    runIfQuery(() => taskRepo.search(trimmed, limit)),
+    runIfQuery(() => eventRepo.search(trimmed, limit)),
+    runIfQuery(() => budgetRepo.search(trimmed, limit)),
+    runIfQuery(() => recurringRepo.search(trimmed, limit)),
+    runIfQuery(() => billRepo.search(trimmed, limit)),
+    runIfQuery(() => goalRepo.search(trimmed, limit)),
+    runIfQuery(() => incomeRepo.search(trimmed, limit)),
+    runIfQuery(() => loanRepo.search(trimmed, limit)),
   ]);
 
-  const matchingBudgets = budgets
-    .filter((b) => b.category.toLowerCase().includes(lowerQuery))
-    .slice(0, limit);
-
   let transactions: TransactionRecord[] = [];
-  if (trimmed || Object.keys(filters).length > 0) {
+  if (trimmed || hasFilters) {
     transactions = await txRepo.findAll({
       search: trimmed || undefined,
       startDate: filters.startDate,
@@ -66,24 +96,11 @@ export async function searchAll(
     }
   }
 
-  const matchingEvents = events.filter((e) => {
-    if (!trimmed) return false;
-    const q = lowerQuery;
-    return (
-      e.title.toLowerCase().includes(q) ||
-      (e.description && e.description.toLowerCase().includes(q))
-    );
-  });
-
-  const birthdays = matchingEvents.filter((e) => e.type === 'birthday');
-  const anniversaries = matchingEvents.filter((e) => e.type === 'anniversary');
-  const countdowns = matchingEvents.filter((e) => e.type === 'countdown');
-  const regularEvents = matchingEvents.filter((e) => e.type === 'event');
-
-  let recurring: RecurringRuleRecord[] = [];
-  if (trimmed) {
-    recurring = await recurringRepo.search(trimmed, limit);
-  }
+  // Split events by type — the repo query already filtered by title/desc/location.
+  const birthdays = events.filter((e) => e.type === 'birthday');
+  const anniversaries = events.filter((e) => e.type === 'anniversary');
+  const countdowns = events.filter((e) => e.type === 'countdown');
+  const regularEvents = events.filter((e) => e.type === 'event');
 
   return {
     transactions,
@@ -92,7 +109,11 @@ export async function searchAll(
     birthdays,
     anniversaries,
     countdowns,
-    budgets: matchingBudgets,
+    budgets,
     recurring,
+    bills,
+    goals,
+    incomes,
+    loans,
   };
 }

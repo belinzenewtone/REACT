@@ -1,0 +1,8 @@
+Starting project at C:\Users\BELINZE NEWTONE\Music\RFINAL
+Starting Metro Bundler
+
+Waiting on http://localhost:8081
+5 packages may need updating. Run npx expo install --check for details.
+Logs for your project will appear below.
+Android Bundled 3029ms index.ts (1661 modules)
+ ERROR  [TypeError: Cannot read property 'high' of undefined]

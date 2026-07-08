@@ -1,8 +1,8 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
-import { GlassCard } from '../common/GlassCard';
-import { useThemeColors } from '../../hooks/useThemeColors';
-import { spacing, typography } from '../../theme';
+import { View, StyleSheet } from 'react-native';
+import { Text, useTheme } from 'react-native-paper';
+import { spacing } from '../../theme';
+import { FrostCard } from '../common/FrostCard';
 
 interface WeeklyResetCardProps {
   pendingTaskCount: number;
@@ -10,20 +10,22 @@ interface WeeklyResetCardProps {
 }
 
 export function WeeklyResetCard({ pendingTaskCount, onPress }: WeeklyResetCardProps) {
-  const colors = useThemeColors();
+  const theme = useTheme();
 
   return (
-    <TouchableOpacity onPress={onPress} activeOpacity={0.7}>
-      <GlassCard>
-        <View style={styles.header}>
-          <Text style={[styles.title, { color: colors.textPrimary }]}>Weekly reset</Text>
-          <Text style={[styles.action, { color: colors.accentPrimary }]}>Open Weekly Review</Text>
-        </View>
-        <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
-          Clear {pendingTaskCount} pending task{pendingTaskCount === 1 ? '' : 's'} before the week closes.
+    <FrostCard glow="teal" onPress={onPress}>
+      <View style={styles.header}>
+        <Text variant="titleLarge" style={{ color: theme.colors.onSurface }}>
+          Weekly reset
         </Text>
-      </GlassCard>
-    </TouchableOpacity>
+        <Text variant="labelLarge" style={{ color: theme.colors.primary }}>
+          Open Weekly Review
+        </Text>
+      </View>
+      <Text variant="bodyMedium" style={{ color: theme.colors.onSurfaceVariant, marginTop: spacing.sm }}>
+        Clear {pendingTaskCount} pending task{pendingTaskCount === 1 ? '' : 's'} before the week closes.
+      </Text>
+    </FrostCard>
   );
 }
 
@@ -32,17 +34,5 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-  },
-  title: {
-    fontSize: typography.sizes.lg,
-    fontWeight: typography.weights.semibold,
-  },
-  action: {
-    fontSize: typography.sizes.sm,
-    fontWeight: typography.weights.medium,
-  },
-  subtitle: {
-    fontSize: typography.sizes.sm,
-    marginTop: spacing.sm,
   },
 });

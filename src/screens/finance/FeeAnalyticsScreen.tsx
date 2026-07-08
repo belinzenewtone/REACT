@@ -1,20 +1,22 @@
 import React, { useEffect, useState } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
   ScrollView,
-  TouchableOpacity,
   Animated,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { useSQLiteContext } from 'expo-sqlite';
-import { useThemeColors } from '../../hooks/useThemeColors';
-import { spacing, typography, borderRadius } from '../../theme';
-import { formatCurrency } from '../../utils/formatters';
+import {
+  Card,
+  Text,
+  useTheme,
+} from 'react-native-paper';
+import { spacing } from '../../theme';
 import { GlassCard } from '../../components/common/GlassCard';
+import { formatCurrency } from '../../utils/formatters';
+import { PageScaffold } from '../../components/common/PageScaffold';
 
 type FeeCategory = {
   category: string;
@@ -30,7 +32,10 @@ type FeeTx = {
   date: string;
 };
 
-function FeeBar({ category, maxTotal, colors }: { category: FeeCategory; maxTotal: number; colors: any }) {
+const WARNING_COLOR = '#F5CB5C';
+
+function FeeBar({ category, maxTotal }: { category: FeeCategory; maxTotal: number }) {
+  const theme = useTheme();
   const anim = React.useRef(new Animated.Value(0)).current;
   const ratio = maxTotal > 0 ? category.total / maxTotal : 0;
 
@@ -45,19 +50,19 @@ function FeeBar({ category, maxTotal, colors }: { category: FeeCategory; maxTota
   return (
     <View style={styles.barRow}>
       <View style={styles.barLabel}>
-        <Text style={[styles.barCategoryText, { color: colors.textPrimary }]}>
+        <Text variant="bodyMedium" style={{ color: theme.colors.onSurface }}>
           {category.category.charAt(0).toUpperCase() + category.category.slice(1).toLowerCase()}
         </Text>
-        <Text style={[styles.barAmount, { color: colors.warning }]}>
+        <Text variant="bodyMedium" style={{ color: WARNING_COLOR, fontWeight: '500' }}>
           {formatCurrency(category.total)}
         </Text>
       </View>
-      <View style={[styles.barTrack, { backgroundColor: colors.bgTertiary }]}>
+      <View style={[styles.barTrack, { backgroundColor: theme.colors.outlineVariant }]}>
         <Animated.View
           style={[
             styles.barFill,
             {
-              backgroundColor: colors.warning,
+              backgroundColor: WARNING_COLOR,
               width: anim.interpolate({ inputRange: [0, 1], outputRange: ['0%', '100%'] }),
             },
           ]}
@@ -68,7 +73,7 @@ function FeeBar({ category, maxTotal, colors }: { category: FeeCategory; maxTota
 }
 
 export function FeeAnalyticsScreen() {
-  const colors = useThemeColors();
+  const theme = useTheme();
   const navigation = useNavigation<any>();
   const db = useSQLiteContext();
   const [categories, setCategories] = useState<FeeCategory[]>([]);
@@ -82,7 +87,8 @@ export function FeeAnalyticsScreen() {
   async function load() {
     try {
       const now = new Date();
-      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+      // Local month start to match SMS-imported transaction date storage.
+      const startOfMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01T00:00:00`;
 
       const feeCategories = ['AIRTIME', 'FULIZA', 'WITHDRAWAL', 'SUBSCRIPTION', 'Fee'];
       const placeholders = feeCategories.map(() => '?').join(',');
@@ -119,125 +125,140 @@ export function FeeAnalyticsScreen() {
   const isEmpty = !isLoading && categories.length === 0;
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.bgPrimary }]} edges={['top']}>
+    <PageScaffold
+      eyebrow="Finance"
+      title="Service Charges"
+      subtitle="Airtime, Fuliza, withdrawals and subscriptions this month"
+      onBack={() => navigation.goBack()}
+    >
       <ScrollView contentContainerStyle={styles.content}>
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()}>
-            <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
-          </TouchableOpacity>
-          <View style={styles.headerCenter}>
-            <Text style={[styles.eyebrow, { color: colors.textSecondary }]}>Finance</Text>
-            <Text style={[styles.title, { color: colors.textPrimary }]}>Service Charges</Text>
-          </View>
-          <View style={{ width: 24 }} />
-        </View>
-
-        <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
-          Airtime, Fuliza, withdrawals and subscriptions this month
-        </Text>
-
         {isEmpty ? (
           <View style={styles.emptyState}>
-            <Ionicons name="checkmark-circle-outline" size={48} color={colors.textTertiary} />
-            <Text style={[styles.emptyTitle, { color: colors.textPrimary }]}>No service charges this month</Text>
-            <Text style={[styles.emptyDesc, { color: colors.textSecondary }]}>
+            <Ionicons name="checkmark-circle-outline" size={48} color={theme.colors.onSurfaceVariant} />
+            <Text variant="titleMedium" style={{ color: theme.colors.onSurface, marginTop: spacing.base, textAlign: 'center' }}>
+              No service charges this month
+            </Text>
+            <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant, textAlign: 'center', marginTop: spacing.sm }}>
               No airtime, Fuliza, withdrawal, or subscription transactions found.
             </Text>
           </View>
         ) : (
           <>
             <GlassCard style={styles.totalCard}>
-            <Text style={[styles.totalLabel, { color: colors.textSecondary }]}>This Month's Charges</Text>
-            <Text style={[styles.totalAmount, { color: colors.warning }]}>{formatCurrency(totalFees)}</Text>
-          </GlassCard>
+              <Card.Content>
+                <Text variant="bodyMedium" style={{ color: theme.colors.onSurfaceVariant }}>
+                  This Month's Charges
+                </Text>
+                <Text variant="headlineLarge" style={{ color: WARNING_COLOR, marginTop: spacing.xs }}>
+                  {formatCurrency(totalFees)}
+                </Text>
+              </Card.Content>
+            </GlassCard>
 
-          {categories.length > 0 && (
-            <>
-              <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>By Category</Text>
-              <GlassCard>
-                {categories.map((cat, i) => (
-                  <View key={cat.category}>
-                    <FeeBar category={cat} maxTotal={maxTotal} colors={colors} />
-                    {i < categories.length - 1 && (
-                      <View style={[styles.divider, { backgroundColor: colors.border }]} />
-                    )}
-                  </View>
-                ))}
-              </GlassCard>
-            </>
-          )}
-
-          {transactions.length > 0 && (
-            <>
-              <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>Transactions</Text>
-              <GlassCard>
-                {transactions.map((tx, i) => (
-                  <View key={tx.id}>
-                    <View style={styles.txRow}>
-                      <View style={styles.txInfo}>
-                        <Text style={[styles.txMerchant, { color: colors.textPrimary }]} numberOfLines={1}>
-                          {tx.merchant || 'Unknown'}
-                        </Text>
-                        <Text style={[styles.txMeta, { color: colors.textSecondary }]}>
-                          {tx.category} · {new Date(tx.date).toLocaleDateString('en-KE', { month: 'short', day: 'numeric' })}
-                        </Text>
+            {categories.length > 0 && (
+              <>
+                <Text variant="labelLarge" style={[styles.sectionLabel, { color: theme.colors.onSurfaceVariant }]}>
+                  By Category
+                </Text>
+                <GlassCard>
+                  <Card.Content>
+                    {categories.map((cat, i) => (
+                      <View key={cat.category}>
+                        <FeeBar category={cat} maxTotal={maxTotal} />
+                        {i < categories.length - 1 && (
+                          <View style={[styles.divider, { backgroundColor: theme.colors.outlineVariant }]} />
+                        )}
                       </View>
-                      <Text style={[styles.txAmount, { color: colors.textPrimary }]}>
-                        {formatCurrency(tx.amount)}
-                      </Text>
-                    </View>
-                    {i < transactions.length - 1 && (
-                      <View style={[styles.divider, { backgroundColor: colors.border }]} />
-                    )}
-                  </View>
-                ))}
-              </GlassCard>
-            </>
-          )}
+                    ))}
+                  </Card.Content>
+                </GlassCard>
+              </>
+            )}
+
+            {transactions.length > 0 && (
+              <>
+                <Text variant="labelLarge" style={[styles.sectionLabel, { color: theme.colors.onSurfaceVariant }]}>
+                  Transactions
+                </Text>
+                <GlassCard>
+                  <Card.Content>
+                    {transactions.map((tx, i) => (
+                      <View key={tx.id}>
+                        <View style={styles.txRow}>
+                          <View style={styles.txInfo}>
+                            <Text variant="bodyMedium" style={{ color: theme.colors.onSurface }} numberOfLines={1}>
+                              {tx.merchant || 'Unknown'}
+                            </Text>
+                            <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
+                              {tx.category} · {new Date(tx.date).toLocaleDateString('en-KE', { month: 'short', day: 'numeric' })}
+                            </Text>
+                          </View>
+                          <Text variant="bodyMedium" style={{ color: theme.colors.onSurface, fontWeight: '500' }}>
+                            {formatCurrency(tx.amount)}
+                          </Text>
+                        </View>
+                        {i < transactions.length - 1 && (
+                          <View style={[styles.divider, { backgroundColor: theme.colors.outlineVariant }]} />
+                        )}
+                      </View>
+                    ))}
+                  </Card.Content>
+                </GlassCard>
+              </>
+            )}
           </>
         )}
       </ScrollView>
-    </SafeAreaView>
+    </PageScaffold>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
-  header: {
+  content: {
+    paddingTop: spacing.sm,
+    paddingBottom: spacing['4xl'],
+  },
+  totalCard: {
+    marginBottom: spacing.base,
+  },
+  sectionLabel: {
+    marginTop: spacing.lg,
+    marginBottom: spacing.sm,
+  },
+  barRow: {
+    paddingVertical: spacing.sm,
+  },
+  barLabel: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 6,
+  },
+  barTrack: {
+    height: 6,
+    borderRadius: 3,
+    overflow: 'hidden',
+  },
+  barFill: {
+    height: 6,
+    borderRadius: 3,
+  },
+  divider: {
+    height: 1,
+    marginVertical: 2,
+  },
+  txRow: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: spacing.sm,
   },
-  headerCenter: { flex: 1, alignItems: 'center' },
-  eyebrow: { fontSize: typography.sizes.xs, fontWeight: typography.weights.medium },
-  title: { fontSize: typography.sizes.xl, fontWeight: typography.weights.bold },
-  subtitle: {
-    fontSize: typography.sizes.sm,
-    marginBottom: spacing.base,
+  txInfo: {
+    flex: 1,
+    marginRight: spacing.sm,
   },
-  content: { paddingHorizontal: spacing.screenHorizontal, paddingVertical: spacing.lg, paddingBottom: spacing['4xl'] },
-  totalCard: { marginBottom: spacing.base },
-  totalLabel: { fontSize: typography.sizes.sm, marginBottom: spacing.xs },
-  totalAmount: { fontSize: typography.sizes['3xl'], fontWeight: typography.weights.bold },
-  sectionLabel: {
-    fontSize: typography.sizes.sm,
-    fontWeight: typography.weights.medium,
-    marginTop: spacing.lg,
-    marginBottom: spacing.sm,
+  emptyState: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: spacing['2xl'],
   },
-  barRow: { paddingVertical: spacing.sm },
-  barLabel: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 },
-  barCategoryText: { fontSize: typography.sizes.sm },
-  barAmount: { fontSize: typography.sizes.sm, fontWeight: typography.weights.semibold },
-  barTrack: { height: 6, borderRadius: 3, overflow: 'hidden' },
-  barFill: { height: 6, borderRadius: 3 },
-  divider: { height: 1, marginVertical: 2 },
-  txRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: spacing.sm },
-  txInfo: { flex: 1, marginRight: spacing.sm },
-  txMerchant: { fontSize: typography.sizes.sm },
-  txMeta: { fontSize: typography.sizes.xs, marginTop: 2 },
-  txAmount: { fontSize: typography.sizes.sm, fontWeight: typography.weights.medium },
-  emptyState: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: spacing['2xl'] },
-  emptyTitle: { fontSize: typography.sizes.lg, fontWeight: typography.weights.semibold, marginTop: spacing.base, textAlign: 'center' },
-  emptyDesc: { fontSize: typography.sizes.sm, textAlign: 'center', marginTop: spacing.sm },
 });

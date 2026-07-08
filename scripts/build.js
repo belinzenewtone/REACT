@@ -31,13 +31,38 @@ if (target !== 'apk' && target !== 'aab') {
   process.exit(1);
 }
 
-const ROOT = path.resolve(__dirname, '..');
+const fs = require('fs');
+
+const originalRoot = path.resolve(__dirname, '..');
+
+// Windows CMake/ninja builds fail when intermediate object paths under
+// android/app/.cxx exceed the ~250 character limit (especially for
+// react-native-gesture-handler). If a short junction exists at C:\rf pointing
+// to this project, build from there to avoid the long-path error.
+let ROOT = originalRoot;
+const shortJunction = 'C:\\rf';
+if (process.platform === 'win32') {
+  try {
+    if (
+      fs.existsSync(path.join(shortJunction, 'package.json')) &&
+      fs.existsSync(path.join(shortJunction, 'android', 'gradlew'))
+    ) {
+      ROOT = shortJunction;
+    }
+  } catch {
+    // fall back to originalRoot
+  }
+}
 const isWin = process.platform === 'win32';
-const gradlew = isWin ? 'gradlew.bat' : './gradlew';
+const gradlew = isWin ? '.\\gradlew.bat --no-daemon' : './gradlew';
 const gradleTask = target === 'aab' ? 'bundleRelease' : 'assembleRelease';
 
 const dim = (s) => '\x1b[2m' + s + '\x1b[0m';
 const bold = (s) => '\x1b[1m' + s + '\x1b[0m';
+
+if (ROOT !== originalRoot) {
+  console.log(dim(`[build] using short build root: ${ROOT}`));
+}
 
 function promptYesNo(message, defaultNo = true) {
   return new Promise((resolve) => {
@@ -82,8 +107,12 @@ async function resolveClean() {
   const steps = [
     { name: 'expo prebuild',                  spawn: prebuildSpawn,                              cwd: ROOT },
     { name: 'pin Gradle wrapper',             cmd: 'node scripts/pin-gradle.js',               cwd: ROOT },
+    { name: 'pin NDK version',                cmd: 'node scripts/pin-ndk.js',                  cwd: ROOT },
     { name: 'bump version',                   cmd: 'node scripts/bump-version.js',             cwd: ROOT },
     { name: 'setup signing (restores .jks)',  cmd: 'node scripts/setup-signing.js',            cwd: ROOT },
+    ...(target === 'apk'
+      ? [{ name: 'split ABI (v7/v8 APKs)',     cmd: 'node scripts/split-abi.js',                cwd: ROOT }]
+      : []),
     { name: `gradle ${gradleTask}`,           cmd: `${gradlew} ${gradleTask}`,                 cwd: path.join(ROOT, 'android') },
     { name: 'sync EAS versionCode',           cmd: 'node scripts/sync-eas-version.js',         cwd: ROOT, allowFail: true },
     { name: 'print artifact',                 cmd: `node scripts/print-artifact.js ${target}`, cwd: ROOT },

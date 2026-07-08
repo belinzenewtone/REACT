@@ -1,34 +1,33 @@
 import React, { useEffect, useState } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-} from 'react-native';
+import { View, StyleSheet, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
-import { useThemeColors } from '../../hooks/useThemeColors';
+import { Text, IconButton, useTheme } from 'react-native-paper';
 import { useAppStore } from '../../store';
+import { useSQLiteContext } from 'expo-sqlite';
 import {
-  requestNotificationPermissions,
-  scheduleDailyDigest,
-  cancelDailyDigest,
-} from '../../services/notificationService';
+  syncNotificationPermissions,
+  syncDailyDigest,
+  syncAllNotifications,
+  cancelAllNotifications,
+} from '../../services/notificationSyncService';
+import { checkAllBudgetThresholds } from '../../services/budgetAlertService';
 import { GlassCard } from '../../components/common/GlassCard';
 import { TopBanner } from '../../components/common/TopBanner';
 import { SettingsRow } from '../../components/settings/SettingsRow';
-import { SliderRow } from '../../components/settings/SliderRow';
+import { AlertLevelStepper } from '../../components/settings/AlertLevelStepper';
 import { TimePickerModal } from '../../components/settings/TimePickerModal';
 import { animateLayout } from '../../utils/animation';
-import { spacing, typography } from '../../theme';
+import { spacing } from '../../theme';
 
 export function NotificationsScreen() {
-  const colors = useThemeColors();
+  const theme = useTheme();
   const navigation = useNavigation<any>();
+  const db = useSQLiteContext();
   const settings = useAppStore((state) => state.settings);
   const updateSettings = useAppStore((state) => state.updateSettings);
+  const clearFiredBudgetAlerts = useAppStore((state) => state.clearFiredBudgetAlerts);
 
   const [timePickerVisible, setTimePickerVisible] = useState(false);
   const [infoMessage, setInfoMessage] = useState<string | null>(null);
@@ -43,6 +42,10 @@ export function NotificationsScreen() {
     updateSettings({
       alertThresholds: { ...settings.alertThresholds, [key]: value },
     });
+    const now = new Date();
+    const yearMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    clearFiredBudgetAlerts(yearMonth);
+    checkAllBudgetThresholds(db).catch(() => {});
   };
 
   const formatTime = (time: string) => {
@@ -53,16 +56,19 @@ export function NotificationsScreen() {
   };
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.bgPrimary }]} edges={['top']}>
+    <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]} edges={['top']}>
       <TopBanner tone="success" message={infoMessage ?? ''} visible={!!infoMessage} onDismiss={() => setInfoMessage(null)} />
 
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()}>
-            <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
-          </TouchableOpacity>
-          <Text style={[styles.title, { color: colors.textPrimary }]}>Notifications</Text>
-          <View style={{ width: 24 }} />
+          <IconButton
+            icon={() => <Ionicons name="arrow-back" size={24} color={theme.colors.onSurface} />}
+            size={24}
+            onPress={() => navigation.goBack()}
+            style={{ margin: 0 }}
+          />
+          <Text variant="titleLarge" style={{ color: theme.colors.onSurface }} numberOfLines={1}>Notifications</Text>
+          <View style={{ width: 44 }} />
         </View>
 
         <GlassCard>
@@ -73,12 +79,17 @@ export function NotificationsScreen() {
             toggleValue={settings.notificationsEnabled}
             onToggleChange={async (value) => {
               if (value) {
-                const granted = await requestNotificationPermissions();
-                updateSettings({ notificationsEnabled: granted });
-                if (!granted) setInfoMessage('Please allow notifications in device settings');
+                const granted = await syncNotificationPermissions();
+                if (granted) {
+                  await syncAllNotifications(db);
+                  setInfoMessage('Notifications enabled');
+                } else {
+                  setInfoMessage('Please allow notifications in device settings');
+                }
               } else {
                 updateSettings({ notificationsEnabled: false });
-                await cancelDailyDigest();
+                await cancelAllNotifications();
+                setInfoMessage('Notifications disabled');
               }
             }}
             isLast
@@ -93,9 +104,12 @@ export function NotificationsScreen() {
             subtitle="Notify when spending exceeds a budget category"
             toggle
             toggleValue={settings.budgetThresholdAlerts}
-            onToggleChange={(value) => {
+            onToggleChange={async (value) => {
               animateLayout();
               updateSettings({ budgetThresholdAlerts: value });
+              if (value) {
+                await checkAllBudgetThresholds(db);
+              }
               setInfoMessage(value ? 'Budget alerts enabled' : 'Budget alerts disabled');
             }}
             isLast
@@ -106,32 +120,23 @@ export function NotificationsScreen() {
           <>
             <SectionLabel label="Alert Levels" />
             <GlassCard>
-              <SliderRow
+              <AlertLevelStepper
                 label="High"
                 value={settings.alertThresholds.high}
-                minimumValue={10}
-                maximumValue={100}
-                step={5}
                 suffix="%"
-                onValueChange={(value) => setAlertThreshold('high', value)}
+                onChange={(value) => setAlertThreshold('high', value)}
               />
-              <SliderRow
+              <AlertLevelStepper
                 label="Medium"
                 value={settings.alertThresholds.medium}
-                minimumValue={10}
-                maximumValue={100}
-                step={5}
                 suffix="%"
-                onValueChange={(value) => setAlertThreshold('medium', value)}
+                onChange={(value) => setAlertThreshold('medium', value)}
               />
-              <SliderRow
+              <AlertLevelStepper
                 label="Low"
                 value={settings.alertThresholds.low}
-                minimumValue={10}
-                maximumValue={100}
-                step={5}
                 suffix="%"
-                onValueChange={(value) => setAlertThreshold('low', value)}
+                onChange={(value) => setAlertThreshold('low', value)}
               />
             </GlassCard>
           </>
@@ -147,13 +152,8 @@ export function NotificationsScreen() {
             toggleValue={settings.dailyDigestMorningSummary}
             onToggleChange={async (value) => {
               updateSettings({ dailyDigestMorningSummary: value });
-              if (value && settings.notificationsEnabled) {
-                await scheduleDailyDigest(settings.dailyDigestDeliveryTime);
-                setInfoMessage('Daily digest enabled');
-              } else {
-                await cancelDailyDigest();
-                setInfoMessage('Daily digest disabled');
-              }
+              await syncDailyDigest();
+              setInfoMessage(value ? 'Daily digest enabled' : 'Daily digest disabled');
             }}
           />
           <SettingsRow
@@ -175,9 +175,7 @@ export function NotificationsScreen() {
         onConfirm={async (time) => {
           updateSettings({ dailyDigestDeliveryTime: time });
           setTimePickerVisible(false);
-          if (settings.dailyDigestMorningSummary && settings.notificationsEnabled) {
-            await scheduleDailyDigest(time);
-          }
+          await syncDailyDigest();
           setInfoMessage(`Daily digest rescheduled for ${formatTime(time)}`);
         }}
       />
@@ -186,9 +184,11 @@ export function NotificationsScreen() {
 }
 
 function SectionLabel({ label }: { label: string }) {
-  const colors = useThemeColors();
+  const theme = useTheme();
   return (
-    <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>{label}</Text>
+    <Text variant="titleMedium" style={{ color: theme.colors.onSurfaceVariant, marginTop: spacing.lg, marginBottom: spacing.base }}>
+      {label}
+    </Text>
   );
 }
 
@@ -202,19 +202,10 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingBottom: spacing.sm,
   },
-  title: {
-    fontSize: typography.sizes.lg,
-    fontWeight: typography.weights.semibold,
-  },
   content: {
-    paddingHorizontal: spacing.screenHorizontal, paddingVertical: spacing.lg,
+    paddingHorizontal: spacing.screenHorizontal,
+    paddingVertical: spacing.lg,
     paddingTop: spacing.sm,
     paddingBottom: spacing['4xl'],
-  },
-  sectionLabel: {
-    fontSize: typography.sizes.base,
-    fontWeight: typography.weights.medium,
-    marginTop: spacing.lg,
-    marginBottom: spacing.base,
   },
 });

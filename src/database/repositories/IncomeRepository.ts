@@ -91,4 +91,12 @@ export class IncomeRepository extends BaseRepository<IncomeDbRecord> {
       `SELECT * FROM incomes WHERE ${this.notDeletedClause()} ORDER BY date DESC`
     );
   }
+
+  async search(query: string, limit: number = 50): Promise<IncomeDbRecord[]> {
+    const like = `%${query}%`;
+    return await this.db.getAllAsync<IncomeDbRecord>(
+      `SELECT * FROM incomes WHERE ${this.notDeletedClause()} AND (source LIKE ? OR note LIKE ?) ORDER BY date DESC LIMIT ?`,
+      [like, like, limit]
+    );
+  }
 }

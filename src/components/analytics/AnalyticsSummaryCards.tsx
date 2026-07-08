@@ -1,10 +1,10 @@
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { Text, useTheme } from 'react-native-paper';
 import { GlassCard } from '../common/GlassCard';
-import { useThemeColors } from '../../hooks/useThemeColors';
 import { formatCurrency } from '../../utils/formatters';
-import { spacing, typography } from '../../theme';
+import { spacing } from '../../theme';
 
 interface AnalyticsSummaryCardsProps {
   spend: number;
@@ -13,14 +13,16 @@ interface AnalyticsSummaryCardsProps {
   average: number;
 }
 
+const SUCCESS = '#7BC47B';
+
 export function AnalyticsSummaryCards({ spend, income, net, average }: AnalyticsSummaryCardsProps) {
-  const colors = useThemeColors();
+  const theme = useTheme();
 
   const cards = [
-    { label: 'Spend', value: spend, icon: 'arrow-up-circle', color: colors.danger },
-    { label: 'Income', value: income, icon: 'arrow-down-circle', color: colors.success },
-    { label: 'Net', value: net, icon: 'wallet', color: net >= 0 ? colors.success : colors.danger },
-    { label: 'Average', value: average, icon: 'stats-chart', color: colors.accentPrimary },
+    { label: 'Spend', value: spend, icon: 'arrow-up-circle', color: theme.colors.error },
+    { label: 'Income', value: income, icon: 'arrow-down-circle', color: SUCCESS },
+    { label: 'Net', value: net, icon: 'wallet', color: net >= 0 ? SUCCESS : theme.colors.error },
+    { label: 'Average', value: average, icon: 'stats-chart', color: theme.colors.primary },
   ];
 
   return (
@@ -28,10 +30,12 @@ export function AnalyticsSummaryCards({ spend, income, net, average }: Analytics
       {cards.map((card) => (
         <GlassCard key={card.label} style={styles.card}>
           <Ionicons name={card.icon as keyof typeof Ionicons.glyphMap} size={18} color={card.color} />
-          <Text style={[styles.value, { color: colors.textPrimary }]} numberOfLines={1}>
+          <Text variant="titleLarge" style={[styles.value, { color: theme.colors.onSurface }]} numberOfLines={1}>
             {formatCurrency(Math.abs(card.value))}
           </Text>
-          <Text style={[styles.label, { color: colors.textSecondary }]} numberOfLines={1}>{card.label}</Text>
+          <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }} numberOfLines={1}>
+            {card.label}
+          </Text>
         </GlassCard>
       ))}
     </View>
@@ -49,12 +53,6 @@ const styles = StyleSheet.create({
     minWidth: '45%',
   },
   value: {
-    fontSize: typography.sizes.lg,
-    fontWeight: typography.weights.bold,
     marginTop: spacing.sm,
-  },
-  label: {
-    fontSize: typography.sizes.xs,
-    marginTop: 2,
   },
 });

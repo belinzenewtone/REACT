@@ -9,6 +9,7 @@ interface BudgetProgress {
   spent: number;
   remaining: number;
   percent: number;
+  isActive: boolean;
 }
 
 interface BudgetState {
@@ -31,7 +32,8 @@ export const useBudgetStore = create<BudgetState>((set, get) => ({
       const repo = new BudgetRepository(db);
       const now = new Date();
       const budgets = await repo.findAll();
-      const spent = await repo.getSpentByCategory(now.getUTCFullYear(), now.getUTCMonth() + 1);
+      // Match the user's local calendar month (used by dashboard and analytics).
+      const spent = await repo.getSpentByCategory(now.getFullYear(), now.getMonth() + 1);
       const spentMap = new Map(spent.map((s) => [s.category, s.spent]));
 
       const withProgress: BudgetProgress[] = budgets.map((b) => {
@@ -41,6 +43,7 @@ export const useBudgetStore = create<BudgetState>((set, get) => ({
           spent: spentAmount,
           remaining: Math.max(b.limit_amount - spentAmount, 0),
           percent: b.limit_amount > 0 ? Math.min((spentAmount / b.limit_amount) * 100, 100) : 0,
+          isActive: b.is_active === 1,
         };
       });
 

@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { startOfDay, endOfDay, startOfWeek, endOfWeek } from 'date-fns';
+import { toLocalIso } from '../utils/formatters';
 import type { SQLiteDatabase } from 'expo-sqlite';
 import { TransactionRepository } from '../database/repositories/TransactionRepository';
 import { BudgetRepository } from '../database/repositories/BudgetRepository';
@@ -55,20 +56,22 @@ export const useDashboardStore = create<DashboardState>((set) => ({
       const eventRepo = new EventRepository(db);
 
       const now = new Date();
-      const thisYear = now.getUTCFullYear();
-      const thisMonth = now.getUTCMonth() + 1;
+      // Use local device year/month so the dashboard reflects the user's
+      // wall-clock day (e.g. Kenya EAT) rather than the UTC calendar.
+      const thisYear = now.getFullYear();
+      const thisMonth = now.getMonth() + 1;
       const lastMonth = thisMonth === 1 ? 12 : thisMonth - 1;
       const lastMonthYear = thisMonth === 1 ? thisYear - 1 : thisYear;
 
       const thisMonthTotals = await txRepo.getMonthlyTotals(thisYear, thisMonth);
       const lastMonthTotals = await txRepo.getMonthlyTotals(lastMonthYear, lastMonth);
 
-      const todayStart = startOfDay(now).toISOString();
-      const todayEnd = endOfDay(now).toISOString();
+      const todayStart = toLocalIso(startOfDay(now));
+      const todayEnd = toLocalIso(endOfDay(now));
       const todayTotals = await txRepo.getTotalsInRange(todayStart, todayEnd);
 
-      const weekStart = startOfWeek(now, { weekStartsOn: 1 }).toISOString();
-      const weekEnd = endOfWeek(now, { weekStartsOn: 1 }).toISOString();
+      const weekStart = toLocalIso(startOfWeek(now, { weekStartsOn: 1 }));
+      const weekEnd = toLocalIso(endOfWeek(now, { weekStartsOn: 1 }));
       const weekTotals = await txRepo.getTotalsInRange(weekStart, weekEnd);
 
       const budgetRecords = await budgetRepo.findAll();
@@ -132,11 +135,21 @@ export const useDashboardStore = create<DashboardState>((set) => ({
         hasLoadedOnce: true,
       });
     } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      // SQLite statement finalized mid-query — happens when the native context
+      // is torn down during an OTA reload or hot reload. Retry silently.
+      if (message.includes('NativeStatement') || message.includes('finalized')) {
+        set({ isLoading: false });
+        setTimeout(() => {
+          useDashboardStore.getState().loadDashboard(db).catch(() => {});
+        }, 700);
+        return;
+      }
       console.error('Failed to load dashboard:', error);
       set({
         isLoading: false,
         hasLoadedOnce: true,
-        error: error instanceof Error ? error.message : 'Failed to load dashboard',
+        error: message,
       });
     }
   },

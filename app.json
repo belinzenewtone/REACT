@@ -1,11 +1,30 @@
 {
   "expo": {
-    "name": "RFINAL",
+    "name": "PersonalOS",
     "slug": "RFINAL",
-    "version": "1.0.3",
+    "version": "1.0.70",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "automatic",
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "backgroundColor": "#0B0E14",
+      "resizeMode": "contain",
+      "imageWidth": 200,
+      "dark": {
+        "image": "./assets/splash-icon.png",
+        "backgroundColor": "#0B0E14",
+        "resizeMode": "contain",
+        "imageWidth": 200
+      }
+    },
+    "userInterfaceStyle": "dark",
+    "androidStatusBar": {
+      "backgroundColor": "#0B0E14",
+      "barStyle": "light-content"
+    },
+    "androidNavigationBar": {
+      "backgroundColor": "#0B0E14"
+    },
     "ios": {
       "supportsTablet": true,
       "infoPlist": {
@@ -16,17 +35,16 @@
       "package": "com.belinze.lifeos",
       "backgroundColor": "#0B0E14",
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
-        "foregroundImage": "./assets/android-icon-foreground.png",
-        "backgroundImage": "./assets/android-icon-background.png",
-        "monochromeImage": "./assets/android-icon-monochrome.png"
+        "backgroundColor": "#0B0E14",
+        "foregroundImage": "./assets/android-icon-foreground.png"
       },
       "predictiveBackGestureEnabled": false,
       "permissions": [
         "android.permission.RECEIVE_SMS",
         "android.permission.READ_SMS",
         "android.permission.FOREGROUND_SERVICE",
-        "android.permission.FOREGROUND_SERVICE_DATA_SYNC"
+        "android.permission.FOREGROUND_SERVICE_DATA_SYNC",
+        "android.permission.POST_NOTIFICATIONS"
       ]
     },
     "web": {
@@ -48,19 +66,16 @@
         "expo-build-properties",
         {
           "android": {
-            "newArchEnabled": true,
-            "enableAbiSplits": true,
-            "abiFilters": [
-              "arm64-v8a",
-              "armeabi-v7a"
-            ]
+            "newArchEnabled": true
           },
           "ios": {
             "newArchEnabled": true
           }
         }
       ],
-      "@react-native-community/datetimepicker"
+      "@react-native-community/datetimepicker",
+      "./plugins/withAllowBackup.js",
+      "./plugins/withDesugaring.js"
     ],
     "extra": {
       "eas": {
@@ -72,7 +87,10 @@
       "policy": "appVersion"
     },
     "updates": {
-      "url": "https://u.expo.dev/f7df9ed3-50f4-44bd-9f01-61d89d031c84"
+      "url": "https://u.expo.dev/f7df9ed3-50f4-44bd-9f01-61d89d031c84",
+      "requestHeaders": {
+        "expo-channel-name": "production"
+      }
     }
   }
 }

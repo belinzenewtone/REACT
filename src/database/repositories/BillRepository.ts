@@ -106,4 +106,12 @@ export class BillRepository extends BaseRepository<BillDbRecord> {
       `SELECT * FROM bills WHERE ${this.notDeletedClause()} ORDER BY next_due_date ASC`
     );
   }
+
+  async search(query: string, limit: number = 50): Promise<BillDbRecord[]> {
+    const like = `%${query}%`;
+    return await this.db.getAllAsync<BillDbRecord>(
+      `SELECT * FROM bills WHERE ${this.notDeletedClause()} AND (title LIKE ? OR notes LIKE ?) ORDER BY next_due_date ASC LIMIT ?`,
+      [like, like, limit]
+    );
+  }
 }

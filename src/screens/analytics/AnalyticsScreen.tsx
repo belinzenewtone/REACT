@@ -1,18 +1,28 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity, RefreshControl } from 'react-native';
+import { View, ScrollView, StyleSheet, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { useSQLiteContext } from 'expo-sqlite';
-import { useThemeColors } from '../../hooks/useThemeColors';
+import {
+  Card,
+  Text,
+  Chip,
+  SegmentedButtons,
+  IconButton,
+  useTheme,
+} from 'react-native-paper';
 import { useAnalyticsStore, type DateRange } from '../../store/useAnalyticsStore';
+import { useDataVersion } from '../../store/dataVersion';
 import { AnalyticsSummaryCards } from '../../components/analytics/AnalyticsSummaryCards';
-import { CategoryBreakdownChart } from '../../components/analytics/CategoryBreakdownChart';
 import { WeeklySpendByCategoryChart } from '../../components/analytics/WeeklySpendByCategoryChart';
 import { TopMerchants } from '../../components/analytics/TopMerchants';
 import { GlassCard } from '../../components/common/GlassCard';
 import { animateLayout } from '../../utils/animation';
-import { spacing, typography, borderRadius } from '../../theme';
+import { spacing, BOTTOM_NAV_SAFE_AREA } from '../../theme';
+
+const SUCCESS = '#7BC47B';
+const WARNING = '#F5CB5C';
 
 type Tab = 'analytics' | 'insights';
 
@@ -27,71 +37,62 @@ const DATE_RANGES: { label: string; value: DateRange }[] = [
 ];
 
 export function AnalyticsScreen() {
-  const colors = useThemeColors();
+  const theme = useTheme();
   const navigation = useNavigation<any>();
   const db = useSQLiteContext();
   const [tab, setTab] = useState<Tab>('analytics');
   const { data, isLoading, dateRange, setDateRange, loadAnalytics } = useAnalyticsStore();
+  const dataVersion = useDataVersion((s) => s.version);
 
   useEffect(() => {
     loadAnalytics(db);
-  }, [db, dateRange, loadAnalytics]);
+  }, [db, dateRange, loadAnalytics, dataVersion]);
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.bgPrimary }]} edges={['top']}>
+    <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]} edges={['top']}>
       <ScrollView
         contentContainerStyle={styles.content}
         refreshControl={
           <RefreshControl
             refreshing={isLoading}
             onRefresh={() => loadAnalytics(db)}
-            tintColor={colors.accentPrimary}
-            colors={[colors.accentPrimary]}
+            tintColor={theme.colors.primary}
+            colors={[theme.colors.primary]}
           />
         }
       >
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()}>
-            <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
-          </TouchableOpacity>
+          <IconButton
+            icon={() => <Ionicons name="arrow-back" size={24} color={theme.colors.onSurface} />}
+            onPress={() => navigation.goBack()}
+          />
           <View style={styles.headerText}>
-            <Text style={[styles.title, { color: colors.textPrimary }]}>Analytics</Text>
-            <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
+            <Text variant="headlineSmall" style={{ color: theme.colors.onSurface }} numberOfLines={1}>
+              Analytics
+            </Text>
+            <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }} numberOfLines={1}>
               Productivity and finance trends in one place
             </Text>
           </View>
-          <View style={{ width: 24 }} />
+          <View style={{ width: 40 }} />
         </View>
 
-        {/* Tab switcher */}
-        <View style={[styles.tabRow, { backgroundColor: colors.glassWhite, borderColor: colors.border }]}>
-          {TABS.map((t) => {
-            const active = tab === t.key;
-            return (
-              <TouchableOpacity
-                key={t.key}
-                style={[styles.tabBtn, active && { backgroundColor: colors.accentPrimary }]}
-                onPress={() => {
-                  animateLayout();
-                  setTab(t.key);
-                }}
-              >
-                <Ionicons
-                  name={t.icon}
-                  size={15}
-                  color={active ? colors.textInverse : colors.textSecondary}
-                />
-                <Text style={[styles.tabLabel, { color: active ? colors.textInverse : colors.textSecondary }]}>
-                  {t.label}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
+        <SegmentedButtons
+          value={tab}
+          onValueChange={(value) => {
+            animateLayout();
+            setTab(value as Tab);
+          }}
+          buttons={TABS.map((t) => ({
+            value: t.key,
+            label: t.label,
+            icon: () => <Ionicons name={t.icon} size={15} color={tab === t.key ? theme.colors.onPrimary : theme.colors.onSurfaceVariant} />,
+          }))}
+          style={[styles.tabBar, { backgroundColor: theme.colors.surfaceVariant }]}
+        />
 
         {data && tab === 'analytics' && (
           <>
-            {/* Date range chips — only on Analytics tab */}
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
@@ -100,27 +101,21 @@ export function AnalyticsScreen() {
               {DATE_RANGES.map((range) => {
                 const isSelected = dateRange === range.value;
                 return (
-                  <TouchableOpacity
+                  <Chip
                     key={range.value}
+                    selected={isSelected}
+                    onPress={() => setDateRange(range.value)}
                     style={[
                       styles.rangeChip,
                       {
-                        backgroundColor: isSelected ? colors.accentPrimary : colors.glassWhite,
-                        borderColor: colors.border,
+                        backgroundColor: isSelected ? theme.colors.primary : theme.colors.surfaceVariant,
+                        borderColor: theme.colors.outlineVariant,
                       },
                     ]}
-                    onPress={() => setDateRange(range.value)}
+                    textStyle={{ color: isSelected ? theme.colors.onPrimary : theme.colors.onSurface }}
                   >
-                    <Text
-                      style={[
-                        styles.rangeText,
-                        { color: isSelected ? colors.textInverse : colors.textPrimary },
-                      ]}
-                      numberOfLines={1}
-                    >
-                      {range.label}
-                    </Text>
-                  </TouchableOpacity>
+                    {range.label}
+                  </Chip>
                 );
               })}
             </ScrollView>
@@ -137,10 +132,6 @@ export function AnalyticsScreen() {
             </View>
 
             <View style={styles.section}>
-              <CategoryBreakdownChart data={data.categoryBreakdown} />
-            </View>
-
-            <View style={styles.section}>
               <TopMerchants merchants={data.topMerchants} />
             </View>
           </>
@@ -148,50 +139,58 @@ export function AnalyticsScreen() {
 
         {data && tab === 'insights' && (
           <>
-            {/* Productivity Card */}
             <GlassCard style={styles.productivityCard}>
               <View style={styles.productivityHeader}>
-                <Ionicons name="checkbox-outline" size={18} color={colors.success} />
-                <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>Productivity</Text>
+                <Ionicons name="checkbox-outline" size={18} color={SUCCESS} />
+                <Text variant="titleMedium" style={{ color: theme.colors.onSurface }}>
+                  Productivity
+                </Text>
               </View>
               <View style={styles.productivityStats}>
                 <View style={styles.productivityStat}>
-                  <Text style={[styles.productivityValue, { color: colors.success }]}>
+                  <Text variant="headlineSmall" style={{ color: SUCCESS }}>
                     {data.productivity.tasksCompleted}
                   </Text>
-                  <Text style={[styles.productivityLabel, { color: colors.textSecondary }]}>Tasks completed</Text>
+                  <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
+                    Tasks completed
+                  </Text>
                 </View>
-                <View style={[styles.productivityDivider, { backgroundColor: colors.border }]} />
+                <View style={[styles.productivityDivider, { backgroundColor: theme.colors.outlineVariant }]} />
                 <View style={styles.productivityStat}>
-                  <Text style={[styles.productivityValue, { color: colors.warning }]}>
+                  <Text variant="headlineSmall" style={{ color: WARNING }}>
                     {data.productivity.tasksPending}
                   </Text>
-                  <Text style={[styles.productivityLabel, { color: colors.textSecondary }]}>Tasks pending</Text>
+                  <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
+                    Tasks pending
+                  </Text>
                 </View>
-                <View style={[styles.productivityDivider, { backgroundColor: colors.border }]} />
+                <View style={[styles.productivityDivider, { backgroundColor: theme.colors.outlineVariant }]} />
                 <View style={styles.productivityStat}>
-                  <Text style={[styles.productivityValue, { color: colors.accentPrimary }]}>
+                  <Text variant="headlineSmall" style={{ color: theme.colors.primary }}>
                     {data.productivity.completionRate.toFixed(0)}%
                   </Text>
-                  <Text style={[styles.productivityLabel, { color: colors.textSecondary }]}>Rate</Text>
+                  <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
+                    Rate
+                  </Text>
                 </View>
               </View>
             </GlassCard>
 
-            {/* Insights Cards */}
             {data.insights.length > 0 && (
               <View style={styles.insightsSection}>
-                <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>Key Insights</Text>
+                <Text variant="titleMedium" style={{ color: theme.colors.onSurface, marginBottom: spacing.base }}>
+                  Key Insights
+                </Text>
                 <View style={styles.insightsGrid}>
                   {data.insights.map((insight, i) => (
                     <GlassCard key={i} style={styles.insightCard}>
                       <View style={[styles.insightIcon, { backgroundColor: `${insight.color}20` }]}>
                         <Ionicons name={insight.icon as any} size={18} color={insight.color} />
                       </View>
-                      <Text style={[styles.insightTitle, { color: colors.textPrimary }]} numberOfLines={2}>
+                      <Text variant="bodyLarge" style={{ color: theme.colors.onSurface }} numberOfLines={2}>
                         {insight.title}
                       </Text>
-                      <Text style={[styles.insightDesc, { color: colors.textSecondary }]} numberOfLines={1}>
+                      <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }} numberOfLines={1}>
                         {insight.description}
                       </Text>
                     </GlassCard>
@@ -204,7 +203,9 @@ export function AnalyticsScreen() {
 
         {!data && !isLoading && (
           <View style={styles.emptyState}>
-            <Text style={[styles.emptyText, { color: colors.textTertiary }]}>No data available</Text>
+            <Text variant="bodyLarge" style={{ color: theme.colors.outline }}>
+              No data available
+            </Text>
           </View>
         )}
       </ScrollView>
@@ -216,6 +217,13 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
+  content: {
+    paddingHorizontal: spacing.screenHorizontal,
+    paddingVertical: spacing.lg,
+    paddingTop: spacing.sm,
+    paddingBottom: BOTTOM_NAV_SAFE_AREA,
+    gap: spacing.base,
+  },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -223,62 +231,22 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
   },
   headerText: {
-    alignItems: 'center',
-  },
-  title: {
-    fontSize: typography.sizes.lg,
-    fontWeight: typography.weights.semibold,
-  },
-  subtitle: {
-    fontSize: typography.sizes.xs,
-    marginTop: 2,
-    textAlign: 'center',
-  },
-  tabRow: {
-    flexDirection: 'row',
-    marginBottom: spacing.base,
-    borderRadius: borderRadius.lg,
-    borderWidth: 1,
-    padding: 3,
-  },
-  tabBtn: {
     flex: 1,
-    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    paddingVertical: spacing.sm,
-    borderRadius: borderRadius.md,
   },
-  tabLabel: {
-    fontSize: typography.sizes.sm,
-    fontWeight: typography.weights.semibold,
-  },
-  content: {
-    paddingHorizontal: spacing.screenHorizontal, paddingVertical: spacing.lg,
-    paddingTop: spacing.sm,
+  tabBar: {
+    borderRadius: 16,
+    marginBottom: spacing.base,
   },
   rangeContainer: {
     paddingBottom: spacing.base,
     gap: spacing.sm,
   },
   rangeChip: {
-    paddingHorizontal: spacing.base,
-    paddingVertical: spacing.sm,
-    borderRadius: borderRadius.full,
     borderWidth: 1,
-  },
-  rangeText: {
-    fontSize: typography.sizes.sm,
-    fontWeight: typography.weights.medium,
   },
   section: {
     marginTop: spacing.xl,
-  },
-  sectionTitle: {
-    fontSize: typography.sizes.base,
-    fontWeight: typography.weights.semibold,
-    marginBottom: spacing.sm,
   },
   productivityCard: {
     marginTop: spacing.base,
@@ -296,14 +264,6 @@ const styles = StyleSheet.create({
   productivityStat: {
     flex: 1,
     alignItems: 'center',
-  },
-  productivityValue: {
-    fontSize: typography.sizes.xl,
-    fontWeight: typography.weights.bold,
-  },
-  productivityLabel: {
-    fontSize: typography.sizes.xs,
-    marginTop: 2,
   },
   productivityDivider: {
     width: 1,
@@ -329,20 +289,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: spacing.sm,
   },
-  insightTitle: {
-    fontSize: typography.sizes.sm,
-    fontWeight: typography.weights.semibold,
-    lineHeight: 18,
-  },
-  insightDesc: {
-    fontSize: typography.sizes.xs,
-    marginTop: 2,
-  },
   emptyState: {
     paddingTop: spacing['4xl'],
     alignItems: 'center',
-  },
-  emptyText: {
-    fontSize: typography.sizes.base,
   },
 });

@@ -1,10 +1,10 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { GlassCard } from '../common/GlassCard';
-import { useThemeColors } from '../../hooks/useThemeColors';
+import { Text, TouchableRipple, useTheme } from 'react-native-paper';
+import { FrostCard } from '../common/FrostCard';
 import { formatDateTime } from '../../utils/formatters';
-import { spacing, typography, borderRadius } from '../../theme';
+import { spacing, borderRadius } from '../../theme';
 
 interface HomeMenuCardProps {
   pendingTaskCount: number;
@@ -30,7 +30,7 @@ export function HomeMenuCard({
   onInsightsPress,
   onSearchPress,
 }: HomeMenuCardProps) {
-  const colors = useThemeColors();
+  const theme = useTheme();
 
   const handlers: Record<string, (() => void) | undefined> = {
     tasks: onTasksPress,
@@ -40,38 +40,43 @@ export function HomeMenuCard({
   };
 
   return (
-    <GlassCard>
-      {MENU_ITEMS.map((item, index) => {
-        const props = { pendingTaskCount, nextEvent };
-        const value = item.value(props);
-        const isLast = index === MENU_ITEMS.length - 1;
+    <FrostCard glow="none" contentStyle={{ paddingVertical: spacing.sm, paddingHorizontal: spacing.base }}>
+      <>
+        {MENU_ITEMS.map((item, index) => {
+          const props = { pendingTaskCount, nextEvent };
+          const value = item.value(props);
+          const isLast = index === MENU_ITEMS.length - 1;
 
-        return (
-          <TouchableOpacity
-            key={item.key}
-            style={[styles.row, !isLast && { marginBottom: spacing.base }]}
-            onPress={handlers[item.key]}
-            activeOpacity={0.7}
-          >
-            <View style={[styles.iconContainer, { backgroundColor: `${colors.accentPrimary}20` }]}>
-              <Ionicons name={item.icon as keyof typeof Ionicons.glyphMap} size={20} color={colors.accentPrimary} />
-            </View>
-            <Text style={[styles.label, { color: colors.textPrimary }]}>{item.label}</Text>
-            <View style={styles.valueContainer}>
-              <Text style={[styles.value, { color: colors.textSecondary }]} numberOfLines={1} ellipsizeMode="tail">
-                {value}
-              </Text>
-              {item.key === 'nextEvent' && nextEvent ? (
-                <Text style={[styles.subvalue, { color: colors.textTertiary }]}>
-                  {formatDateTime(nextEvent.date, { dateFormat: 'MMM d', use24h: false })}
+          return (
+            <TouchableRipple
+              key={item.key}
+              onPress={handlers[item.key]}
+              style={[styles.row, !isLast && { marginBottom: spacing.base }]}
+            >
+              <>
+                <View style={[styles.iconContainer, { backgroundColor: `${theme.colors.primary}20` }]}>
+                  <Ionicons name={item.icon as keyof typeof Ionicons.glyphMap} size={20} color={theme.colors.primary} />
+                </View>
+                <Text variant="bodyLarge" style={[styles.label, { color: theme.colors.onSurface }]} numberOfLines={1}>
+                  {item.label}
                 </Text>
-              ) : null}
-            </View>
-            <Ionicons name="chevron-forward" size={18} color={colors.textTertiary} style={styles.chevron} />
-          </TouchableOpacity>
-        );
-      })}
-    </GlassCard>
+                <View style={styles.valueContainer}>
+                  <Text variant="bodyMedium" style={[styles.value, { color: theme.colors.onSurfaceVariant }]} numberOfLines={1}>
+                    {value}
+                  </Text>
+                  {item.key === 'nextEvent' && nextEvent ? (
+                    <Text variant="bodySmall" style={{ color: theme.colors.outline }} numberOfLines={1}>
+                      {formatDateTime(nextEvent.date, { dateFormat: 'MMM d', use24h: false })}
+                    </Text>
+                  ) : null}
+                </View>
+                <Ionicons name="chevron-forward" size={18} color={theme.colors.outline} style={styles.chevron} />
+              </>
+            </TouchableRipple>
+          );
+        })}
+      </>
+    </FrostCard>
   );
 }
 
@@ -79,6 +84,8 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
     alignItems: 'center',
+    paddingVertical: spacing.sm,
+    borderRadius: borderRadius.lg,
   },
   iconContainer: {
     width: 40,
@@ -89,8 +96,8 @@ const styles = StyleSheet.create({
     marginRight: spacing.base,
   },
   label: {
-    fontSize: typography.sizes.base,
-    fontWeight: typography.weights.medium,
+    flexShrink: 0,
+    marginRight: spacing.sm,
   },
   valueContainer: {
     flex: 1,
@@ -98,12 +105,7 @@ const styles = StyleSheet.create({
     marginRight: spacing.sm,
   },
   value: {
-    fontSize: typography.sizes.sm,
-    fontWeight: typography.weights.medium,
-  },
-  subvalue: {
-    fontSize: typography.sizes.xs,
-    marginTop: 2,
+    fontWeight: '500',
   },
   chevron: {
     marginLeft: spacing.sm,

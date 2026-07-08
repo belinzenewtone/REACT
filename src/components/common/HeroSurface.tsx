@@ -1,8 +1,8 @@
 import React, { type ReactNode } from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, StyleSheet } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useThemeColors } from '../../hooks/useThemeColors';
-import { spacing, typography, borderRadius } from '../../theme';
+import { Text, useTheme } from 'react-native-paper';
+import { spacing } from '../../theme';
 
 interface HeroSurfaceProps {
   eyebrow?: string;
@@ -13,27 +13,36 @@ interface HeroSurfaceProps {
   footer?: ReactNode;
 }
 
+/** Rebuilt on FrostCard technique: gradient + glow rings + frost film + hairline. No native blur dependency. */
 export function HeroSurface({ eyebrow, title, subtitle, leading, action, footer }: HeroSurfaceProps) {
-  const colors = useThemeColors();
+  const theme = useTheme();
+
+  const isDark = theme.dark;
+  const filmBg = isDark ? 'rgba(20,22,28,0.45)' : 'rgba(241,245,249,0.40)';
+  const hairlineBorder = isDark ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.06)';
 
   return (
-    <LinearGradient
-      colors={[`${colors.accentPrimary}26`, colors.bgPrimary]}
-      style={styles.surface}
-    >
+    <View style={styles.surface}>
+      <LinearGradient
+        colors={[`${theme.colors.primary}22`, 'transparent']}
+        style={[StyleSheet.absoluteFill, styles.surface]}
+        pointerEvents="none"
+      />
+      <View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: filmBg }]} />
+      <View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.hairline, { borderColor: hairlineBorder }]} />
       <View style={styles.topRow}>
         {leading ? <View style={styles.leadingSlot}>{leading}</View> : null}
         <View style={styles.textCol}>
           {eyebrow ? (
-            <Text style={[styles.eyebrow, { color: colors.accentPrimary }]} numberOfLines={1}>
+            <Text variant="labelSmall" style={{ color: theme.colors.primary }} numberOfLines={1}>
               {eyebrow}
             </Text>
           ) : null}
-          <Text style={[styles.title, { color: colors.textPrimary }]} numberOfLines={1} ellipsizeMode="tail">
+          <Text variant="titleLarge" style={{ color: theme.colors.onSurface }} numberOfLines={1} ellipsizeMode="tail">
             {title}
           </Text>
           {subtitle ? (
-            <Text style={[styles.subtitle, { color: colors.textSecondary }]} numberOfLines={2}>
+            <Text variant="bodyMedium" style={{ color: theme.colors.onSurfaceVariant }} numberOfLines={2}>
               {subtitle}
             </Text>
           ) : null}
@@ -41,7 +50,7 @@ export function HeroSurface({ eyebrow, title, subtitle, leading, action, footer 
         {action ? <View style={styles.actionSlot}>{action}</View> : null}
       </View>
       {footer ? <View style={styles.footer}>{footer}</View> : null}
-    </LinearGradient>
+    </View>
   );
 }
 
@@ -49,9 +58,15 @@ const styles = StyleSheet.create({
   surface: {
     borderBottomLeftRadius: 28,
     borderBottomRightRadius: 28,
+    overflow: 'hidden',
     paddingHorizontal: 20,
     paddingTop: 6,
     paddingBottom: 14,
+  },
+  hairline: {
+    borderWidth: 1,
+    borderBottomLeftRadius: 28,
+    borderBottomRightRadius: 28,
   },
   topRow: {
     flexDirection: 'row',
@@ -65,22 +80,6 @@ const styles = StyleSheet.create({
   },
   textCol: {
     flex: 1,
-  },
-  eyebrow: {
-    fontSize: 13,
-    fontWeight: typography.weights.semibold,
-    textTransform: 'uppercase',
-    letterSpacing: 0.8,
-  },
-  title: {
-    fontSize: 22,
-    fontWeight: typography.weights.semibold,
-    marginTop: 4,
-  },
-  subtitle: {
-    fontSize: 14,
-    marginTop: 4,
-    lineHeight: 20,
   },
   footer: {
     marginTop: spacing.lg,

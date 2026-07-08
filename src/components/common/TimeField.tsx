@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, Platform, StyleSheet, type ViewStyle } from 'react-native';
+import { View, Platform, StyleSheet, type ViewStyle } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
-import { useThemeColors } from '../../hooks/useThemeColors';
-import { spacing, typography, borderRadius } from '../../theme';
+import { Text, TouchableRipple, useTheme } from 'react-native-paper';
+import { spacing, borderRadius } from '../../theme';
 
 interface TimeFieldProps {
   label: string;
@@ -11,6 +11,7 @@ interface TimeFieldProps {
   onChange: (value: string) => void;
   placeholder?: string;
   style?: ViewStyle;
+  showIcon?: boolean;
 }
 
 function timeToDate(value: string): Date {
@@ -28,8 +29,8 @@ function formatDisplay(value: string): string {
   return `${String(displayHour).padStart(2, '0')}:${String(m).padStart(2, '0')} ${period}`;
 }
 
-export function TimeField({ label, value, onChange, placeholder = 'Select time', style }: TimeFieldProps) {
-  const colors = useThemeColors();
+export function TimeField({ label, value, onChange, placeholder = 'Select time', style, showIcon = true }: TimeFieldProps) {
+  const theme = useTheme();
   const [open, setOpen] = useState(false);
 
   const handleChange = (event: DateTimePickerEvent, selected?: Date) => {
@@ -41,14 +42,16 @@ export function TimeField({ label, value, onChange, placeholder = 'Select time',
   };
 
   return (
-    <View style={[styles.wrap, { borderColor: colors.border, backgroundColor: colors.glassWhite }, style]}>
-      <Text style={[styles.label, { color: colors.textSecondary }]}>{label}</Text>
-      <TouchableOpacity onPress={() => setOpen(true)} style={styles.valueRow} activeOpacity={0.7}>
-        <Text style={[styles.value, { color: value ? colors.textPrimary : colors.textTertiary }]}>
-          {value ? formatDisplay(value) : placeholder}
-        </Text>
-        <Ionicons name="time-outline" size={18} color={colors.textSecondary} />
-      </TouchableOpacity>
+    <View style={[styles.wrap, { borderColor: theme.colors.outline, backgroundColor: theme.colors.surfaceVariant }, style]}>
+      <Text variant="labelSmall" style={{ color: theme.colors.onSurfaceVariant }}>{label}</Text>
+      <TouchableRipple onPress={() => setOpen(true)} style={styles.valueRow} rippleColor={theme.colors.primary}>
+        <View style={styles.valueRowInner}>
+          <Text variant="bodyLarge" style={{ color: value ? theme.colors.onSurface : theme.colors.onSurfaceVariant }}>
+            {value ? formatDisplay(value) : placeholder}
+          </Text>
+          {showIcon && <Ionicons name="time-outline" size={18} color={theme.colors.onSurfaceVariant} />}
+        </View>
+      </TouchableRipple>
 
       {open && (
         <>
@@ -59,9 +62,9 @@ export function TimeField({ label, value, onChange, placeholder = 'Select time',
             onChange={handleChange}
           />
           {Platform.OS === 'ios' && (
-            <TouchableOpacity onPress={() => setOpen(false)} style={styles.doneButton}>
-              <Text style={[styles.doneText, { color: colors.accentPrimary }]}>Done</Text>
-            </TouchableOpacity>
+            <TouchableRipple onPress={() => setOpen(false)} style={styles.doneButton}>
+              <Text variant="labelLarge" style={{ color: theme.colors.primary }}>Done</Text>
+            </TouchableRipple>
           )}
         </>
       )}
@@ -77,26 +80,17 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
     marginBottom: spacing.base,
   },
-  label: {
-    fontSize: typography.sizes.xs,
-    marginBottom: 2,
-  },
   valueRow: {
+    paddingVertical: 4,
+  },
+  valueRowInner: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: 4,
-  },
-  value: {
-    fontSize: typography.sizes.base,
   },
   doneButton: {
     alignSelf: 'flex-end',
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.base,
-  },
-  doneText: {
-    fontSize: typography.sizes.sm,
-    fontWeight: typography.weights.semibold,
   },
 });

@@ -1,10 +1,10 @@
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { Text, useTheme } from 'react-native-paper';
 import { GlassCard } from '../common/GlassCard';
-import { useThemeColors } from '../../hooks/useThemeColors';
 import { formatCurrency, formatPercent } from '../../utils/formatters';
-import { spacing, typography } from '../../theme';
+import { spacing } from '../../theme';
 
 interface SpendingMetricsCardProps {
   income: number;
@@ -19,7 +19,7 @@ export function SpendingMetricsCard({
   lastMonthIncome,
   lastMonthExpense,
 }: SpendingMetricsCardProps) {
-  const colors = useThemeColors();
+  const theme = useTheme();
   const net = income - expense;
 
   const incomeChange = lastMonthIncome > 0 ? ((income - lastMonthIncome) / lastMonthIncome) * 100 : 0;
@@ -33,21 +33,27 @@ export function SpendingMetricsCard({
           amount={income}
           change={incomeChange}
           icon="arrow-down-circle"
-          iconColor={colors.success}
+          iconColor={theme.colors.primary}
         />
-        <View style={[styles.divider, { backgroundColor: colors.border }]} />
+        <View style={[styles.divider, { backgroundColor: theme.colors.outlineVariant }]} />
         <MetricItem
           label="Expenses"
           amount={expense}
           change={expenseChange}
           icon="arrow-up-circle"
-          iconColor={colors.danger}
+          iconColor={theme.colors.error}
         />
       </View>
 
-      <View style={[styles.netRow, { borderTopColor: colors.border }]}>
-        <Text style={[styles.netLabel, { color: colors.textSecondary }]}>Net this month</Text>
-        <Text style={[styles.netAmount, { color: net >= 0 ? colors.success : colors.danger }]} numberOfLines={1} ellipsizeMode="tail">
+      <View style={[styles.netRow, { borderTopColor: theme.colors.outlineVariant }]}>
+        <Text variant="bodyMedium" style={{ color: theme.colors.onSurfaceVariant }}>
+          Net this month
+        </Text>
+        <Text
+          variant="titleLarge"
+          style={{ color: net >= 0 ? theme.colors.primary : theme.colors.error }}
+          numberOfLines={1}
+        >
           {formatCurrency(net)}
         </Text>
       </View>
@@ -64,33 +70,37 @@ interface MetricItemProps {
 }
 
 function MetricItem({ label, amount, change, icon, iconColor }: MetricItemProps) {
-  const colors = useThemeColors();
+  const theme = useTheme();
   const isPositiveChange = change >= 0;
 
   return (
     <View style={styles.metric}>
       <View style={styles.metricHeader}>
         <Ionicons name={icon} size={18} color={iconColor} />
-        <Text style={[styles.metricLabel, { color: colors.textSecondary, marginLeft: 6 }]}>
+        <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant, marginLeft: 6 }}>
           {label}
         </Text>
       </View>
-      <Text style={[styles.metricAmount, { color: colors.textPrimary }]} numberOfLines={1} ellipsizeMode="tail">
+      <Text
+        variant="headlineSmall"
+        style={{ color: theme.colors.onSurface, marginTop: spacing.sm }}
+        numberOfLines={1}
+      >
         {formatCurrency(amount)}
       </Text>
       <View style={styles.changeRow}>
         <Ionicons
           name={isPositiveChange ? 'trending-up' : 'trending-down'}
           size={12}
-          color={isPositiveChange ? colors.success : colors.danger}
+          color={isPositiveChange ? theme.colors.primary : theme.colors.error}
         />
         <Text
-          style={[
-            styles.changeText,
-            { color: isPositiveChange ? colors.success : colors.danger },
-          ]}
+          variant="bodySmall"
+          style={{
+            color: isPositiveChange ? theme.colors.primary : theme.colors.error,
+            marginLeft: 4,
+          }}
           numberOfLines={1}
-          ellipsizeMode="tail"
         >
           {formatPercent(Math.abs(change))} vs last month
         </Text>
@@ -111,22 +121,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
   },
-  metricLabel: {
-    fontSize: typography.sizes.sm,
-  },
-  metricAmount: {
-    fontSize: typography.sizes['2xl'],
-    fontWeight: typography.weights.bold,
-    marginTop: spacing.sm,
-  },
   changeRow: {
     flexDirection: 'row',
     alignItems: 'center',
     marginTop: 4,
-  },
-  changeText: {
-    fontSize: typography.sizes.xs,
-    marginLeft: 4,
   },
   divider: {
     width: 1,
@@ -139,13 +137,5 @@ const styles = StyleSheet.create({
     marginTop: spacing.lg,
     paddingTop: spacing.lg,
     borderTopWidth: 1,
-  },
-  netLabel: {
-    fontSize: typography.sizes.base,
-    fontWeight: typography.weights.medium,
-  },
-  netAmount: {
-    fontSize: typography.sizes.xl,
-    fontWeight: typography.weights.bold,
   },
 });

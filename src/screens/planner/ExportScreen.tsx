@@ -1,25 +1,30 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import {
   View,
-  Text,
-  TouchableOpacity,
-  ScrollView,
   StyleSheet,
+  ScrollView,
   Share,
   Alert,
   ActivityIndicator,
   Modal,
-  TextInput,
   Platform,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { useSQLiteContext } from 'expo-sqlite';
 import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { startOfWeek, startOfMonth, subDays, format } from 'date-fns';
 import CryptoJS from 'crypto-js';
-import { useThemeColors } from '../../hooks/useThemeColors';
+import {
+  Card,
+  Text,
+  Button,
+  Chip,
+  Switch,
+  TextInput,
+  TouchableRipple,
+  useTheme,
+} from 'react-native-paper';
 import { usePlannerStore } from '../../store';
 import { TransactionRepository } from '../../database/repositories/TransactionRepository';
 import { TaskRepository } from '../../database/repositories/TaskRepository';
@@ -27,10 +32,10 @@ import { EventRepository } from '../../database/repositories/EventRepository';
 import { BudgetRepository } from '../../database/repositories/BudgetRepository';
 import { IncomeRepository } from '../../database/repositories/IncomeRepository';
 import { RecurringRuleRepository } from '../../database/repositories/RecurringRuleRepository';
-import { GlassCard } from '../../components/common/GlassCard';
-import { LifeOSSwitch } from '../../components/common/LifeOSSwitch';
+import { PageScaffold } from '../../components/common/PageScaffold';
 import { formatDateTime } from '../../utils/formatters';
-import { spacing, typography, borderRadius } from '../../theme';
+import { spacing, borderRadius } from '../../theme';
+import { GlassCard } from '../../components/common/GlassCard';
 
 type ExportFormat = 'csv' | 'json' | 'pdf';
 type DateWindow = 'week' | 'month' | 'last30' | 'custom' | 'all';
@@ -98,120 +103,69 @@ function ExportDropdown<T extends string>({
   options,
   value,
   onChange,
-  colors,
 }: {
   label: string;
   options: { key: T; label: string }[];
   value: T;
   onChange: (v: T) => void;
-  colors: any;
 }) {
+  const theme = useTheme();
   const [open, setOpen] = useState(false);
   const selectedLabel = options.find((o) => o.key === value)?.label ?? value;
 
   return (
     <View>
-      <TouchableOpacity
-        style={[dropdownStyles.trigger, { backgroundColor: colors.bgTertiary }]}
+      <Button
+        mode="outlined"
         onPress={() => setOpen(true)}
-        activeOpacity={0.7}
+        style={styles.dropdownTrigger}
+        contentStyle={styles.dropdownTriggerContent}
+        textColor={theme.colors.onSurface}
+        icon={() => <Ionicons name="chevron-down" size={18} color={theme.colors.onSurfaceVariant} />}
       >
-        <Text style={[dropdownStyles.triggerText, { color: colors.textPrimary }]}>
-          {selectedLabel}
-        </Text>
-        <Ionicons name="chevron-down" size={18} color={colors.textSecondary} />
-      </TouchableOpacity>
+        {selectedLabel}
+      </Button>
 
       <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
-        <TouchableOpacity
-          style={dropdownStyles.overlay}
-          activeOpacity={1}
-          onPress={() => setOpen(false)}
-        >
-          <View style={[dropdownStyles.sheet, { backgroundColor: colors.bgElevated, borderColor: colors.border }]}>
-            <Text style={[dropdownStyles.sheetLabel, { color: colors.textSecondary }]}>{label}</Text>
-            {options.map((o, i) => {
-              const active = o.key === value;
-              return (
-                <TouchableOpacity
-                  key={o.key}
-                  style={[
-                    dropdownStyles.option,
-                    active && { backgroundColor: `${colors.accentPrimary}15` },
-                    i < options.length - 1 && { borderBottomWidth: 1, borderBottomColor: colors.border },
-                  ]}
-                  onPress={() => {
-                    onChange(o.key);
-                    setOpen(false);
-                  }}
-                >
-                  <Text style={[dropdownStyles.optionText, { color: active ? colors.accentPrimary : colors.textPrimary }]}>
+        <View style={styles.dropdownOverlay}>
+          <GlassCard style={styles.dropdownSheet}>
+            <Card.Content>
+              <Text variant="labelMedium" style={{ color: theme.colors.onSurfaceVariant, marginBottom: spacing.base }}>
+                {label}
+              </Text>
+              {options.map((o, i) => {
+                const active = o.key === value;
+                return (
+                  <Button
+                    key={o.key}
+                    mode="text"
+                    onPress={() => {
+                      onChange(o.key);
+                      setOpen(false);
+                    }}
+                    style={[
+                      styles.dropdownOption,
+                      active && { backgroundColor: `${theme.colors.primary}15` },
+                      i < options.length - 1 && { borderBottomWidth: 1, borderBottomColor: theme.colors.outlineVariant },
+                    ]}
+                    textColor={active ? theme.colors.primary : theme.colors.onSurface}
+                  >
                     {o.label}
-                  </Text>
-                  {active && (
-                    <Ionicons name="checkmark" size={18} color={colors.accentPrimary} />
-                  )}
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-        </TouchableOpacity>
+                  </Button>
+                );
+              })}
+            </Card.Content>
+          </GlassCard>
+        </View>
       </Modal>
     </View>
   );
 }
 
-const dropdownStyles = StyleSheet.create({
-  trigger: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: spacing.base,
-    paddingVertical: 12,
-    borderRadius: borderRadius.lg,
-  },
-  triggerText: {
-    fontSize: typography.sizes.base,
-    fontWeight: typography.weights.medium,
-  },
-  overlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'flex-end',
-  },
-  sheet: {
-    borderTopLeftRadius: borderRadius['2xl'],
-    borderTopRightRadius: borderRadius['2xl'],
-    borderTopWidth: 1,
-    borderLeftWidth: 1,
-    borderRightWidth: 1,
-    padding: spacing.lg,
-    paddingBottom: spacing['4xl'],
-  },
-  sheetLabel: {
-    fontSize: typography.sizes.xs,
-    fontWeight: typography.weights.semibold,
-    letterSpacing: 0.8,
-    marginBottom: spacing.base,
-    textTransform: 'uppercase',
-  },
-  option: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: spacing.base,
-    paddingHorizontal: spacing.sm,
-  },
-  optionText: {
-    fontSize: typography.sizes.base,
-    fontWeight: typography.weights.medium,
-  },
-});
-
 type DomainCounts = Record<string, number>;
 
 export function ExportScreen() {
-  const colors = useThemeColors();
+  const theme = useTheme();
   const db = useSQLiteContext();
   const navigation = useNavigation<any>();
   const { exports, loadAll, createExport } = usePlannerStore();
@@ -226,6 +180,18 @@ export function ExportScreen() {
   const [counts, setCounts] = useState<DomainCounts | null>(null);
   const [isExporting, setIsExporting] = useState(false);
   const [isLoadingCounts, setIsLoadingCounts] = useState(false);
+  // Data-type toggles — user picks which domains land in the JSON/PDF export.
+  // Default to all selected so behavior matches the pre-toggle version.
+  const [selectedDomains, setSelectedDomains] = useState<Set<string>>(
+    () => new Set(PREVIEW_DOMAINS.map((d) => d.key))
+  );
+  const toggleDomain = (key: string) => {
+    setSelectedDomains((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  };
 
   useEffect(() => {
     loadAll(db);
@@ -278,8 +244,12 @@ export function ExportScreen() {
   };
 
   const buildCsv = async () => {
-    const { start } = getDateRange(dateWindow, customFrom ?? undefined, customTo ?? undefined);
-    const rows = await new TransactionRepository(db).findAll({ limit: 50000, startDate: start });
+    const { start, end } = getDateRange(dateWindow, customFrom ?? undefined, customTo ?? undefined);
+    const rows = await new TransactionRepository(db).findAll({
+      limit: 50000,
+      startDate: start,
+      endDate: end,
+    });
     const header = ['date', 'merchant', 'category', 'amount', 'type', 'status', 'description', 'mpesa_code'].join(',');
     const lines = rows.map((r) =>
       [
@@ -297,26 +267,50 @@ export function ExportScreen() {
   };
 
   const buildJson = async () => {
-    const { start } = getDateRange(dateWindow, customFrom ?? undefined, customTo ?? undefined);
-    const [transactions, tasks, events, budgets] = await Promise.all([
-      new TransactionRepository(db).findAll({ limit: 50000, startDate: start }),
-      new TaskRepository(db).findAll({ limit: 50000 }),
-      new EventRepository(db).findAll(),
-      new BudgetRepository(db).findAll(),
+    const { start, end } = getDateRange(dateWindow, customFrom ?? undefined, customTo ?? undefined);
+    // Only fetch domains the user asked for; leave others as empty arrays so
+    // the export shape stays stable for downstream tooling.
+    const want = (k: string) => selectedDomains.has(k);
+    const [transactions, tasks, events, budgets, incomes, recurring, goals] = await Promise.all([
+      want('transactions') ? new TransactionRepository(db).findAll({ limit: 50000, startDate: start, endDate: end }) : Promise.resolve([]),
+      want('tasks') ? new TaskRepository(db).findAll({ limit: 50000 }) : Promise.resolve([]),
+      want('events') ? new EventRepository(db).findAll() : Promise.resolve([]),
+      want('budgets') ? new BudgetRepository(db).findAll() : Promise.resolve([]),
+      want('incomes') ? new IncomeRepository(db).findAll() : Promise.resolve([]),
+      want('recurring') ? new RecurringRuleRepository(db).findAll() : Promise.resolve([]),
+      want('goals') ? new (require('../../database/repositories/GoalRepository').GoalRepository)(db).findAll() : Promise.resolve([]),
     ]);
     return {
-      content: JSON.stringify({ transactions, tasks, events, budgets, exportedAt: new Date().toISOString() }, null, 2),
-      count: transactions.length + tasks.length + events.length + budgets.length,
+      content: JSON.stringify(
+        {
+          transactions,
+          tasks,
+          events,
+          budgets,
+          incomes,
+          recurring,
+          goals,
+          exportedAt: new Date().toISOString(),
+          window: { start, end },
+          selectedDomains: Array.from(selectedDomains),
+        },
+        null,
+        2,
+      ),
+      count:
+        transactions.length + tasks.length + events.length + budgets.length +
+        incomes.length + recurring.length + (goals as any[]).length,
     };
   };
 
   const buildPdfText = async () => {
-    const { start } = getDateRange(dateWindow, customFrom ?? undefined, customTo ?? undefined);
+    const { start, end } = getDateRange(dateWindow, customFrom ?? undefined, customTo ?? undefined);
+    const want = (k: string) => selectedDomains.has(k);
     const [transactions, tasks, events, budgets] = await Promise.all([
-      new TransactionRepository(db).findAll({ limit: 50000, startDate: start }),
-      new TaskRepository(db).findAll({ limit: 50000 }),
-      new EventRepository(db).findAll(),
-      new BudgetRepository(db).findAll(),
+      want('transactions') ? new TransactionRepository(db).findAll({ limit: 50000, startDate: start, endDate: end }) : Promise.resolve([]),
+      want('tasks') ? new TaskRepository(db).findAll({ limit: 50000 }) : Promise.resolve([]),
+      want('events') ? new EventRepository(db).findAll() : Promise.resolve([]),
+      want('budgets') ? new BudgetRepository(db).findAll() : Promise.resolve([]),
     ]);
 
     const lines: string[] = [];
@@ -364,8 +358,20 @@ export function ExportScreen() {
     encryptEnabled ? CryptoJS.AES.encrypt(content, passphrase).toString() : content;
 
   const handleExport = async () => {
-    if (encryptEnabled && !passphrase.trim()) {
-      Alert.alert('Passphrase required', 'Enter a passphrase to encrypt this export, or turn off encryption.');
+    if (encryptEnabled) {
+      const trimmed = passphrase.trim();
+      if (!trimmed) {
+        Alert.alert('Passphrase required', 'Enter a passphrase to encrypt this export, or turn off encryption.');
+        return;
+      }
+      if (trimmed.length < 6) {
+        Alert.alert('Passphrase too short', 'Use a passphrase of at least 6 characters for meaningful encryption.');
+        return;
+      }
+    }
+    // At least one domain must be selected for multi-domain formats.
+    if ((format_ === 'json' || format_ === 'pdf') && selectedDomains.size === 0) {
+      Alert.alert('Nothing to export', 'Pick at least one data type to include in the export.');
       return;
     }
 
@@ -401,288 +407,398 @@ export function ExportScreen() {
     : 0;
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.bgPrimary }]} edges={['top']}>
-      <ScrollView contentContainerStyle={styles.content}>
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
-            <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
-          </TouchableOpacity>
-          <Text style={[styles.title, { color: colors.textPrimary }]}>Export</Text>
-          <View style={styles.backBtn} />
-        </View>
-
+    <PageScaffold
+      title="Export"
+      onBack={() => navigation.goBack()}
+    >
+      <View style={styles.content}>
         {/* ── Format ── */}
         <GlassCard>
-          <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>FORMAT</Text>
-          <View style={styles.formatGrid}>
-            {FORMAT_OPTIONS.map((opt) => {
-              const active = format_ === opt.key;
-              return (
-                <TouchableOpacity
-                  key={opt.key}
-                  style={[
-                    styles.formatBtn,
-                    {
-                      backgroundColor: active ? colors.accentPrimary : colors.bgTertiary,
-                      borderColor: active ? colors.accentPrimary : colors.border,
-                    },
-                  ]}
-                  onPress={() => setFormat(opt.key)}
-                >
-                  <Ionicons name={opt.icon} size={18} color={active ? colors.textInverse : colors.textSecondary} />
-                  <Text style={[styles.formatBtnText, { color: active ? colors.textInverse : colors.textPrimary }]}>
+          <Card.Content>
+            <Text variant="labelMedium" style={[styles.sectionLabel, { color: theme.colors.onSurfaceVariant }]}>
+              FORMAT
+            </Text>
+            <View style={styles.formatGrid}>
+              {FORMAT_OPTIONS.map((opt) => {
+                const active = format_ === opt.key;
+                return (
+                  <Chip
+                    key={opt.key}
+                    selected={active}
+                    onPress={() => setFormat(opt.key)}
+                    style={[
+                      styles.formatChip,
+                      {
+                        backgroundColor: active ? theme.colors.primary : theme.colors.surfaceVariant,
+                        borderColor: active ? theme.colors.primary : theme.colors.outlineVariant,
+                      },
+                    ]}
+                    textStyle={{ color: active ? theme.colors.onPrimary : theme.colors.onSurface }}
+                    icon={() => (
+                      <Ionicons
+                        name={opt.icon}
+                        size={16}
+                        color={active ? theme.colors.onPrimary : theme.colors.onSurfaceVariant}
+                      />
+                    )}
+                  >
                     {opt.label}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-          <Text style={[styles.formatHint, { color: colors.textTertiary }]}>
-            {format_ === 'csv'
-              ? 'Transactions only — opens in Excel / Google Sheets'
-              : format_ === 'json'
-                ? 'All data: transactions, tasks, events, budgets'
-                : 'Formatted document — share or save as PDF'}
-          </Text>
+                  </Chip>
+                );
+              })}
+            </View>
+            <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant, marginTop: spacing.sm }}>
+              {format_ === 'csv'
+                ? 'Transactions only — opens in Excel / Google Sheets'
+                : format_ === 'json'
+                  ? 'All data: transactions, tasks, events, budgets'
+                  : 'Formatted document — share or save as PDF'}
+            </Text>
+          </Card.Content>
         </GlassCard>
 
         {/* ── Date Window (dropdown) ── */}
-        <GlassCard>
-          <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>DATE WINDOW</Text>
-          <ExportDropdown
-            label="DATE WINDOW"
-            options={DATE_WINDOWS}
-            value={dateWindow}
-            onChange={(v) => { setDateWindow(v); if (v !== 'custom') { setCustomFrom(null); setCustomTo(null); } }}
-            colors={colors}
-          />
-          {dateWindow === 'custom' && (
-            <View style={styles.customDateRow}>
-              <TouchableOpacity
-                style={[styles.dateField, { backgroundColor: colors.bgTertiary }]}
-                onPress={() => setShowDatePicker('from')}
-              >
-                <Text style={[styles.dateFieldLabel, { color: colors.textTertiary }]}>From</Text>
-                <Text style={[styles.dateFieldValue, { color: colors.textPrimary }]}>
-                  {customFrom ? format(customFrom, 'MMM d, yyyy') : 'Select'}
-                </Text>
-              </TouchableOpacity>
-              <Ionicons name="arrow-forward" size={16} color={colors.textTertiary} />
-              <TouchableOpacity
-                style={[styles.dateField, { backgroundColor: colors.bgTertiary }]}
-                onPress={() => setShowDatePicker('to')}
-              >
-                <Text style={[styles.dateFieldLabel, { color: colors.textTertiary }]}>To</Text>
-                <Text style={[styles.dateFieldValue, { color: colors.textPrimary }]}>
-                  {customTo ? format(customTo, 'MMM d, yyyy') : 'Select'}
-                </Text>
-              </TouchableOpacity>
-            </View>
-          )}
-          {showDatePicker && (
-            <DateTimePicker
-              value={showDatePicker === 'from' ? (customFrom ?? new Date()) : (customTo ?? new Date())}
-              mode="date"
-              display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-              onChange={handleDateChange}
-              maximumDate={new Date()}
+        <GlassCard style={{ marginTop: spacing.base }}>
+          <Card.Content>
+            <Text variant="labelMedium" style={[styles.sectionLabel, { color: theme.colors.onSurfaceVariant }]}>
+              DATE WINDOW
+            </Text>
+            <ExportDropdown
+              label="DATE WINDOW"
+              options={DATE_WINDOWS}
+              value={dateWindow}
+              onChange={(v) => { setDateWindow(v); if (v !== 'custom') { setCustomFrom(null); setCustomTo(null); } }}
             />
-          )}
+            {dateWindow === 'custom' && (
+              <View style={styles.customDateRow}>
+                <TouchableRipple
+                  onPress={() => setShowDatePicker('from')}
+                  style={[styles.dateField, { borderColor: theme.colors.outlineVariant }]}
+                >
+                  <View>
+                    <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>From</Text>
+                    <Text variant="bodyMedium" style={{ color: theme.colors.onSurface, marginTop: 2 }}>
+                      {customFrom ? format(customFrom, 'MMM d, yyyy') : 'Select'}
+                    </Text>
+                  </View>
+                </TouchableRipple>
+                <Ionicons name="arrow-forward" size={16} color={theme.colors.onSurfaceVariant} />
+                <TouchableRipple
+                  onPress={() => setShowDatePicker('to')}
+                  style={[styles.dateField, { borderColor: theme.colors.outlineVariant }]}
+                >
+                  <View>
+                    <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>To</Text>
+                    <Text variant="bodyMedium" style={{ color: theme.colors.onSurface, marginTop: 2 }}>
+                      {customTo ? format(customTo, 'MMM d, yyyy') : 'Select'}
+                    </Text>
+                  </View>
+                </TouchableRipple>
+              </View>
+            )}
+            {showDatePicker && (
+              <DateTimePicker
+                value={showDatePicker === 'from' ? (customFrom ?? new Date()) : (customTo ?? new Date())}
+                mode="date"
+                display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                onChange={handleDateChange}
+                maximumDate={new Date()}
+              />
+            )}
+          </Card.Content>
         </GlassCard>
 
         {/* ── Encrypt file ── */}
-        <GlassCard>
-          <View style={styles.encryptRow}>
-            <View style={styles.encryptInfo}>
-              <Text style={[styles.encryptLabel, { color: colors.textPrimary }]}>Encrypt file</Text>
-              <Text style={[styles.encryptHint, { color: colors.textTertiary }]}>
-                Protect the export with a passphrase
-              </Text>
+        <GlassCard style={{ marginTop: spacing.base }}>
+          <Card.Content>
+            <View style={styles.encryptRow}>
+              <View style={styles.encryptInfo}>
+                <Text variant="bodyLarge" style={{ color: theme.colors.onSurface }}>Encrypt file</Text>
+                <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
+                  Protect the export with a passphrase
+                </Text>
+              </View>
+              <Switch
+                value={encryptEnabled}
+                onValueChange={setEncryptEnabled}
+                color={theme.colors.primary}
+              />
             </View>
-            <LifeOSSwitch value={encryptEnabled} onValueChange={setEncryptEnabled} />
-          </View>
-          {encryptEnabled && (
-            <TextInput
-              style={[styles.passphraseInput, { backgroundColor: colors.bgTertiary, color: colors.textPrimary, borderColor: colors.border }]}
-              placeholder="Enter passphrase"
-              placeholderTextColor={colors.textTertiary}
-              value={passphrase}
-              onChangeText={setPassphrase}
-              secureTextEntry
-            />
-          )}
+            {encryptEnabled && (
+              <TextInput
+                mode="outlined"
+                dense
+                label="Passphrase"
+                placeholder="Enter passphrase"
+                value={passphrase}
+                onChangeText={setPassphrase}
+                secureTextEntry
+                style={{ marginTop: spacing.sm, backgroundColor: 'transparent' }}
+              />
+            )}
+          </Card.Content>
         </GlassCard>
 
         {/* ── Export Preview ── */}
-        <GlassCard>
-          <View style={styles.previewHeader}>
-            <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>EXPORT PREVIEW</Text>
-            <View style={styles.previewHeaderRight}>
-              {isLoadingCounts && <ActivityIndicator size="small" color={colors.accentPrimary} />}
-              {counts && (
-                <Text style={[styles.previewTotal, { color: colors.textSecondary }]}>
-                  Total items: {total}
-                </Text>
-              )}
-            </View>
-          </View>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-            <View style={styles.previewGrid}>
-              {PREVIEW_DOMAINS.map((d) => (
-                <View key={d.key} style={[styles.previewItem, { backgroundColor: colors.bgTertiary }]}>
-                  <View style={[styles.previewIcon, { backgroundColor: `${d.color}20` }]}>
-                    <Ionicons name={d.icon} size={18} color={d.color} />
-                  </View>
-                  <Text style={[styles.previewCount, { color: colors.textPrimary }]}>
-                    {counts?.[d.key] ?? '—'}
+        <GlassCard style={{ marginTop: spacing.base }}>
+          <Card.Content>
+            <View style={styles.previewHeader}>
+              <Text variant="labelMedium" style={[styles.sectionLabel, { color: theme.colors.onSurfaceVariant, marginBottom: 0 }]}>
+                EXPORT PREVIEW
+              </Text>
+              <View style={styles.previewHeaderRight}>
+                {isLoadingCounts && <ActivityIndicator size="small" color={theme.colors.primary} />}
+                {counts && (
+                  <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
+                    Total items: {total}
                   </Text>
-                  <Text style={[styles.previewLabel, { color: colors.textTertiary }]}>{d.label}</Text>
-                </View>
-              ))}
+                )}
+              </View>
             </View>
-          </ScrollView>
+            <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant, marginBottom: spacing.xs }}>
+              {format_ === 'csv'
+                ? 'CSV exports transactions only.'
+                : 'Tap a card to include or exclude that data type.'}
+            </Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.previewGrid}>
+              {PREVIEW_DOMAINS.map((d) => {
+                const csvLocked = format_ === 'csv' && d.key !== 'transactions';
+                const active = format_ === 'csv'
+                  ? d.key === 'transactions'
+                  : selectedDomains.has(d.key);
+                return (
+                  <TouchableRipple
+                    key={d.key}
+                    disabled={csvLocked}
+                    onPress={() => toggleDomain(d.key)}
+                    style={[
+                      styles.previewItem,
+                      {
+                        backgroundColor: active ? `${d.color}30` : `${d.color}15`,
+                        borderColor: active ? d.color : `${d.color}50`,
+                        opacity: csvLocked ? 0.35 : 1,
+                      },
+                    ]}
+                  >
+                    <View style={styles.previewItemContent}>
+                      <View style={[styles.previewIcon, { backgroundColor: `${d.color}25` }]}>
+                        <Ionicons name={d.icon} size={16} color={d.color} />
+                      </View>
+                      <Text variant="bodyLarge" style={{ color: theme.colors.onSurface, fontWeight: 'bold' }}>
+                        {counts?.[d.key] ?? '—'}
+                      </Text>
+                      <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
+                        {d.label}
+                      </Text>
+                    </View>
+                  </TouchableRipple>
+                );
+              })}
+            </ScrollView>
+          </Card.Content>
         </GlassCard>
 
         {/* ── Export Button ── */}
-        <TouchableOpacity
-          style={[styles.exportBtn, { backgroundColor: colors.accentPrimary, opacity: isExporting ? 0.6 : 1 }]}
+        <Button
+          mode="contained"
           onPress={handleExport}
+          loading={isExporting}
           disabled={isExporting}
+          style={styles.exportBtn}
+          icon={() => <Ionicons name="share-outline" size={18} color={theme.colors.onPrimary} />}
         >
-          {isExporting ? (
-            <ActivityIndicator color={colors.textInverse} />
-          ) : (
-            <>
-              <Ionicons name="share-outline" size={20} color={colors.textInverse} />
-              <Text style={[styles.exportBtnText, { color: colors.textInverse }]}>
-                Export {format_.toUpperCase()}
-              </Text>
-            </>
-          )}
-        </TouchableOpacity>
+          Export {format_.toUpperCase()}
+        </Button>
 
         {/* ── Export History ── */}
         <View style={styles.historyHeader}>
-          <Text style={[styles.historyTitle, { color: colors.textPrimary }]}>Export History</Text>
+          <Text variant="titleMedium" style={{ color: theme.colors.onSurface }}>Export History</Text>
           {exports.length > 0 && (
-            <TouchableOpacity onPress={() => Alert.alert('Clear history', 'Clear all export history?', [
-              { text: 'Cancel', style: 'cancel' },
-              { text: 'Clear', style: 'destructive', onPress: async () => {
-                await db.runAsync('DELETE FROM exports');
-                loadAll(db);
-              }},
-            ])}>
-              <Text style={[styles.clearText, { color: colors.danger }]}>Clear</Text>
-            </TouchableOpacity>
+            <Button
+              mode="text"
+              compact
+              textColor={theme.colors.error}
+              onPress={() => Alert.alert('Clear history', 'Clear all export history?', [
+                { text: 'Cancel', style: 'cancel' },
+                { text: 'Clear', style: 'destructive', onPress: async () => {
+                  await db.runAsync('DELETE FROM exports');
+                  loadAll(db);
+                }},
+              ])}
+            >
+              Clear
+            </Button>
           )}
         </View>
 
         {exports.length === 0 ? (
           <View style={styles.emptyHistory}>
-            <Ionicons name="archive-outline" size={36} color={colors.textTertiary} />
-            <Text style={[styles.emptyText, { color: colors.textTertiary }]}>No exports yet</Text>
+            <Ionicons name="archive-outline" size={36} color={theme.colors.onSurfaceVariant} />
+            <Text variant="bodyMedium" style={{ color: theme.colors.onSurfaceVariant }}>No exports yet</Text>
           </View>
         ) : (
           exports.map((item) => (
-            <GlassCard key={item.id} style={styles.historyCard}>
-              <View style={styles.historyRow}>
-                <View style={[styles.historyIcon, {
-                  backgroundColor: item.format === 'csv' ? `${colors.accentPrimary}20`
-                    : item.format === 'json' ? `${colors.success}20`
-                    : `${colors.warning}20`,
-                }]}>
-                  <Ionicons
-                    name={item.format === 'csv' ? 'grid-outline' : item.format === 'json' ? 'document-text-outline' : 'document-outline'}
-                    size={18}
-                    color={item.format === 'csv' ? colors.accentPrimary : item.format === 'json' ? colors.success : colors.warning}
-                  />
+            <GlassCard key={item.id} style={{ marginBottom: spacing.sm }}>
+              <Card.Content>
+                <View style={styles.historyRow}>
+                  <View style={[styles.historyIcon, {
+                    backgroundColor: item.format === 'csv' ? `${theme.colors.primary}20`
+                      : item.format === 'json' ? '#34D39920'
+                      : '#F59E0B20',
+                  }]}>
+                    <Ionicons
+                      name={item.format === 'csv' ? 'grid-outline' : item.format === 'json' ? 'document-text-outline' : 'document-outline'}
+                      size={18}
+                      color={item.format === 'csv' ? theme.colors.primary : item.format === 'json' ? '#34D399' : '#F59E0B'}
+                    />
+                  </View>
+                  <View style={styles.historyInfo}>
+                    <Text variant="bodyMedium" style={{ color: theme.colors.onSurface }} numberOfLines={1}>
+                      {item.file_path}
+                    </Text>
+                    <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
+                      {item.format.toUpperCase()} · {item.record_count ?? 0} records · {formatDateTime(item.created_at)}
+                    </Text>
+                  </View>
+                  <View style={[styles.statusDot, { backgroundColor: '#34D399' }]} />
                 </View>
-                <View style={styles.historyInfo}>
-                  <Text style={[styles.historyFileName, { color: colors.textPrimary }]} numberOfLines={1}>
-                    {item.file_path}
-                  </Text>
-                  <Text style={[styles.historyMeta, { color: colors.textSecondary }]}>
-                    {item.format.toUpperCase()} · {item.record_count ?? 0} records · {formatDateTime(item.created_at)}
-                  </Text>
-                </View>
-                <View style={[styles.statusDot, { backgroundColor: colors.success }]} />
-              </View>
+              </Card.Content>
             </GlassCard>
           ))
         )}
-      </ScrollView>
-    </SafeAreaView>
+      </View>
+    </PageScaffold>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
-  header: {
+  content: {
+    paddingTop: spacing.sm,
+    paddingBottom: spacing['4xl'],
+    gap: spacing.base,
+  },
+  sectionLabel: {
+    marginBottom: spacing.sm,
+  },
+  formatGrid: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  formatChip: {
+    flex: 1,
+    borderRadius: borderRadius.full,
+    borderWidth: 1,
+  },
+  dropdownTrigger: {
+    borderRadius: borderRadius.lg,
+  },
+  dropdownTriggerContent: {
+    flexDirection: 'row-reverse',
+    justifyContent: 'space-between',
+  },
+  dropdownOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  dropdownSheet: {
+    borderTopLeftRadius: borderRadius['2xl'],
+    borderTopRightRadius: borderRadius['2xl'],
+    paddingBottom: spacing['4xl'],
+  },
+  dropdownOption: {
+    borderRadius: borderRadius.md,
+  },
+  customDateRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginTop: spacing.base,
+  },
+  dateField: {
+    flex: 1,
+    borderRadius: borderRadius.lg,
+    justifyContent: 'flex-start',
+    alignItems: 'flex-start',
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.base,
+  },
+  encryptRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingBottom: spacing.sm,
   },
-  backBtn: { width: 40, height: 40, justifyContent: 'center', alignItems: 'center' },
-  title: { fontSize: typography.sizes.xl, fontWeight: typography.weights.bold },
-  content: { paddingHorizontal: spacing.screenHorizontal, paddingVertical: spacing.lg, gap: spacing.base, paddingBottom: spacing['4xl'] },
-  sectionLabel: { fontSize: typography.sizes.xs, fontWeight: typography.weights.semibold, letterSpacing: 0.8, marginBottom: spacing.sm },
-  formatGrid: { flexDirection: 'row', gap: spacing.sm },
-  formatBtn: {
-    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    gap: 6, paddingVertical: 10, borderRadius: borderRadius.full, borderWidth: 1,
+  encryptInfo: {
+    flex: 1,
+    marginRight: spacing.base,
   },
-  formatBtnText: { fontSize: typography.sizes.sm, fontWeight: typography.weights.semibold },
-  formatHint: { fontSize: typography.sizes.xs, marginTop: spacing.sm },
-  customDateRow: {
-    flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.base,
+  previewHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
   },
-  dateField: {
-    flex: 1, borderRadius: borderRadius.lg, padding: spacing.base, gap: 2,
-  },
-  dateFieldLabel: { fontSize: typography.sizes.xs },
-  dateFieldValue: { fontSize: typography.sizes.base, fontWeight: typography.weights.medium },
-  encryptRow: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-  },
-  encryptInfo: { flex: 1, marginRight: spacing.base },
-  encryptLabel: { fontSize: typography.sizes.base, fontWeight: typography.weights.medium },
-  encryptHint: { fontSize: typography.sizes.xs, marginTop: 2 },
-  passphraseInput: {
-    marginTop: spacing.base, borderWidth: 1, borderRadius: borderRadius.lg,
-    paddingHorizontal: spacing.base, paddingVertical: 12, fontSize: typography.sizes.base,
-  },
-  previewHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  previewHeaderRight: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  previewTotal: { fontSize: typography.sizes.xs, fontWeight: typography.weights.medium },
-  previewGrid: { flexDirection: 'row', gap: spacing.sm, paddingVertical: spacing.sm },
-  previewItem: {
-    width: 90, alignItems: 'center', padding: spacing.sm, borderRadius: borderRadius.lg, gap: 4,
-  },
-  previewIcon: { width: 36, height: 36, borderRadius: 18, justifyContent: 'center', alignItems: 'center' },
-  previewCount: { fontSize: typography.sizes.lg, fontWeight: typography.weights.bold },
-  previewLabel: { fontSize: typography.sizes.xs },
-  exportBtn: {
+  previewHeaderRight: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: spacing.base + 2,
-    borderRadius: borderRadius.full,
     gap: spacing.sm,
   },
-  exportBtnText: { fontSize: typography.sizes.base, fontWeight: typography.weights.bold },
-  historyHeader: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: spacing.sm,
+  previewGrid: {
+    flexDirection: 'row',
+    paddingVertical: spacing.sm,
+    gap: spacing.sm,
   },
-  historyTitle: { fontSize: typography.sizes.lg, fontWeight: typography.weights.semibold },
-  clearText: { fontSize: typography.sizes.sm, fontWeight: typography.weights.medium },
-  emptyHistory: { alignItems: 'center', paddingVertical: spacing['2xl'], gap: spacing.sm },
-  emptyText: { fontSize: typography.sizes.base },
-  historyCard: { marginBottom: 0 },
-  historyRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  historyIcon: { width: 40, height: 40, borderRadius: 20, justifyContent: 'center', alignItems: 'center' },
-  historyInfo: { flex: 1 },
-  historyFileName: { fontSize: typography.sizes.base, fontWeight: typography.weights.medium },
-  historyMeta: { fontSize: typography.sizes.xs, marginTop: 2 },
-  statusDot: { width: 8, height: 8, borderRadius: 4 },
+  previewItem: {
+    width: 92,
+    borderRadius: borderRadius.lg,
+    borderWidth: 1,
+    overflow: 'hidden',
+  },
+  previewItemContent: {
+    alignItems: 'center',
+    paddingVertical: spacing.sm,
+    gap: 4,
+  },
+  previewIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  exportBtn: {
+    marginTop: spacing.sm,
+    borderRadius: borderRadius.lg,
+    paddingVertical: 4,
+  },
+  historyHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: spacing.sm,
+  },
+  emptyHistory: {
+    alignItems: 'center',
+    paddingVertical: spacing['2xl'],
+    gap: spacing.sm,
+  },
+  historyRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  historyIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  historyInfo: {
+    flex: 1,
+  },
+  statusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
 });

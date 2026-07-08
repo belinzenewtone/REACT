@@ -1,7 +1,7 @@
 import React from 'react';
-import { View, ScrollView, TouchableOpacity, Text, StyleSheet } from 'react-native';
-import { useThemeColors } from '../../hooks/useThemeColors';
-import { spacing, typography, borderRadius } from '../../theme';
+import { View, ScrollView, StyleSheet } from 'react-native';
+import { Chip, Text, useTheme } from 'react-native-paper';
+import { spacing } from '../../theme';
 
 interface SuggestedPromptsProps {
   prompts: string[];
@@ -9,28 +9,28 @@ interface SuggestedPromptsProps {
 }
 
 export function SuggestedPrompts({ prompts, onPromptPress }: SuggestedPromptsProps) {
-  const colors = useThemeColors();
+  const theme = useTheme();
   const visible = prompts.slice(0, 3);
 
   return (
     <View style={styles.container}>
-      <Text style={[styles.label, { color: colors.textSecondary }]}>Try asking:</Text>
+      <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant, marginBottom: 8 }}>
+        Try asking:
+      </Text>
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.chipsRow}
       >
         {visible.map((prompt, index) => (
-          <TouchableOpacity
+          <Chip
             key={index}
-            style={[styles.chip, { backgroundColor: colors.glassWhite, borderColor: colors.border }]}
             onPress={() => onPromptPress(prompt)}
-            activeOpacity={0.7}
+            style={[styles.chip, { backgroundColor: theme.colors.surfaceVariant, borderColor: theme.colors.outlineVariant }]}
+            textStyle={{ color: theme.colors.primary }}
           >
-            <Text style={[styles.text, { color: colors.accentPrimary }]} numberOfLines={1}>
-              {prompt}
-            </Text>
-          </TouchableOpacity>
+            {prompt}
+          </Chip>
         ))}
       </ScrollView>
     </View>
@@ -42,22 +42,10 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.sm,
     paddingHorizontal: spacing.screenHorizontal,
   },
-  label: {
-    fontSize: 13,
-    fontWeight: typography.weights.medium,
-    marginBottom: 8,
-  },
   chipsRow: {
     gap: 8,
   },
   chip: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: borderRadius.full,
     borderWidth: 1,
-  },
-  text: {
-    fontSize: 12,
-    fontWeight: typography.weights.medium,
   },
 });

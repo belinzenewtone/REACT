@@ -1,11 +1,11 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Animated, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { Animated, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useThemeColors } from '../../hooks/useThemeColors';
-import { spacing, typography, borderRadius } from '../../theme';
+import { Text, TouchableRipple, useTheme } from 'react-native-paper';
+import { spacing, borderRadius } from '../../theme';
 
-export type BannerTone = 'error' | 'success' | 'info' | 'warning';
+type BannerTone = 'error' | 'success' | 'info' | 'warning';
 
 interface TopBannerProps {
   tone: BannerTone;
@@ -22,15 +22,25 @@ const ICONS: Record<BannerTone, keyof typeof Ionicons.glyphMap> = {
   warning: 'warning',
 };
 
+const SUCCESS = '#7BC47B';
+const WARNING = '#F5CB5C';
+
 export function TopBanner({ tone, message, visible, onDismiss, autoDismissMs }: TopBannerProps) {
-  const colors = useThemeColors();
+  const theme = useTheme();
   const insets = useSafeAreaInsets();
   const opacity = useRef(new Animated.Value(0)).current;
   const translateY = useRef(new Animated.Value(-10)).current;
   const [mounted, setMounted] = useState(visible);
-  const toneColor = colors[tone === 'error' ? 'danger' : tone];
 
-  // Keep mounted while animating in; unmount only after fade-out completes
+  const toneColor =
+    tone === 'error'
+      ? theme.colors.error
+      : tone === 'success'
+      ? SUCCESS
+      : tone === 'warning'
+      ? WARNING
+      : theme.colors.primary;
+
   useEffect(() => {
     if (visible) setMounted(true);
   }, [visible]);
@@ -69,13 +79,13 @@ export function TopBanner({ tone, message, visible, onDismiss, autoDismissMs }: 
         style={[styles.banner, { backgroundColor: `${toneColor}20`, borderColor: toneColor }]}
       >
         <Ionicons name={ICONS[tone]} size={18} color={toneColor} />
-        <Text style={[styles.message, { color: toneColor }]} numberOfLines={2}>
+        <Text variant="bodyMedium" style={[styles.message, { color: toneColor }]} numberOfLines={2}>
           {message}
         </Text>
         {onDismiss ? (
-          <TouchableOpacity onPress={onDismiss}>
+          <TouchableRipple onPress={onDismiss} borderless>
             <Ionicons name="close" size={16} color={toneColor} />
-          </TouchableOpacity>
+          </TouchableRipple>
         ) : null}
       </Animated.View>
     </Animated.View>
@@ -106,7 +116,5 @@ const styles = StyleSheet.create({
   },
   message: {
     flex: 1,
-    fontSize: typography.sizes.sm,
-    fontWeight: typography.weights.medium,
   },
 });

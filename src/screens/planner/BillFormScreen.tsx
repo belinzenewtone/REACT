@@ -1,19 +1,25 @@
 import React, { useEffect, useState } from 'react';
-import { Animated, View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet, Alert } from 'react-native';
+import { Animated, View, StyleSheet, ScrollView, Alert } from 'react-native';
 import { useFormFadeIn } from '../../hooks/useFormFadeIn';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
+import { Text, IconButton, Button, TextInput, Chip, useTheme } from 'react-native-paper';
 import { TopBanner } from '../../components/common/TopBanner';
 import { useSQLiteContext } from 'expo-sqlite';
-import { useThemeColors } from '../../hooks/useThemeColors';
 import { usePlannerStore } from '../../store';
 import { BillRepository } from '../../database/repositories/BillRepository';
 import { Dropdown } from '../../components/common/Dropdown';
 import { DateField } from '../../components/common/DateField';
-import { spacing, typography, borderRadius } from '../../theme';
+import { spacing, borderRadius } from '../../theme';
 import type { RootStackParamList } from '../../navigation/types';
 import type { BillCycle } from '../../types';
+import { applyBillPayment } from '../../utils/billCycle';
+import { haptic } from '../../services/haptics';
+
+const SEMANTIC = {
+  success: '#7BC47B',
+};
 
 type BillFormRouteProp = RouteProp<RootStackParamList, 'BillForm'>;
 const CYCLE_LABELS: Record<BillCycle, string> = {
@@ -29,7 +35,7 @@ const CYCLE_OPTIONS = (Object.keys(CYCLE_LABELS) as BillCycle[]).map((cycle) => 
 }));
 
 export function BillFormScreen() {
-  const colors = useThemeColors();
+  const theme = useTheme();
   const db = useSQLiteContext();
   const navigation = useNavigation<any>();
   const route = useRoute<BillFormRouteProp>();
@@ -41,6 +47,7 @@ export function BillFormScreen() {
   const [isReady, setIsReady] = useState(!isEditing);
   const contentOpacity = useFormFadeIn(isReady);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
   const [title, setTitle] = useState('');
   const [amount, setAmount] = useState('');
   const [cycle, setCycle] = useState<BillCycle>('monthly');
@@ -77,29 +84,40 @@ export function BillFormScreen() {
       return;
     }
 
+    setIsSaving(true);
+    haptic('light');
+
+    // For repeating cycles, "Paid" means "done for THIS cycle" — the due date
+    // advances one cycle and paid resets so the next reminder arms. Pure math
+    // lives in src/utils/billCycle.ts (unit-tested).
+    const dueIso = new Date(`${nextDueDate}T00:00:00.000Z`).toISOString();
+    const { nextDueIso, paidStatus: effectivePaid, advanced } = applyBillPayment(dueIso, cycle, paidStatus);
+
     const data = {
       title: title.trim(),
       amount: numAmount,
       cycle,
-      nextDueDate: new Date(`${nextDueDate}T00:00:00.000Z`).toISOString(),
+      nextDueDate: nextDueIso,
       notes: notes.trim() || undefined,
-      paidStatus,
+      paidStatus: effectivePaid,
       isActive,
+      lastPaidAt: paidStatus ? new Date().toISOString() : undefined,
       recordSource: 'manual' as const,
     };
 
     try {
       if (isEditing && billId) {
         await updateBill(db, billId, data);
-        setSuccessMsg('Bill updated');
+        setSuccessMsg(advanced ? 'Paid — next cycle scheduled' : 'Bill updated');
       } else {
         await createBill(db, data);
-        setSuccessMsg('Bill added');
+        setSuccessMsg(advanced ? 'Bill added — next cycle scheduled' : 'Bill added');
       }
-      setTimeout(() => navigation.goBack(), 900);
+      setTimeout(() => navigation.goBack(), 400);
     } catch (error) {
       console.error('Failed to save bill:', error);
       Alert.alert('Error', 'Failed to save bill');
+      setIsSaving(false);
     }
   };
 
@@ -119,88 +137,104 @@ export function BillFormScreen() {
   };
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.bgPrimary }]} edges={['top']}>
+    <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]} edges={['top']}>
       <TopBanner tone="success" message={successMsg ?? ''} visible={!!successMsg} />
       <Animated.View style={{ flex: 1, opacity: contentOpacity }}>
-      <ScrollView contentContainerStyle={styles.content}>
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()}>
-            <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
-          </TouchableOpacity>
-          <Text style={[styles.title, { color: colors.textPrimary }]}>
-            {isEditing ? 'Edit Bill' : 'Add Bill'}
-          </Text>
-          {isEditing ? (
-            <TouchableOpacity onPress={handleDelete}>
-              <Ionicons name="trash-outline" size={22} color={colors.danger} />
-            </TouchableOpacity>
-          ) : (
-            <View style={{ width: 24 }} />
-          )}
-        </View>
+        <ScrollView contentContainerStyle={styles.content}>
+          <View style={styles.header}>
+            <IconButton
+              icon={() => <Ionicons name="arrow-back" size={22} color={theme.colors.onSurface} />}
+              onPress={() => navigation.goBack()}
+            />
+            <Text variant="titleLarge" style={{ color: theme.colors.onSurface }} numberOfLines={1}>
+              {isEditing ? 'Edit Bill' : 'Add Bill'}
+            </Text>
+            {isEditing ? (
+              <IconButton
+                icon={() => <Ionicons name="trash-outline" size={22} color={theme.colors.error} />}
+                onPress={handleDelete}
+              />
+            ) : (
+              <View style={{ width: 44 }} />
+            )}
+          </View>
 
-        <Input label="Title" value={title} onChangeText={setTitle} placeholder="e.g. Rent" />
-        <Input label="Amount" value={amount} onChangeText={setAmount} placeholder="0.00" keyboardType="decimal-pad" />
-        <DateField label="Next due date" value={nextDueDate} onChange={setNextDueDate} />
-        <Input label="Notes (optional)" value={notes} onChangeText={setNotes} placeholder="Notes..." />
+          <TextInput
+            mode="outlined"
+            dense
+            label="Title"
+            value={title}
+            onChangeText={setTitle}
+            placeholder="e.g. Rent"
+            style={styles.input}
+          />
+          <TextInput
+            mode="outlined"
+            dense
+            label="Amount"
+            value={amount}
+            onChangeText={setAmount}
+            placeholder="0.00"
+            keyboardType="decimal-pad"
+            style={styles.input}
+          />
+          <DateField label="Next due date" value={nextDueDate} onChange={setNextDueDate} />
+          <TextInput
+            mode="outlined"
+            dense
+            label="Notes (optional)"
+            value={notes}
+            onChangeText={setNotes}
+            placeholder="Notes..."
+            style={styles.input}
+            multiline
+          />
 
-        <Dropdown label="Cycle" value={cycle} options={CYCLE_OPTIONS} onChange={(v) => setCycle(v as BillCycle)} />
+          <Dropdown label="Cycle" value={cycle} options={CYCLE_OPTIONS} onChange={(v) => setCycle(v as BillCycle)} />
 
-        <TouchableOpacity
-          style={[styles.toggle, { backgroundColor: paidStatus ? colors.success : colors.glassWhite, borderColor: colors.border }]}
-          onPress={() => setPaidStatus((v) => !v)}
-        >
-          <Text style={{ color: paidStatus ? colors.textInverse : colors.textPrimary, fontWeight: '500' }}>
+          <Button
+            mode="outlined"
+            onPress={() => setPaidStatus((v) => !v)}
+            style={[
+              styles.toggle,
+              {
+                backgroundColor: paidStatus ? SEMANTIC.success : theme.colors.surfaceVariant,
+                borderColor: theme.colors.outline,
+              },
+            ]}
+            textColor={paidStatus ? theme.colors.onPrimary : theme.colors.onSurface}
+          >
             Paid: {paidStatus ? 'Yes' : 'No'}
-          </Text>
-        </TouchableOpacity>
+          </Button>
 
-        <TouchableOpacity
-          style={[styles.toggle, { backgroundColor: isActive ? colors.accentPrimary : colors.glassWhite, borderColor: colors.border }]}
-          onPress={() => setIsActive((v) => !v)}
-        >
-          <Text style={{ color: isActive ? colors.textInverse : colors.textPrimary, fontWeight: '500' }}>
+          <Button
+            mode="outlined"
+            onPress={() => setIsActive((v) => !v)}
+            style={[
+              styles.toggle,
+              {
+                backgroundColor: isActive ? theme.colors.primary : theme.colors.surfaceVariant,
+                borderColor: theme.colors.outline,
+              },
+            ]}
+            textColor={isActive ? theme.colors.onPrimary : theme.colors.onSurface}
+          >
             Active: {isActive ? 'Yes' : 'No'}
-          </Text>
-        </TouchableOpacity>
+          </Button>
 
-        <TouchableOpacity style={[styles.saveButton, { backgroundColor: colors.accentPrimary }]} onPress={handleSave}>
-          <Text style={[styles.saveButtonText, { color: colors.textInverse }]}>
-            {isEditing ? 'Update Bill' : 'Add Bill'}
-          </Text>
-        </TouchableOpacity>
-      </ScrollView>
+          <Button
+            mode="contained"
+            onPress={handleSave}
+            disabled={isSaving}
+            loading={isSaving}
+            style={[styles.saveButton, { backgroundColor: theme.colors.primary }]}
+            textColor={theme.colors.onPrimary}
+          >
+            {isSaving ? 'Saving…' : isEditing ? 'Update Bill' : 'Add Bill'}
+          </Button>
+        </ScrollView>
       </Animated.View>
     </SafeAreaView>
-  );
-}
-
-function Input({
-  label,
-  value,
-  onChangeText,
-  placeholder,
-  keyboardType,
-}: {
-  label: string;
-  value: string;
-  onChangeText: (text: string) => void;
-  placeholder?: string;
-  keyboardType?: 'default' | 'decimal-pad' | 'numeric';
-}) {
-  const colors = useThemeColors();
-  return (
-    <View style={[styles.inputGroup, { backgroundColor: colors.glassWhite, borderColor: colors.border }]}>
-      <Text style={[styles.label, { color: colors.textSecondary }]}>{label}</Text>
-      <TextInput
-        style={[styles.input, { color: colors.textPrimary }]}
-        placeholder={placeholder}
-        placeholderTextColor={colors.textTertiary}
-        value={value}
-        onChangeText={onChangeText}
-        keyboardType={keyboardType}
-      />
-    </View>
   );
 }
 
@@ -212,22 +246,10 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingBottom: spacing.sm,
   },
-  title: { fontSize: typography.sizes.lg, fontWeight: typography.weights.semibold },
-  content: { padding: spacing.lg },
-  inputGroup: {
-    borderRadius: borderRadius.lg,
-    borderWidth: 1,
-    paddingHorizontal: spacing.base,
-    paddingVertical: spacing.sm,
+  content: { paddingHorizontal: spacing.screenHorizontal, paddingVertical: spacing.lg },
+  input: {
     marginBottom: spacing.base,
-  },
-  label: { fontSize: typography.sizes.xs, marginBottom: 2 },
-  input: { fontSize: typography.sizes.base, paddingVertical: 4 },
-  sectionLabel: {
-    fontSize: typography.sizes.base,
-    fontWeight: typography.weights.medium,
-    marginTop: spacing.lg,
-    marginBottom: spacing.sm,
+    backgroundColor: 'transparent',
   },
   toggle: {
     borderRadius: borderRadius.lg,
@@ -240,7 +262,5 @@ const styles = StyleSheet.create({
     marginTop: spacing.xl,
     paddingVertical: spacing.base,
     borderRadius: borderRadius.lg,
-    alignItems: 'center',
   },
-  saveButtonText: { fontSize: typography.sizes.base, fontWeight: typography.weights.semibold },
 });

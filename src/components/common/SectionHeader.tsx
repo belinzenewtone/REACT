@@ -1,7 +1,7 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
-import { useThemeColors } from '../../hooks/useThemeColors';
-import { spacing, typography } from '../../theme';
+import { View, StyleSheet } from 'react-native';
+import { Text, TouchableRipple, useTheme } from 'react-native-paper';
+import { spacing } from '../../theme';
 
 interface SectionHeaderProps {
   title: string;
@@ -10,15 +10,19 @@ interface SectionHeaderProps {
 }
 
 export function SectionHeader({ title, actionLabel, onAction }: SectionHeaderProps) {
-  const colors = useThemeColors();
+  const theme = useTheme();
 
   return (
     <View style={styles.container}>
-      <Text style={[styles.title, { color: colors.textPrimary }]}>{title}</Text>
+      <Text variant="titleMedium" style={{ color: theme.colors.onSurface }} numberOfLines={1}>
+        {title}
+      </Text>
       {actionLabel && onAction && (
-        <TouchableOpacity onPress={onAction}>
-          <Text style={[styles.action, { color: colors.accentPrimary }]}>{actionLabel}</Text>
-        </TouchableOpacity>
+        <TouchableRipple onPress={onAction} borderless>
+          <Text variant="labelLarge" style={{ color: theme.colors.primary }} numberOfLines={1}>
+            {actionLabel}
+          </Text>
+        </TouchableRipple>
       )}
     </View>
   );
@@ -30,13 +34,5 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: spacing.base,
-  },
-  title: {
-    fontSize: typography.sizes.lg,
-    fontWeight: typography.weights.semibold,
-  },
-  action: {
-    fontSize: typography.sizes.sm,
-    fontWeight: typography.weights.medium,
   },
 });

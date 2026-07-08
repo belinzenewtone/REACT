@@ -1,12 +1,13 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, FlatList } from 'react-native';
+import { View, StyleSheet } from 'react-native';
+import { FlashList } from '@shopify/flash-list';
 import { Ionicons } from '@expo/vector-icons';
+import { Text, TouchableRipple, useTheme } from 'react-native-paper';
 import { GlassCard } from '../common/GlassCard';
 import { SectionHeader } from '../common/SectionHeader';
-import { useThemeColors } from '../../hooks/useThemeColors';
 import { formatCurrency, formatDate } from '../../utils/formatters';
 import { CATEGORY_COLORS, CATEGORY_ICONS } from '../../constants';
-import { spacing, typography, borderRadius } from '../../theme';
+import { spacing, borderRadius } from '../../theme';
 
 export interface RecentTransactionItem {
   id: string;
@@ -14,7 +15,7 @@ export interface RecentTransactionItem {
   category: string;
   amount: number;
   date: string;
-  type: 'income' | 'expense' | 'transfer';
+  type: 'income' | 'expense' | 'transfer' | 'fuliza';
 }
 
 interface RecentTransactionsProps {
@@ -28,18 +29,16 @@ export function RecentTransactions({
   onViewAll,
   onTransactionPress,
 }: RecentTransactionsProps) {
-  const colors = useThemeColors();
-
   return (
     <View>
       <SectionHeader title="Recent transactions" actionLabel="See all" onAction={onViewAll} />
       <GlassCard>
         {transactions.length === 0 ? (
-          <Text style={[styles.empty, { color: colors.textTertiary }]}>
+          <Text variant="bodyMedium" style={styles.empty}>
             No transactions yet
           </Text>
         ) : (
-          <FlatList
+          <FlashList
             data={transactions.slice(0, 5)}
             keyExtractor={(item) => item.id}
             renderItem={({ item }) => (
@@ -63,34 +62,36 @@ function TransactionRow({
   item: RecentTransactionItem;
   onPress?: () => void;
 }) {
-  const colors = useThemeColors();
-  const categoryColor = CATEGORY_COLORS[item.category] ?? colors.textTertiary;
+  const theme = useTheme();
+  const categoryColor = CATEGORY_COLORS[item.category] ?? theme.colors.onSurfaceVariant;
   const iconName = (CATEGORY_ICONS[item.category] ?? 'help-circle') as keyof typeof Ionicons.glyphMap;
-  const amountColor = item.type === 'income' ? colors.success : colors.danger;
+  const amountColor = item.type === 'income' ? theme.colors.primary : theme.colors.error;
 
   return (
-    <TouchableOpacity style={styles.row} onPress={onPress} activeOpacity={0.7}>
-      <View style={[styles.iconContainer, { backgroundColor: `${categoryColor}20` }]}>
-        <Ionicons name={iconName} size={18} color={categoryColor} />
+    <TouchableRipple onPress={onPress} style={styles.row}>
+      <View style={styles.rowInner}>
+        <View style={[styles.iconContainer, { backgroundColor: `${categoryColor}20` }]}>
+          <Ionicons name={iconName} size={18} color={categoryColor} />
+        </View>
+        <View style={styles.content}>
+          <Text variant="bodyMedium" style={{ color: theme.colors.onSurface }} numberOfLines={1}>
+            {item.merchant}
+          </Text>
+          <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant, marginTop: 2 }} numberOfLines={1}>
+            {item.category}
+          </Text>
+        </View>
+        <View style={styles.amountColumn}>
+          <Text variant="bodyMedium" style={{ color: amountColor }} numberOfLines={1}>
+            {item.type === 'income' ? '+' : '-'}
+            {formatCurrency(item.amount)}
+          </Text>
+          <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant, marginTop: 2 }}>
+            {formatDate(item.date, 'dd MMM')}
+          </Text>
+        </View>
       </View>
-      <View style={styles.content}>
-        <Text style={[styles.merchant, { color: colors.textPrimary }]} numberOfLines={1}>
-          {item.merchant}
-        </Text>
-        <Text style={[styles.category, { color: colors.textSecondary }]} numberOfLines={1} ellipsizeMode="tail">
-          {item.category}
-        </Text>
-      </View>
-      <View style={styles.amountColumn}>
-        <Text style={[styles.amount, { color: amountColor }]}>
-          {item.type === 'income' ? '+' : '-'}
-          {formatCurrency(item.amount)}
-        </Text>
-        <Text style={[styles.date, { color: colors.textTertiary }]}>
-          {formatDate(item.date, 'dd MMM')}
-        </Text>
-      </View>
-    </TouchableOpacity>
+    </TouchableRipple>
   );
 }
 
@@ -98,9 +99,12 @@ const styles = StyleSheet.create({
   empty: {
     textAlign: 'center',
     paddingVertical: spacing.lg,
-    fontSize: typography.sizes.base,
   },
   row: {
+    borderRadius: borderRadius.lg,
+    overflow: 'hidden',
+  },
+  rowInner: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: spacing.sm,
@@ -116,25 +120,7 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
   },
-  merchant: {
-    fontSize: typography.sizes.base,
-    fontWeight: typography.weights.medium,
-    marginRight: spacing.sm,
-  },
-  category: {
-    fontSize: typography.sizes.xs,
-    marginTop: 2,
-    textTransform: 'capitalize',
-  },
   amountColumn: {
     alignItems: 'flex-end',
-  },
-  amount: {
-    fontSize: typography.sizes.base,
-    fontWeight: typography.weights.semibold,
-  },
-  date: {
-    fontSize: typography.sizes.xs,
-    marginTop: 2,
   },
 });

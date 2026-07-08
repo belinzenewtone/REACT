@@ -86,4 +86,12 @@ export class FulizaLoanRepository extends BaseRepository<FulizaLoanDbRecord> {
       `SELECT * FROM fuliza_loans ORDER BY draw_date DESC`
     );
   }
+
+  async search(query: string, limit: number = 50): Promise<FulizaLoanDbRecord[]> {
+    const like = `%${query}%`;
+    return await this.db.getAllAsync<FulizaLoanDbRecord>(
+      `SELECT * FROM fuliza_loans WHERE (draw_code LIKE ? OR status LIKE ?) ORDER BY draw_date DESC LIMIT ?`,
+      [like, like, limit]
+    );
+  }
 }

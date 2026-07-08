@@ -11,11 +11,11 @@ export interface CsvColumnMapping {
   description: string;
 }
 
-export interface CsvRow {
+interface CsvRow {
   [key: string]: string;
 }
 
-export interface ParsedCsvResult {
+interface ParsedCsvResult {
   headers: string[];
   rows: CsvRow[];
 }

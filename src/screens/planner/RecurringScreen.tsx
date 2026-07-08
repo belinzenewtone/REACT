@@ -1,21 +1,21 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, StyleSheet, Alert } from 'react-native';
+import { View, StyleSheet, ScrollView, Alert } from 'react-native';
 import { TopBanner } from '../../components/common/TopBanner';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
+import { Text, IconButton, Button, TouchableRipple, useTheme } from 'react-native-paper';
 import { useSQLiteContext } from 'expo-sqlite';
-import { useThemeColors } from '../../hooks/useThemeColors';
 import { usePlannerStore } from '../../store';
 import { GlassCard } from '../../components/common/GlassCard';
 import { EmptyState } from '../../components/common/EmptyState';
 import { LifeOSSwitch } from '../../components/common/LifeOSSwitch';
 import { formatCurrency, formatDate } from '../../utils/formatters';
-import { spacing, typography, borderRadius } from '../../theme';
+import { spacing, borderRadius, BOTTOM_NAV_SAFE_AREA } from '../../theme';
 import { animateLayout } from '../../utils/animation';
 
 export function RecurringScreen() {
-  const colors = useThemeColors();
+  const theme = useTheme();
   const db = useSQLiteContext();
   const navigation = useNavigation<any>();
   const { recurringRules, loadAll, updateRecurringRule, deleteRecurringRule } = usePlannerStore();
@@ -46,21 +46,29 @@ export function RecurringScreen() {
   };
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.bgPrimary }]} edges={['top']}>
+    <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]} edges={['top']}>
       <TopBanner tone="success" message={banner ?? ''} visible={!!banner} autoDismissMs={2000} onDismiss={() => setBanner(null)} />
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()}>
-            <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
-          </TouchableOpacity>
+          <IconButton
+            icon={() => <Ionicons name="arrow-back" size={22} color={theme.colors.onSurface} />}
+            onPress={() => navigation.goBack()}
+          />
           <View style={styles.headerTextCol}>
-            <Text style={[styles.eyebrow, { color: colors.textSecondary }]}>Automation</Text>
-            <Text style={[styles.title, { color: colors.textPrimary }]}>Recurring</Text>
-            <Text style={[styles.subtitle, { color: colors.textSecondary }]}>Subscriptions and repeating items</Text>
+            <Text variant="labelSmall" style={{ color: theme.colors.primary }}>
+              AUTOMATION
+            </Text>
+            <Text variant="titleLarge" style={{ color: theme.colors.onSurface }} numberOfLines={1}>
+              Recurring
+            </Text>
+            <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
+              Subscriptions and repeating items
+            </Text>
           </View>
-          <TouchableOpacity onPress={() => navigation.navigate('RecurringForm')}>
-            <Ionicons name="add" size={24} color={colors.accentPrimary} />
-          </TouchableOpacity>
+          <IconButton
+            icon={() => <Ionicons name="add" size={22} color={theme.colors.primary} />}
+            onPress={() => navigation.navigate('RecurringForm')}
+          />
         </View>
 
         {recurringRules.length === 0 ? (
@@ -71,37 +79,44 @@ export function RecurringScreen() {
           />
         ) : (
           recurringRules.map((rule) => (
-            <TouchableOpacity
+            <TouchableRipple
               key={rule.id}
               onPress={() => navigation.navigate('RecurringForm', { ruleId: rule.id })}
+              style={{ marginBottom: spacing.base }}
+              rippleColor={theme.colors.primary}
             >
               <GlassCard style={styles.card}>
                 <View style={styles.row}>
                   <View style={styles.contentCol}>
-                    <Text style={[styles.titleText, { color: colors.textPrimary }]} numberOfLines={1}>
+                    <Text variant="bodyLarge" style={{ color: theme.colors.onSurface }} numberOfLines={1}>
                       {rule.title}
                     </Text>
-                    <Text style={[styles.meta, { color: colors.textSecondary }]}>
+                    <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant, textTransform: 'capitalize' }}>
                       {rule.type} · {rule.cadence} · Next: {formatDate(rule.next_run_at, 'dd MMM yyyy')}
                     </Text>
                   </View>
                   <View style={styles.trailingCol}>
                     {rule.amount ? (
-                      <Text style={[styles.amount, { color: colors.textPrimary }]}>
+                      <Text variant="titleMedium" style={{ color: theme.colors.onSurface }}>
                         {formatCurrency(rule.amount)}
                       </Text>
                     ) : null}
                     <LifeOSSwitch value={!!rule.enabled} onValueChange={(v) => handleToggle(rule.id, v)} />
                   </View>
                 </View>
-                <View style={[styles.actions, { borderTopColor: colors.border }]}>
-                  <TouchableOpacity style={styles.actionButton} onPress={() => handleDelete(rule.id, rule.title)}>
-                    <Ionicons name="trash-outline" size={16} color={colors.danger} />
-                    <Text style={[styles.actionText, { color: colors.danger }]}>Delete</Text>
-                  </TouchableOpacity>
+                <View style={[styles.actions, { borderTopColor: theme.colors.outlineVariant }]}>
+                  <Button
+                    mode="text"
+                    compact
+                    icon={() => <Ionicons name="trash-outline" size={16} color={theme.colors.error} />}
+                    onPress={() => handleDelete(rule.id, rule.title)}
+                    textColor={theme.colors.error}
+                  >
+                    Delete
+                  </Button>
                 </View>
               </GlassCard>
-            </TouchableOpacity>
+            </TouchableRipple>
           ))
         )}
       </ScrollView>
@@ -118,32 +133,20 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.sm,
   },
   headerTextCol: { alignItems: 'center' },
-  eyebrow: {
-    fontSize: typography.sizes.xs,
-    fontWeight: typography.weights.medium,
-    textTransform: 'uppercase',
-    letterSpacing: 0.6,
+  content: {
+    paddingHorizontal: spacing.screenHorizontal,
+    paddingVertical: spacing.lg,
+    paddingTop: spacing.sm,
+    paddingBottom: BOTTOM_NAV_SAFE_AREA,
   },
-  title: { fontSize: typography.sizes.lg, fontWeight: typography.weights.semibold, marginTop: 2 },
-  subtitle: { fontSize: typography.sizes.xs, marginTop: 2 },
-  content: { paddingHorizontal: spacing.screenHorizontal, paddingVertical: spacing.lg, paddingBottom: spacing['4xl'] },
-  card: { marginBottom: spacing.base, padding: spacing.base },
+  card: { padding: spacing.base },
   row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   contentCol: { flex: 1, marginRight: spacing.sm },
-  titleText: { fontSize: typography.sizes.base, fontWeight: typography.weights.medium },
-  meta: { fontSize: typography.sizes.sm, marginTop: 2, textTransform: 'capitalize' },
   trailingCol: { alignItems: 'flex-end', gap: spacing.xs },
-  amount: { fontSize: typography.sizes.base, fontWeight: typography.weights.bold },
   actions: {
     flexDirection: 'row',
     marginTop: spacing.base,
     paddingTop: spacing.base,
     borderTopWidth: 1,
   },
-  actionButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-  },
-  actionText: { fontSize: typography.sizes.sm, fontWeight: typography.weights.medium },
 });

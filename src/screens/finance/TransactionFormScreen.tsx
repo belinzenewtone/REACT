@@ -2,27 +2,30 @@ import React, { useEffect, useState } from 'react';
 import {
   Animated,
   View,
-  Text,
-  TextInput,
-  TouchableOpacity,
   StyleSheet,
   ScrollView,
   Alert,
 } from 'react-native';
 import { useFormFadeIn } from '../../hooks/useFormFadeIn';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
-import { useThemeColors } from '../../hooks/useThemeColors';
-import { useTransactionStore, useAppStore } from '../../store';
+import {
+  Text,
+  TextInput,
+  Button,
+  SegmentedButtons,
+  useTheme,
+} from 'react-native-paper';
+import { useTransactionStore } from '../../store';
 import { TransactionRepository } from '../../database/repositories/TransactionRepository';
-import { BudgetRepository } from '../../database/repositories/BudgetRepository';
-import { fireBudgetAlertLevels } from '../../services/notificationService';
+import { checkBudgetThresholds } from '../../services/budgetAlertService';
+import { haptic } from '../../services/haptics';
 import { CATEGORY_COLORS, CATEGORY_ICONS } from '../../constants';
+import { PageScaffold } from '../../components/common/PageScaffold';
 import { Dropdown } from '../../components/common/Dropdown';
 import { TopBanner } from '../../components/common/TopBanner';
-import { spacing, typography, borderRadius } from '../../theme';
+import { spacing, borderRadius } from '../../theme';
 import type { RootStackParamList } from '../../navigation/types';
 import type { TransactionType, TransactionStatus } from '../../types';
 
@@ -38,17 +41,24 @@ const CATEGORY_OPTIONS = CATEGORIES.map((cat) => ({
   color: CATEGORY_COLORS[cat],
 }));
 
+const TYPE_BUTTONS = TYPES.map((type) => ({
+  value: type,
+  label: type.charAt(0).toUpperCase() + type.slice(1),
+}));
+
+const STATUS_BUTTONS = STATUSES.map((status) => ({
+  value: status,
+  label: status.charAt(0).toUpperCase() + status.slice(1),
+}));
+
 export function TransactionFormScreen() {
-  const colors = useThemeColors();
+  const theme = useTheme();
   const db = useSQLiteContext();
   const navigation = useNavigation();
   const route = useRoute<TransactionFormRouteProp>();
   const repo = React.useMemo(() => new TransactionRepository(db), [db]);
 
   const { addTransaction, updateTransaction, loadTransactions } = useTransactionStore();
-  const notificationsEnabled = useAppStore((s) => s.settings.notificationsEnabled);
-  const budgetAlertsEnabled = useAppStore((s) => s.settings.budgetThresholdAlerts);
-  const alertThresholds = useAppStore((s) => s.settings.alertThresholds);
   const transactionId = route.params?.transactionId;
   const isEditing = !!transactionId;
 
@@ -59,6 +69,10 @@ export function TransactionFormScreen() {
   const [amount, setAmount] = useState('');
   const [merchant, setMerchant] = useState('');
   const [description, setDescription] = useState('');
+  const [notes, setNotes] = useState('');
+  const [fee, setFee] = useState('');
+  const [balanceAfter, setBalanceAfter] = useState('');
+  const [mpesaCode, setMpesaCode] = useState('');
   const [type, setType] = useState<TransactionType>('expense');
   const [status, setStatus] = useState<TransactionStatus>('completed');
   const [category, setCategory] = useState('food');
@@ -73,6 +87,10 @@ export function TransactionFormScreen() {
         setAmount(tx.amount.toString());
         setMerchant(tx.merchant);
         setDescription(tx.description ?? '');
+        setNotes(tx.notes ?? '');
+        setFee(tx.fee != null ? String(tx.fee) : '');
+        setBalanceAfter(tx.balance_after != null ? String(tx.balance_after) : '');
+        setMpesaCode(tx.mpesa_code ?? '');
         setType(tx.transaction_type);
         setStatus(tx.status);
         setCategory(tx.category);
@@ -94,7 +112,10 @@ export function TransactionFormScreen() {
     }
 
     setIsLoading(true);
+    haptic('light');
     try {
+      const feeNum = fee.trim() ? parseFloat(fee) : undefined;
+      const balNum = balanceAfter.trim() ? parseFloat(balanceAfter) : undefined;
       const data = {
         amount: numAmount,
         merchant: merchant.trim(),
@@ -104,6 +125,10 @@ export function TransactionFormScreen() {
         transactionType: type,
         status,
         description: description.trim() || undefined,
+        notes: notes.trim() || undefined,
+        fee: Number.isFinite(feeNum) ? feeNum : undefined,
+        balanceAfter: Number.isFinite(balNum) ? balNum : undefined,
+        mpesaCode: mpesaCode.trim() || undefined,
         recordSource: 'manual' as const,
       };
 
@@ -115,15 +140,14 @@ export function TransactionFormScreen() {
         setSuccessMsg('Transaction saved');
       }
 
-      if (notificationsEnabled && budgetAlertsEnabled && type === 'expense') {
-        await checkBudgetThreshold(db, category, alertThresholds);
+      if (type === 'expense') {
+        checkBudgetThresholds(db, category).catch(() => {});
       }
 
-      setTimeout(() => navigation.goBack(), 900);
+      setTimeout(() => navigation.goBack(), 400);
     } catch (error) {
       console.error('Failed to save transaction:', error);
       Alert.alert('Error', 'Failed to save transaction');
-    } finally {
       setIsLoading(false);
     }
   };
@@ -145,224 +169,163 @@ export function TransactionFormScreen() {
   };
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.bgPrimary }]} edges={['top']}>
-      <TopBanner tone="success" message={successMsg ?? ''} visible={!!successMsg} />
-      <Animated.View style={{ flex: 1, opacity: contentOpacity }}>
-      <ScrollView contentContainerStyle={styles.content}>
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()}>
-            <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
-          </TouchableOpacity>
-          <Text style={[styles.title, { color: colors.textPrimary }]}>
-            {isEditing ? 'Edit Transaction' : 'Add Transaction'}
-          </Text>
-          {isEditing ? (
-            <TouchableOpacity onPress={handleDelete}>
-              <Ionicons name="trash-outline" size={22} color={colors.danger} />
-            </TouchableOpacity>
-          ) : (
-            <View style={{ width: 24 }} />
-          )}
-        </View>
+    <PageScaffold
+      title={isEditing ? 'Edit Transaction' : 'Add Transaction'}
+      onBack={() => navigation.goBack()}
+      actions={
+        isEditing ? (
+          <Button
+            mode="text"
+            compact
+            textColor={theme.colors.error}
+            onPress={handleDelete}
+          >
+            Delete
+          </Button>
+        ) : undefined
+      }
+      topBanner={<TopBanner tone="success" message={successMsg ?? ''} visible={!!successMsg} />}
+    >
+      <Animated.View style={{ opacity: contentOpacity }}>
+        <ScrollView contentContainerStyle={styles.content}>
+          <SegmentedButtons
+            value={type}
+            onValueChange={(value) => setType(value as TransactionType)}
+            buttons={TYPE_BUTTONS}
+            style={styles.segmented}
+          />
 
-        <SegmentedControl
-          options={TYPES}
-          selected={type}
-          onSelect={setType}
-        />
-
-        <View style={[styles.inputGroup, { backgroundColor: colors.glassWhite, borderColor: colors.border }]}>
-          <Text style={[styles.label, { color: colors.textSecondary }]}>Amount</Text>
           <TextInput
-            style={[styles.amountInput, { color: colors.textPrimary }]}
+            mode="outlined"
+            dense
+            label="Amount"
             placeholder="0.00"
-            placeholderTextColor={colors.textTertiary}
             keyboardType="decimal-pad"
             value={amount}
             onChangeText={setAmount}
+            style={styles.input}
           />
-        </View>
 
-        <View style={[styles.inputGroup, { backgroundColor: colors.glassWhite, borderColor: colors.border }]}>
-          <Text style={[styles.label, { color: colors.textSecondary }]}>Merchant / Counterparty</Text>
           <TextInput
-            style={[styles.input, { color: colors.textPrimary }]}
+            mode="outlined"
+            dense
+            label="Merchant / Counterparty"
             placeholder="e.g. Java House"
-            placeholderTextColor={colors.textTertiary}
             value={merchant}
             onChangeText={setMerchant}
+            style={styles.input}
           />
-        </View>
 
-        <View style={[styles.inputGroup, { backgroundColor: colors.glassWhite, borderColor: colors.border }]}>
-          <Text style={[styles.label, { color: colors.textSecondary }]}>Description (optional)</Text>
           <TextInput
-            style={[styles.input, { color: colors.textPrimary }]}
-            placeholder="Notes..."
-            placeholderTextColor={colors.textTertiary}
+            mode="outlined"
+            dense
+            label="Description (optional)"
+            placeholder="Short summary of the transaction"
             value={description}
             onChangeText={setDescription}
+            style={styles.input}
           />
-        </View>
 
-        <Dropdown label="Category" value={category} options={CATEGORY_OPTIONS} onChange={setCategory} />
+          <TextInput
+            mode="outlined"
+            dense
+            label="Notes (optional)"
+            placeholder="Longer note, ref numbers, receipt info…"
+            value={notes}
+            onChangeText={setNotes}
+            multiline
+            numberOfLines={3}
+            style={styles.input}
+          />
 
-        <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>Status</Text>
-        <SegmentedControl
-          options={STATUSES}
-          selected={status}
-          onSelect={setStatus}
-        />
+          <View style={styles.row}>
+            <TextInput
+              mode="outlined"
+              dense
+              label="Fee (optional)"
+              placeholder="e.g. 33"
+              keyboardType="decimal-pad"
+              value={fee}
+              onChangeText={setFee}
+              style={[styles.input, styles.halfInput]}
+            />
+            <TextInput
+              mode="outlined"
+              dense
+              label="Balance after (optional)"
+              placeholder="Account balance"
+              keyboardType="decimal-pad"
+              value={balanceAfter}
+              onChangeText={setBalanceAfter}
+              style={[styles.input, styles.halfInput]}
+            />
+          </View>
 
-        <TouchableOpacity
-          style={[
-            styles.saveButton,
-            { backgroundColor: isLoading ? colors.textTertiary : colors.accentPrimary },
-          ]}
-          onPress={handleSave}
-          disabled={isLoading}
-        >
-          <Text style={[styles.saveButtonText, { color: colors.textInverse }]}>
-            {isLoading ? 'Saving...' : isEditing ? 'Update' : 'Save'}
+          <TextInput
+            mode="outlined"
+            dense
+            label="M-Pesa code (optional)"
+            placeholder="e.g. TAB5CDE12F"
+            value={mpesaCode}
+            onChangeText={(v) => setMpesaCode(v.toUpperCase())}
+            autoCapitalize="characters"
+            maxLength={12}
+            style={styles.input}
+          />
+
+          <Dropdown label="Category" value={category} options={CATEGORY_OPTIONS} onChange={setCategory} />
+
+          <Text variant="labelLarge" style={[styles.sectionLabel, { color: theme.colors.onSurfaceVariant }]}>
+            Status
           </Text>
-        </TouchableOpacity>
-      </ScrollView>
-      </Animated.View>
-    </SafeAreaView>
-  );
-}
+          <SegmentedButtons
+            value={status}
+            onValueChange={(value) => setStatus(value as TransactionStatus)}
+            buttons={STATUS_BUTTONS}
+            style={styles.segmented}
+          />
 
-function SegmentedControl<T extends string>({
-  options,
-  selected,
-  onSelect,
-}: {
-  options: readonly T[];
-  selected: T;
-  onSelect: (value: T) => void;
-}) {
-  const colors = useThemeColors();
-
-  return (
-    <View style={[styles.segmentContainer, { backgroundColor: colors.glassWhite, borderColor: colors.border }]}>
-      {options.map((option) => {
-        const isSelected = selected === option;
-        return (
-          <TouchableOpacity
-            key={option}
-            style={[
-              styles.segment,
-              isSelected && { backgroundColor: colors.accentPrimary },
-            ]}
-            onPress={() => onSelect(option)}
+          <Button
+            mode="contained"
+            onPress={handleSave}
+            loading={isLoading}
+            disabled={isLoading}
+            style={styles.saveButton}
           >
-            <Text
-              style={[
-                styles.segmentText,
-                { color: isSelected ? colors.textInverse : colors.textSecondary },
-              ]}
-            >
-              {option}
-            </Text>
-          </TouchableOpacity>
-        );
-      })}
-    </View>
+            {isLoading ? 'Saving...' : isEditing ? 'Update' : 'Save'}
+          </Button>
+        </ScrollView>
+      </Animated.View>
+    </PageScaffold>
   );
-}
-
-async function checkBudgetThreshold(
-  db: any,
-  category: string,
-  alertThresholds: { high: number; medium: number; low: number },
-): Promise<void> {
-  try {
-    const budgetRepo = new BudgetRepository(db);
-    const budgets = await budgetRepo.findAll();
-    const budget = budgets.find((b) => b.category.toLowerCase() === category.toLowerCase());
-    if (!budget) return;
-
-    const now = new Date();
-    const rows = await budgetRepo.getSpentByCategory(now.getFullYear(), now.getMonth() + 1);
-    const row = rows.find((r) => r.category.toLowerCase() === category.toLowerCase());
-    const spent = row?.spent ?? 0;
-
-    const yearMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-    await fireBudgetAlertLevels(category, spent, budget.limit_amount, alertThresholds, yearMonth);
-  } catch {
-    // non-critical — silently skip
-  }
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: spacing.sm,
-  },
-  title: {
-    fontSize: typography.sizes.lg,
-    fontWeight: typography.weights.semibold,
-  },
   content: {
-    paddingHorizontal: spacing.screenHorizontal, paddingVertical: spacing.lg,
-  },
-  segmentContainer: {
-    flexDirection: 'row',
-    borderRadius: borderRadius.lg,
-    borderWidth: 1,
-    padding: 4,
-    marginBottom: spacing.lg,
-  },
-  segment: {
-    flex: 1,
     paddingVertical: spacing.sm,
-    borderRadius: borderRadius.md,
-    alignItems: 'center',
+    paddingBottom: spacing['4xl'],
   },
-  segmentText: {
-    fontSize: typography.sizes.sm,
-    fontWeight: typography.weights.medium,
-    textTransform: 'capitalize',
-  },
-  inputGroup: {
-    borderRadius: borderRadius.lg,
-    borderWidth: 1,
-    paddingHorizontal: spacing.base,
-    paddingVertical: spacing.sm,
+  segmented: {
     marginBottom: spacing.base,
-  },
-  label: {
-    fontSize: typography.sizes.xs,
-    marginBottom: 2,
+    borderRadius: borderRadius.lg,
   },
   input: {
-    fontSize: typography.sizes.base,
-    paddingVertical: 4,
+    marginBottom: spacing.sm,
+    backgroundColor: 'transparent',
   },
-  amountInput: {
-    fontSize: typography.sizes['2xl'],
-    fontWeight: typography.weights.bold,
-    paddingVertical: 4,
+  row: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  halfInput: {
+    flex: 1,
   },
   sectionLabel: {
-    fontSize: typography.sizes.sm,
-    fontWeight: typography.weights.medium,
-    marginTop: spacing.lg,
+    marginTop: spacing.sm,
     marginBottom: spacing.sm,
   },
   saveButton: {
-    marginTop: spacing.xl,
-    paddingVertical: spacing.base,
+    marginTop: spacing.lg,
     borderRadius: borderRadius.lg,
-    alignItems: 'center',
-  },
-  saveButtonText: {
-    fontSize: typography.sizes.base,
-    fontWeight: typography.weights.semibold,
   },
 });

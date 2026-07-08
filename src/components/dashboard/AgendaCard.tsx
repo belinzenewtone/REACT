@@ -1,11 +1,11 @@
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { Text, useTheme } from 'react-native-paper';
 import { GlassCard } from '../common/GlassCard';
 import { SectionHeader } from '../common/SectionHeader';
-import { useThemeColors } from '../../hooks/useThemeColors';
 import { formatRelativeDay, formatTime } from '../../utils/formatters';
-import { spacing, typography, borderRadius } from '../../theme';
+import { spacing, borderRadius } from '../../theme';
 
 export interface AgendaItem {
   id: string;
@@ -22,7 +22,6 @@ interface AgendaCardProps {
 }
 
 export function AgendaCard({ items, onViewAll }: AgendaCardProps) {
-  const colors = useThemeColors();
   const upcoming = items.slice(0, 5);
 
   return (
@@ -30,7 +29,7 @@ export function AgendaCard({ items, onViewAll }: AgendaCardProps) {
       <SectionHeader title="Up next (7 days)" actionLabel="View all" onAction={onViewAll} />
       <GlassCard>
         {upcoming.length === 0 ? (
-          <Text style={[styles.empty, { color: colors.textTertiary }]}>
+          <Text variant="bodyMedium" style={styles.empty}>
             Nothing scheduled for the next 7 days
           </Text>
         ) : (
@@ -42,26 +41,31 @@ export function AgendaCard({ items, onViewAll }: AgendaCardProps) {
 }
 
 function AgendaRow({ item }: { item: AgendaItem }) {
-  const colors = useThemeColors();
-  const priorityColor = item.priority ? colors.priority[item.priority] : colors.accentPrimary;
+  const theme = useTheme();
+
+  let priorityColor = theme.colors.primary;
+  if (item.priority === 'high') priorityColor = theme.colors.error;
+  else if (item.priority === 'medium') priorityColor = theme.colors.tertiary;
+  else if (item.priority === 'low') priorityColor = theme.colors.primary;
+
   const iconName: keyof typeof Ionicons.glyphMap = item.type === 'task' ? 'checkbox-outline' : 'calendar-outline';
 
   return (
     <View style={styles.row}>
       <View style={[styles.indicator, { backgroundColor: priorityColor }]} />
-      <Ionicons name={iconName} size={18} color={colors.textSecondary} style={styles.icon} />
+      <Ionicons name={iconName} size={18} color={theme.colors.onSurfaceVariant} style={styles.icon} />
       <View style={styles.content}>
         <Text
+          variant="bodyMedium"
           style={[
-            styles.title,
-            { color: colors.textPrimary },
+            { color: theme.colors.onSurface },
             item.completed && styles.completed,
           ]}
           numberOfLines={1}
         >
           {item.title}
         </Text>
-        <Text style={[styles.meta, { color: colors.textSecondary }]}>
+        <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant, marginTop: 2 }}>
           {formatRelativeDay(item.dueDate)} · {formatTime(item.dueDate)}
         </Text>
       </View>
@@ -73,7 +77,6 @@ const styles = StyleSheet.create({
   empty: {
     textAlign: 'center',
     paddingVertical: spacing.lg,
-    fontSize: typography.sizes.base,
   },
   row: {
     flexDirection: 'row',
@@ -92,16 +95,8 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
   },
-  title: {
-    fontSize: typography.sizes.base,
-    fontWeight: typography.weights.medium,
-  },
   completed: {
     textDecorationLine: 'line-through',
     opacity: 0.6,
-  },
-  meta: {
-    fontSize: typography.sizes.xs,
-    marginTop: 2,
   },
 });

@@ -4,8 +4,8 @@
  */
 
 export type SyncState = 'pending' | 'synced' | 'conflict' | 'error';
-export type RecordSource = 'manual' | 'sms' | 'csv' | 'recurring' | 'import';
-export type TransactionType = 'expense' | 'income' | 'transfer';
+export type RecordSource = 'manual' | 'sms' | 'sms_import' | 'csv' | 'recurring' | 'import';
+export type TransactionType = 'expense' | 'income' | 'transfer' | 'fuliza';
 export type TransactionStatus = 'completed' | 'pending' | 'failed' | 'reversed';
 
 export interface Transaction {
@@ -93,6 +93,21 @@ export interface CalendarEvent {
   userId?: string;
 }
 
+export interface DayEvent {
+  id: string;
+  title: string;
+  date: string;
+  type: 'event' | 'task' | 'birthday' | 'anniversary' | 'countdown';
+  priority?: 'low' | 'medium' | 'high';
+  completed?: boolean;
+  location?: string | null;
+  allDay?: boolean;
+  /** Non-zero when this is a synthetic occurrence of a repeating series. */
+  occurrenceIndex?: number;
+  /** Number of days between selected date and the event's actual date (countdown ordinal). */
+  daysToGo?: number;
+}
+
 export type BudgetPeriod = 'daily' | 'weekly' | 'monthly' | 'yearly';
 
 export interface Budget {
@@ -101,6 +116,7 @@ export interface Budget {
   limitAmount: number;
   period: BudgetPeriod;
   alertThreshold?: number; // 0-1
+  isActive?: boolean;
   createdAt: string;
   updatedAt: string;
   syncState: SyncState;
@@ -258,6 +274,8 @@ export interface AppSettings {
   pinCode: string;
   fingerprintEnabled: boolean;
   assistantQuickSuggestions: boolean;
+  /** Swipe left/right on the month grid to change months. Default: true. */
+  calendarSwipe: boolean;
   budgetThresholdAlerts: boolean;
   alertThresholds: { high: number; medium: number; low: number };
   dailyDigestMorningSummary: boolean;
@@ -266,15 +284,4 @@ export interface AppSettings {
   smsBackgroundReceiver: boolean;
 }
 
-export interface ParsedSmsResult {
-  code: string;
-  type: string;
-  counterparty: string;
-  amount: number;
-  balanceAfter?: number;
-  date: string;
-  confidence: number;
-  category?: string;
-  fee?: number;
-  description?: string;
-}
+

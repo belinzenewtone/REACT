@@ -1,19 +1,16 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
-  FlatList,
-  TouchableOpacity,
   ActivityIndicator,
   Alert,
 } from 'react-native';
+import { FlashList } from '@shopify/flash-list';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { useSQLiteContext } from 'expo-sqlite';
-import { useThemeColors } from '../../hooks/useThemeColors';
-import { spacing, typography, borderRadius } from '../../theme';
+import { Text, Button, Chip, IconButton, useTheme } from 'react-native-paper';
 import { GlassCard } from '../../components/common/GlassCard';
 import {
   getAuditLog,
@@ -21,6 +18,9 @@ import {
   retrySingle,
   type AuditEntry,
 } from '../../../modules/lifeos-sms';
+import { useDataVersion } from '../../store/dataVersion';
+import { nowIso } from '../../database';
+import { spacing } from '../../theme';
 
 // Outcomes that indicate this entry needs review / recovery
 const PENDING_OUTCOMES = new Set([
@@ -37,15 +37,16 @@ function isPending(outcome: string): boolean {
   return false;
 }
 
-function OutcomeChip({ outcome, colors }: { outcome: string; colors: any }) {
+function OutcomeChip({ outcome }: { outcome: string }) {
+  const theme = useTheme();
   let label = outcome;
-  let color = colors.textSecondary;
+  let color = theme.colors.onSurfaceVariant;
 
-  if (outcome.includes('quarantine')) { label = 'Quarantined'; color = colors.danger; }
-  else if (outcome.includes('review')) { label = 'Review'; color = colors.warning; }
-  else if (outcome.includes('batch') || outcome.includes('pending')) { label = 'Pending'; color = colors.accentPrimary; }
+  if (outcome.includes('quarantine')) { label = 'Quarantined'; color = theme.colors.error; }
+  else if (outcome.includes('review')) { label = 'Review'; color = '#F5CB5C'; }
+  else if (outcome.includes('batch') || outcome.includes('pending')) { label = 'Pending'; color = theme.colors.primary; }
 
-  return <Text style={[styles.chip, { color }]}>{label}</Text>;
+  return <Chip style={{ backgroundColor: `${color}20` }} textStyle={{ color }}>{label}</Chip>;
 }
 
 function EntryCard({
@@ -53,69 +54,68 @@ function EntryCard({
   isProcessing,
   onRecover,
   onDismiss,
-  colors,
 }: {
   entry: AuditEntry;
   isProcessing: boolean;
   onRecover: () => void;
   onDismiss: () => void;
-  colors: any;
 }) {
+  const theme = useTheme();
   return (
     <GlassCard style={styles.entryCard}>
       <View style={styles.entryHeader}>
-        <OutcomeChip outcome={entry.outcome} colors={colors} />
+        <OutcomeChip outcome={entry.outcome} />
         {entry.amount != null && (
-          <Text style={[styles.entryAmount, { color: colors.textPrimary }]}>
+          <Text variant="bodyMedium" style={{ color: theme.colors.onSurface, fontWeight: '600' }}>
             Ksh {entry.amount.toLocaleString('en-KE', { maximumFractionDigits: 2 })}
           </Text>
         )}
       </View>
       {entry.merchant && (
-        <Text style={[styles.entryMerchant, { color: colors.textPrimary }]}>{entry.merchant}</Text>
+        <Text variant="bodyMedium" style={{ color: theme.colors.onSurface }}>{entry.merchant}</Text>
       )}
-      <Text style={[styles.entryRaw, { color: colors.textSecondary }]} numberOfLines={3}>
+      <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }} numberOfLines={3}>
         {entry.rawMessage?.substring(0, 140)}
       </Text>
       {entry.failureReason && (
-        <Text style={[styles.entryReason, { color: colors.danger }]}>
+        <Text variant="bodySmall" style={{ color: theme.colors.error }}>
           {entry.failureReason}
         </Text>
       )}
       <View style={styles.entryMeta}>
         {entry.mpesaCode && (
-          <Text style={[styles.metaCode, { color: colors.textTertiary }]}>{entry.mpesaCode}</Text>
+          <Text variant="bodySmall" style={{ color: theme.colors.outline }}>{entry.mpesaCode}</Text>
         )}
         {entry.confidence && (
-          <Text style={[styles.metaConf, { color: colors.textTertiary }]}>conf:{entry.confidence}</Text>
+          <Text variant="bodySmall" style={{ color: theme.colors.outline }}>conf:{entry.confidence}</Text>
         )}
       </View>
       <View style={styles.entryActions}>
-        <TouchableOpacity
-          style={[styles.actionBtn, { backgroundColor: colors.accentPrimary }]}
+        <Button
+          mode="contained"
           onPress={onRecover}
           disabled={isProcessing}
+          loading={isProcessing}
+          style={{ flex: 1 }}
         >
-          {isProcessing ? (
-            <ActivityIndicator size="small" color={colors.textInverse} />
-          ) : (
-            <Text style={[styles.actionBtnText, { color: colors.textInverse }]}>Recover</Text>
-          )}
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.actionBtn, styles.dismissBtn, { borderColor: colors.danger }]}
+          Recover
+        </Button>
+        <Button
+          mode="outlined"
           onPress={onDismiss}
           disabled={isProcessing}
+          textColor={theme.colors.error}
+          style={{ flex: 1 }}
         >
-          <Text style={[styles.actionBtnText, { color: colors.danger }]}>Dismiss</Text>
-        </TouchableOpacity>
+          Dismiss
+        </Button>
       </View>
     </GlassCard>
   );
 }
 
 export function ReviewQueueScreen() {
-  const colors = useThemeColors();
+  const theme = useTheme();
   const navigation = useNavigation<any>();
   const db = useSQLiteContext();
   const [entries, setEntries] = useState<AuditEntry[]>([]);
@@ -127,7 +127,6 @@ export function ReviewQueueScreen() {
   const load = useCallback(async () => {
     setIsLoading(true);
     try {
-      // Load last 200 audit entries and filter to those needing action
       const all = await getAuditLog(200);
       setEntries(all.filter((e) => isPending(e.outcome)));
     } catch {
@@ -145,18 +144,52 @@ export function ReviewQueueScreen() {
     return () => clearTimeout(t);
   }, [message]);
 
+  const approveReviewEntry = async (entry: AuditEntry) => {
+    const now = nowIso();
+    if (entry.mpesaCode) {
+      await db.runAsync(
+        `UPDATE transactions SET sync_state = 'pending', updated_at = ? WHERE mpesa_code = ? AND deleted_at IS NULL`,
+        [now, entry.mpesaCode]
+      );
+    }
+    await db.runAsync(`UPDATE import_audit SET outcome = 'imported_review_approved' WHERE id = ?`, [entry.id]);
+  };
+
+  const dismissEntry = async (entry: AuditEntry) => {
+    const now = nowIso();
+    if (entry.mpesaCode) {
+      await db.runAsync(
+        `UPDATE transactions SET deleted_at = ?, updated_at = ? WHERE mpesa_code = ? AND deleted_at IS NULL`,
+        [now, now, entry.mpesaCode]
+      );
+    }
+    await db.runAsync(`UPDATE import_audit SET outcome = 'dismissed' WHERE id = ?`, [entry.id]);
+  };
+
   const handleRecover = async (entry: AuditEntry) => {
     setProcessingId(entry.id);
     try {
-      const result = await retrySingle(entry.id);
-      if (result.ok || result.note === 'already_exists') {
+      if (entry.outcome.includes('quarantine')) {
+        const result = await retrySingle(entry.id);
+        if (result.ok || result.note === 'already_exists') {
+          setEntries((prev) => prev.filter((e) => e.id !== entry.id));
+          useDataVersion.getState().bump();
+          setMessage({ text: result.note === 'already_exists' ? 'Already in ledger — marked complete.' : 'Transaction recovered.', ok: true });
+        } else {
+          setMessage({ text: `Could not recover: ${result.error ?? 'still quarantined'}`, ok: false });
+        }
+      } else if (entry.outcome.includes('review')) {
+        await approveReviewEntry(entry);
         setEntries((prev) => prev.filter((e) => e.id !== entry.id));
-        setMessage({ text: result.note === 'already_exists' ? 'Already in ledger — marked complete.' : 'Transaction recovered.', ok: true });
+        useDataVersion.getState().bump();
+        setMessage({ text: 'Transaction approved.', ok: true });
       } else {
-        setMessage({ text: `Could not recover: ${result.error ?? 'still quarantined'}`, ok: false });
+        await dismissEntry(entry);
+        setEntries((prev) => prev.filter((e) => e.id !== entry.id));
+        setMessage({ text: 'Entry dismissed.', ok: true });
       }
     } catch (e: any) {
-      setMessage({ text: e?.message ?? 'Recovery failed.', ok: false });
+      setMessage({ text: e?.message ?? 'Action failed.', ok: false });
     } finally {
       setProcessingId(null);
     }
@@ -165,29 +198,43 @@ export function ReviewQueueScreen() {
   const handleDismiss = async (entry: AuditEntry) => {
     setProcessingId(entry.id);
     try {
-      // Mark dismissed in the audit table via direct SQLite (no native API needed for dismiss)
-      await db.runAsync(`UPDATE import_audit SET outcome = 'dismissed' WHERE id = ?`, [entry.id]);
+      await dismissEntry(entry);
       setEntries((prev) => prev.filter((e) => e.id !== entry.id));
-    } catch {
-      setMessage({ text: 'Dismiss failed.', ok: false });
+      useDataVersion.getState().bump();
+      setMessage({ text: 'Dismissed.', ok: true });
+    } catch (e: any) {
+      setMessage({ text: e?.message ?? 'Dismiss failed.', ok: false });
     } finally {
       setProcessingId(null);
     }
   };
 
   const handleRecoverAll = () => {
-    Alert.alert('Recover all?', `Re-parse all ${entries.length} entries and import those that pass the confidence threshold.`, [
+    Alert.alert('Recover all?', `Re-parse all ${entries.length} entries and import/approve those that pass the confidence threshold.`, [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Recover all',
         onPress: async () => {
           setBulkProcessing(true);
           try {
-            const result = await retryQuarantined();
+            const quarantined = entries.filter((e) => e.outcome.includes('quarantine'));
+            const review = entries.filter((e) => e.outcome.includes('review'));
+            let recovered = 0;
+            if (quarantined.length > 0) {
+              const result = await retryQuarantined();
+              recovered += result.imported;
+            }
+            if (review.length > 0) {
+              for (const entry of review) {
+                await approveReviewEntry(entry);
+                recovered++;
+              }
+            }
+            useDataVersion.getState().bump();
             await load();
-            setMessage({ text: `Reprocessed ${result.retried} · ${result.imported} recovered`, ok: true });
-          } catch {
-            setMessage({ text: 'Bulk recover failed.', ok: false });
+            setMessage({ text: `${recovered} entries approved/recovered`, ok: true });
+          } catch (e: any) {
+            setMessage({ text: e?.message ?? 'Bulk recover failed.', ok: false });
           } finally {
             setBulkProcessing(false);
           }
@@ -205,14 +252,14 @@ export function ReviewQueueScreen() {
         onPress: async () => {
           setBulkProcessing(true);
           try {
-            await db.runAsync(
-              `UPDATE import_audit SET outcome = 'dismissed'
-               WHERE outcome IN ('quarantined','imported_review','batch_pending','pending')`
-            );
+            for (const entry of entries) {
+              await dismissEntry(entry);
+            }
             setEntries([]);
+            useDataVersion.getState().bump();
             setMessage({ text: 'All entries dismissed.', ok: true });
-          } catch {
-            setMessage({ text: 'Bulk dismiss failed.', ok: false });
+          } catch (e: any) {
+            setMessage({ text: e?.message ?? 'Bulk dismiss failed.', ok: false });
           } finally {
             setBulkProcessing(false);
           }
@@ -224,62 +271,65 @@ export function ReviewQueueScreen() {
   const isAnyProcessing = processingId !== null || bulkProcessing;
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.bgPrimary }]} edges={['top']}>
+    <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]} edges={['top']}>
       {message && (
-        <View style={[styles.banner, { backgroundColor: message.ok ? colors.accentPrimary : colors.danger }]}>
-          <Text style={[styles.bannerText, { color: '#fff' }]}>{message.text}</Text>
-          <TouchableOpacity onPress={() => setMessage(null)}>
-            <Ionicons name="close" size={16} color="#fff" />
-          </TouchableOpacity>
+        <View style={[styles.banner, { backgroundColor: message.ok ? theme.colors.primary : theme.colors.error }]}>
+          <Text variant="bodyMedium" style={{ color: theme.colors.onPrimary, flex: 1 }}>{message.text}</Text>
+          <IconButton
+            icon={() => <Ionicons name="close" size={16} color={theme.colors.onPrimary} />}
+            size={16}
+            onPress={() => setMessage(null)}
+            style={{ margin: 0 }}
+          />
         </View>
       )}
 
       {isLoading ? (
         <View style={styles.centered}>
-          <ActivityIndicator color={colors.accentPrimary} />
+          <ActivityIndicator color={theme.colors.primary} />
         </View>
       ) : entries.length === 0 ? (
         <View style={styles.full}>
-          <ReviewQueueHeader entries={entries} colors={colors} onBack={() => navigation.goBack()} />
+          <ReviewQueueHeader entries={entries} onBack={() => navigation.goBack()} />
           <View style={styles.centered}>
-            <Ionicons name="checkmark-circle-outline" size={56} color={colors.accentPrimary} />
-            <Text style={[styles.emptyTitle, { color: colors.textPrimary }]}>Queue clear</Text>
-            <Text style={[styles.emptyDesc, { color: colors.textSecondary }]}>
+            <Ionicons name="checkmark-circle-outline" size={56} color={theme.colors.primary} />
+            <Text variant="titleMedium" style={{ color: theme.colors.onSurface }}>Queue clear</Text>
+            <Text variant="bodyMedium" style={{ color: theme.colors.onSurfaceVariant, textAlign: 'center' }}>
               No transactions are waiting for review.
             </Text>
           </View>
         </View>
       ) : (
-        <FlatList
+        <FlashList
           data={entries}
           keyExtractor={(item) => String(item.id)}
           contentContainerStyle={styles.list}
           ListHeaderComponent={
             <>
-              <ReviewQueueHeader entries={entries} colors={colors} onBack={() => navigation.goBack()} />
+              <ReviewQueueHeader entries={entries} onBack={() => navigation.goBack()} />
               <GlassCard style={styles.bulkCard}>
-                <Text style={[styles.bulkLabel, { color: colors.textSecondary }]}>
+                <Text variant="bodyMedium" style={{ color: theme.colors.onSurfaceVariant, marginBottom: spacing.sm }}>
                   {entries.length} transaction{entries.length !== 1 ? 's' : ''} need review
                 </Text>
                 <View style={styles.bulkActions}>
-                  <TouchableOpacity
-                    style={[styles.actionBtn, { backgroundColor: colors.accentPrimary, flex: 1, opacity: isAnyProcessing ? 0.6 : 1 }]}
+                  <Button
+                    mode="contained"
                     onPress={handleRecoverAll}
                     disabled={isAnyProcessing}
+                    loading={bulkProcessing}
+                    style={{ flex: 1 }}
                   >
-                    {bulkProcessing ? (
-                      <ActivityIndicator size="small" color={colors.textInverse} />
-                    ) : (
-                      <Text style={[styles.actionBtnText, { color: colors.textInverse }]}>Recover all</Text>
-                    )}
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.actionBtn, styles.dismissBtn, { flex: 1, borderColor: colors.danger, opacity: isAnyProcessing ? 0.6 : 1 }]}
+                    Recover all
+                  </Button>
+                  <Button
+                    mode="outlined"
                     onPress={handleDismissAll}
                     disabled={isAnyProcessing}
+                    textColor={theme.colors.error}
+                    style={{ flex: 1 }}
                   >
-                    <Text style={[styles.actionBtnText, { color: colors.danger }]}>Dismiss all</Text>
-                  </TouchableOpacity>
+                    Dismiss all
+                  </Button>
                 </View>
               </GlassCard>
             </>
@@ -290,7 +340,6 @@ export function ReviewQueueScreen() {
               isProcessing={processingId === item.id}
               onRecover={() => handleRecover(item)}
               onDismiss={() => handleDismiss(item)}
-              colors={colors}
             />
           )}
           ItemSeparatorComponent={() => <View style={{ height: spacing.sm }} />}
@@ -302,27 +351,29 @@ export function ReviewQueueScreen() {
 
 function ReviewQueueHeader({
   entries,
-  colors,
   onBack,
 }: {
   entries: AuditEntry[];
-  colors: any;
   onBack: () => void;
 }) {
+  const theme = useTheme();
   return (
     <View style={styles.header}>
-      <TouchableOpacity onPress={onBack}>
-        <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
-      </TouchableOpacity>
+      <IconButton
+        icon={() => <Ionicons name="arrow-back" size={24} color={theme.colors.onSurface} />}
+        size={24}
+        onPress={onBack}
+        style={{ margin: 0 }}
+      />
       <View style={styles.headerCenter}>
-        <Text style={[styles.title, { color: colors.textPrimary }]}>Review Queue</Text>
+        <Text variant="titleLarge" style={{ color: theme.colors.onSurface }} numberOfLines={1}>Review Queue</Text>
         {entries.length > 0 && (
-          <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
+          <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
             {entries.length} pending
           </Text>
         )}
       </View>
-      <View style={{ width: 24 }} />
+      <View style={{ width: 44 }} />
     </View>
   );
 }
@@ -337,8 +388,6 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.sm,
   },
   headerCenter: { flex: 1, alignItems: 'center' },
-  title: { fontSize: typography.sizes.xl, fontWeight: typography.weights.bold },
-  subtitle: { fontSize: typography.sizes.sm },
   list: {
     paddingHorizontal: spacing.screenHorizontal,
     paddingVertical: spacing.lg,
@@ -346,28 +395,11 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   bulkCard: { marginBottom: spacing.xs },
-  bulkLabel: { fontSize: typography.sizes.sm, marginBottom: spacing.sm },
   bulkActions: { flexDirection: 'row', gap: spacing.sm },
   entryCard: { marginBottom: 0 },
   entryHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.xs },
-  chip: { fontSize: typography.sizes.xs, fontWeight: typography.weights.semibold },
-  entryAmount: { fontSize: typography.sizes.base, fontWeight: typography.weights.semibold },
-  entryMerchant: { fontSize: typography.sizes.base, marginBottom: spacing.xs },
-  entryRaw: { fontSize: typography.sizes.xs, fontFamily: 'monospace', marginBottom: spacing.xs },
-  entryReason: { fontSize: typography.sizes.xs, marginBottom: spacing.xs, color: 'red' },
   entryMeta: { flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.sm },
-  metaCode: { fontSize: typography.sizes.xs },
-  metaConf: { fontSize: typography.sizes.xs },
   entryActions: { flexDirection: 'row', gap: spacing.sm },
-  actionBtn: {
-    flex: 1,
-    paddingVertical: spacing.sm,
-    borderRadius: borderRadius.full,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  dismissBtn: { backgroundColor: 'transparent', borderWidth: 1 },
-  actionBtnText: { fontSize: typography.sizes.sm, fontWeight: typography.weights.semibold },
   banner: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -375,8 +407,5 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.screenHorizontal,
     paddingVertical: spacing.sm,
   },
-  bannerText: { fontSize: typography.sizes.sm, flex: 1 },
   centered: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: spacing.base },
-  emptyTitle: { fontSize: typography.sizes.lg, fontWeight: typography.weights.semibold },
-  emptyDesc: { fontSize: typography.sizes.sm, textAlign: 'center', paddingHorizontal: spacing.xl },
 });

@@ -1,9 +1,8 @@
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
-import { GlassCard } from '../common/GlassCard';
-import { useThemeColors } from '../../hooks/useThemeColors';
+import { StyleSheet } from 'react-native';
+import { Card, Text, useTheme } from 'react-native-paper';
 import { formatCurrency } from '../../utils/formatters';
-import { spacing, typography } from '../../theme';
+import { spacing } from '../../theme';
 
 interface MetricCardProps {
   label: string;
@@ -11,31 +10,31 @@ interface MetricCardProps {
 }
 
 export function MetricCard({ label, amount }: MetricCardProps) {
-  const colors = useThemeColors();
+  const theme = useTheme();
 
   return (
-    <GlassCard style={styles.card}>
-      <Text style={[styles.label, { color: colors.textSecondary }]}>{label}</Text>
-      <Text style={[styles.amount, { color: colors.textPrimary }]} numberOfLines={1} ellipsizeMode="tail">
-        {formatCurrency(amount, { decimals: 0 })}
-      </Text>
-    </GlassCard>
+    <Card style={[styles.card, { backgroundColor: theme.colors.surfaceVariant }]} mode="elevated">
+      <Card.Content>
+        <Text variant="bodyMedium" style={{ color: theme.colors.onSurfaceVariant }}>
+          {label}
+        </Text>
+        <Text
+          variant="headlineMedium"
+          style={{ color: theme.colors.onSurface, marginTop: spacing.sm }}
+          numberOfLines={1}
+          adjustsFontSizeToFit
+        >
+          {formatCurrency(amount, { decimals: 0 })}
+        </Text>
+      </Card.Content>
+    </Card>
   );
 }
 
 const styles = StyleSheet.create({
   card: {
-    width: 140,
-    padding: spacing.lg,
+    minWidth: 140,
+    width: 'auto',
     marginRight: spacing.base,
-  },
-  label: {
-    fontSize: typography.sizes.sm,
-    fontWeight: typography.weights.medium,
-  },
-  amount: {
-    fontSize: typography.sizes['2xl'],
-    fontWeight: typography.weights.bold,
-    marginTop: spacing.sm,
   },
 });

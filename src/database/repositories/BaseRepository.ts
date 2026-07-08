@@ -22,6 +22,12 @@ export abstract class BaseRepository<T extends SyncableRecord> {
 
   constructor(protected db: SQLiteDatabase) {}
 
+  /** Expose the underlying DB handle for cross-service side effects
+   *  (e.g. firing budget alerts from a Zustand store that only has the repo). */
+  get database(): SQLiteDatabase {
+    return this.db;
+  }
+
   protected notDeletedClause(alias?: string): string {
     const prefix = alias ? `${alias}.` : '';
     return `${prefix}deleted_at IS NULL`;

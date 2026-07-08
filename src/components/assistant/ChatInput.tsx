@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { View, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
+import { View, StyleSheet, ActivityIndicator, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useThemeColors } from '../../hooks/useThemeColors';
+import { TextInput, useTheme } from 'react-native-paper';
 import { spacing, borderRadius } from '../../theme';
 
 interface ChatInputProps {
@@ -11,7 +11,7 @@ interface ChatInputProps {
 }
 
 export function ChatInput({ onSend, disabled, bottomInset = 0 }: ChatInputProps) {
-  const colors = useThemeColors();
+  const theme = useTheme();
   const [text, setText] = useState('');
 
   const handleSend = () => {
@@ -20,31 +20,44 @@ export function ChatInput({ onSend, disabled, bottomInset = 0 }: ChatInputProps)
     setText('');
   };
 
+  const canSend = text.trim().length > 0 && !disabled;
+
   return (
-    <View style={[styles.container, { backgroundColor: colors.bgSecondary, paddingBottom: spacing.sm + bottomInset }]}>
-      <View style={[styles.inputRow, { backgroundColor: colors.glassWhite, borderColor: colors.border }]}>
+    <View style={[styles.container, { paddingBottom: bottomInset }]}>
+      <View style={[styles.inner, { backgroundColor: theme.colors.surfaceVariant, borderColor: theme.colors.outlineVariant }]}>
         <TextInput
-          style={[styles.input, { color: colors.textPrimary }]}
-          placeholder="Message BELTECH..."
-          placeholderTextColor={colors.textTertiary}
+          mode="outlined"
+          dense
+          style={[styles.input, { backgroundColor: theme.colors.surfaceVariant, textAlign: 'center', textAlignVertical: 'center' }]}
+          placeholder="Message LifeOS..."
+          placeholderTextColor={theme.colors.onSurfaceVariant}
           value={text}
           onChangeText={setText}
           multiline
           maxLength={500}
           editable={!disabled}
+          underlineColor="transparent"
+          activeUnderlineColor="transparent"
+          outlineColor="transparent"
+          activeOutlineColor="transparent"
         />
         <TouchableOpacity
+          onPress={handleSend}
+          disabled={!canSend}
           style={[
             styles.sendButton,
-            { backgroundColor: text.trim() ? colors.accentPrimary : colors.textTertiary },
+            { backgroundColor: canSend ? theme.colors.primary : theme.colors.surfaceVariant },
           ]}
-          onPress={handleSend}
-          disabled={!text.trim() || disabled}
+          activeOpacity={0.8}
         >
           {disabled ? (
-            <ActivityIndicator size={20} color={colors.textInverse} />
+            <ActivityIndicator size="small" color={theme.colors.onPrimary} />
           ) : (
-            <Ionicons name="arrow-up" size={20} color={colors.textInverse} />
+            <Ionicons
+              name="arrow-up"
+              size={20}
+              color={canSend ? theme.colors.onPrimary : theme.colors.onSurfaceVariant}
+            />
           )}
         </TouchableOpacity>
       </View>
@@ -54,30 +67,31 @@ export function ChatInput({ onSend, disabled, bottomInset = 0 }: ChatInputProps)
 
 const styles = StyleSheet.create({
   container: {
-    paddingTop: 10,
     paddingHorizontal: spacing.screenHorizontal,
+    paddingTop: spacing.xs,
   },
-  inputRow: {
+  inner: {
     flexDirection: 'row',
-    alignItems: 'flex-end',
-    borderRadius: borderRadius.full,
+    alignItems: 'center',
+    borderRadius: borderRadius.lg,
     borderWidth: 1,
-    paddingLeft: 16,
-    paddingRight: 8,
-    paddingVertical: 8,
-    gap: 8,
+    paddingLeft: spacing.base,
+    paddingRight: spacing.xs,
+    minHeight: 44,
+    maxHeight: 120,
   },
   input: {
     flex: 1,
-    fontSize: 15,
     maxHeight: 100,
     paddingVertical: 0,
+    marginVertical: 0,
   },
   sendButton: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+    width: 36,
+    height: 36,
+    borderRadius: borderRadius.md,
     justifyContent: 'center',
     alignItems: 'center',
+    marginLeft: spacing.xs,
   },
 });

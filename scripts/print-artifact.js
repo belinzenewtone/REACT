@@ -18,21 +18,42 @@ if (kind !== 'apk' && kind !== 'aab') {
 }
 
 const PROJECT_ROOT = path.resolve(__dirname, '..');
-const artifact =
-  kind === 'aab'
-    ? path.join(PROJECT_ROOT, 'android', 'app', 'build', 'outputs', 'bundle', 'release', 'app-release.aab')
-    : path.join(PROJECT_ROOT, 'android', 'app', 'build', 'outputs', 'apk', 'release', 'app-release.apk');
 
-if (!fs.existsSync(artifact)) {
-  console.error('Expected ' + kind.toUpperCase() + ' not found at:');
-  console.error('  ' + artifact);
+if (kind === 'aab') {
+  const artifact = path.join(PROJECT_ROOT, 'android', 'app', 'build', 'outputs', 'bundle', 'release', 'app-release.aab');
+  if (!fs.existsSync(artifact)) {
+    console.error('Expected AAB not found at:');
+    console.error('  ' + artifact);
+    console.error('Check the Gradle output above for errors.');
+    process.exit(1);
+  }
+  const sizeMb = (fs.statSync(artifact).size / 1024 / 1024).toFixed(2);
+  console.log('');
+  console.log('Build artifact (AAB, ' + sizeMb + ' MB):');
+  console.log('  ' + artifact);
+  console.log('');
+  process.exit(0);
+}
+
+const apkDir = path.join(PROJECT_ROOT, 'android', 'app', 'build', 'outputs', 'apk', 'release');
+const universal = path.join(apkDir, 'app-release.apk');
+const abiApks = fs.existsSync(apkDir)
+  ? fs.readdirSync(apkDir).filter((f) => /^app-(armeabi-v7a|arm64-v8a)-release\.apk$/.test(f))
+  : [];
+
+const found = abiApks.length ? abiApks.map((f) => path.join(apkDir, f)) : (fs.existsSync(universal) ? [universal] : []);
+
+if (!found.length) {
+  console.error('Expected APK(s) not found under:');
+  console.error('  ' + apkDir);
   console.error('Check the Gradle output above for errors.');
   process.exit(1);
 }
 
-const stat = fs.statSync(artifact);
-const sizeMb = (stat.size / 1024 / 1024).toFixed(2);
 console.log('');
-console.log('Build artifact (' + kind.toUpperCase() + ', ' + sizeMb + ' MB):');
-console.log('  ' + artifact);
+console.log('Build artifact' + (found.length > 1 ? 's' : '') + ' (APK):');
+for (const f of found) {
+  const sizeMb = (fs.statSync(f).size / 1024 / 1024).toFixed(2);
+  console.log('  ' + f + ' (' + sizeMb + ' MB)');
+}
 console.log('');

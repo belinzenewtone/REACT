@@ -39,6 +39,9 @@ CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(date);
 CREATE INDEX IF NOT EXISTS idx_transactions_category ON transactions(category);
 CREATE INDEX IF NOT EXISTS idx_transactions_merchant ON transactions(merchant);
 CREATE INDEX IF NOT EXISTS idx_transactions_mpesa_code ON transactions(mpesa_code);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_transactions_mpesa_code_unique ON transactions(mpesa_code) WHERE mpesa_code IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_transactions_source_hash ON transactions(source_hash);
+CREATE INDEX IF NOT EXISTS idx_transactions_semantic_hash ON transactions(semantic_hash);
 CREATE INDEX IF NOT EXISTS idx_transactions_deleted_at ON transactions(deleted_at);
 
 CREATE TABLE IF NOT EXISTS tasks (
@@ -104,6 +107,7 @@ CREATE TABLE IF NOT EXISTS budgets (
   limit_amount REAL NOT NULL,
   period TEXT NOT NULL DEFAULT 'monthly',
   alert_threshold REAL,
+  is_active INTEGER NOT NULL DEFAULT 1,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   sync_state TEXT NOT NULL DEFAULT 'pending',
@@ -205,6 +209,8 @@ CREATE TABLE IF NOT EXISTS fuliza_loans (
   updated_at TEXT NOT NULL,
   user_id TEXT
 );
+
+CREATE INDEX IF NOT EXISTS idx_fuliza_loans_status ON fuliza_loans(status);
 
 CREATE TABLE IF NOT EXISTS merchant_categories (
   id TEXT PRIMARY KEY NOT NULL,

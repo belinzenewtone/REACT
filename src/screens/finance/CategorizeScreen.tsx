@@ -1,19 +1,29 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, ActivityIndicator, Modal, FlatList, StyleSheet } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { View, StyleSheet, Modal, ActivityIndicator } from 'react-native';
+import { FlashList } from '@shopify/flash-list';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { useSQLiteContext } from 'expo-sqlite';
-import { useThemeColors } from '../../hooks/useThemeColors';
+import {
+  Card,
+  Text,
+  Button,
+  Chip,
+  useTheme,
+} from 'react-native-paper';
 import { TransactionRepository, type TransactionRecord } from '../../database/repositories/TransactionRepository';
+import { MerchantCategoryRepository } from '../../repositories/MerchantCategoryRepository';
 import { useTransactionStore } from '../../store';
-import { GlassCard } from '../../components/common/GlassCard';
 import { EmptyState } from '../../components/common/EmptyState';
 import { TopBanner } from '../../components/common/TopBanner';
+import { PageScaffold } from '../../components/common/PageScaffold';
 import { CATEGORIZE_CATEGORIES } from '../../constants';
 import { formatCurrency, formatDateTime } from '../../utils/formatters';
-import { spacing, typography, borderRadius } from '../../theme';
+import { spacing, borderRadius } from '../../theme';
+import { GlassCard } from '../../components/common/GlassCard';
 import { animateLayout } from '../../utils/animation';
+import { checkBudgetThresholds } from '../../services/budgetAlertService';
+import { useDataVersion } from '../../store/dataVersion';
 
 interface MerchantGroup {
   merchant: string;
@@ -40,7 +50,7 @@ function toMerchantGroups(transactions: TransactionRecord[]): MerchantGroup[] {
 }
 
 export function CategorizeScreen() {
-  const colors = useThemeColors();
+  const theme = useTheme();
   const navigation = useNavigation();
   const db = useSQLiteContext();
   const repo = useMemo(() => new TransactionRepository(db), [db]);
@@ -74,7 +84,13 @@ export function CategorizeScreen() {
     setGroups((prev) => prev.filter((g) => g.merchant !== merchant));
     try {
       await repo.updateCategoryForMerchant(merchant, category);
+      const merchantRepo = new MerchantCategoryRepository(db);
+      await merchantRepo.setCategory(merchant, category);
       await loadTransactions(repo, true);
+      await checkBudgetThresholds(db, category);
+      // Notify every other subscribed surface (Finance dashboard, Budgets,
+      // Analytics) that transaction categories changed.
+      useDataVersion.getState().bump();
       setMessage({ tone: 'success', text: `Saved for ${merchant}` });
     } catch (error) {
       setMessage({ tone: 'error', text: 'Failed to save category' });
@@ -83,48 +99,40 @@ export function CategorizeScreen() {
   };
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.bgPrimary }]} edges={['top']}>
-      {message ? (
-        <TopBanner tone={message.tone} message={message.text} visible onDismiss={() => setMessage(null)} />
-      ) : null}
-
-      <ScrollView contentContainerStyle={styles.content}>
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-            <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
-          </TouchableOpacity>
-          <View style={styles.headerText}>
-            <Text style={[styles.eyebrow, { color: colors.textSecondary }]}>Finance</Text>
-            <Text style={[styles.title, { color: colors.textPrimary }]}>Categorize</Text>
-          </View>
-          <View style={styles.backButton} />
+    <PageScaffold
+      eyebrow="Finance"
+      title="Categorize"
+      onBack={() => navigation.goBack()}
+      topBanner={
+        message ? (
+          <TopBanner tone={message.tone} message={message.text} visible onDismiss={() => setMessage(null)} />
+        ) : null
+      }
+    >
+      {isLoading ? (
+        <View style={styles.loadingWrap}>
+          <ActivityIndicator color={theme.colors.primary} />
+          <Text variant="bodyMedium" style={{ color: theme.colors.onSurfaceVariant }}>
+            Loading uncategorized transactions…
+          </Text>
         </View>
-
-        {isLoading ? (
-          <View style={styles.loadingWrap}>
-            <ActivityIndicator color={colors.accentPrimary} />
-            <Text style={[styles.loadingText, { color: colors.textSecondary }]}>
-              Loading uncategorized transactions…
-            </Text>
-          </View>
-        ) : groups.length === 0 ? (
-          <EmptyState
-            icon="checkmark-done-circle-outline"
-            title="All transactions categorized"
-            subtitle="Every transaction has a meaningful category. Nice work!"
-          />
-        ) : (
-          <>
-            <Text style={[styles.countLabel, { color: colors.textSecondary }]}>
-              {totalTransactionCount} {totalTransactionCount === 1 ? 'transaction needs' : 'transactions need'} a category
-            </Text>
-            {groups.map((group) => (
-              <MerchantGroupCard key={group.merchant} group={group} onCategorySelected={(cat) => handleAssign(group.merchant, cat)} />
-            ))}
-          </>
-        )}
-      </ScrollView>
-    </SafeAreaView>
+      ) : groups.length === 0 ? (
+        <EmptyState
+          icon="checkmark-done-circle-outline"
+          title="All transactions categorized"
+          subtitle="Every transaction has a meaningful category. Nice work!"
+        />
+      ) : (
+        <>
+          <Text variant="bodyMedium" style={[styles.countLabel, { color: theme.colors.onSurfaceVariant }]}>
+            {totalTransactionCount} {totalTransactionCount === 1 ? 'transaction needs' : 'transactions need'} a category
+          </Text>
+          {groups.map((group) => (
+            <MerchantGroupCard key={group.merchant} group={group} onCategorySelected={(cat) => handleAssign(group.merchant, cat)} />
+          ))}
+        </>
+      )}
+    </PageScaffold>
   );
 }
 
@@ -135,69 +143,76 @@ function MerchantGroupCard({
   group: MerchantGroup;
   onCategorySelected: (category: string) => void;
 }) {
-  const colors = useThemeColors();
+  const theme = useTheme();
   const [pickerOpen, setPickerOpen] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
 
   return (
     <GlassCard style={styles.card}>
-      <View style={styles.cardHeaderRow}>
-        <View style={styles.cardHeaderText}>
-          <View style={styles.merchantRow}>
-            <Text style={[styles.merchant, { color: colors.textPrimary }]} numberOfLines={1}>
-              {group.merchant}
-            </Text>
-            <View style={[styles.countBadge, { backgroundColor: `${colors.accentPrimary}20` }]}>
-              <Text style={[styles.countBadgeText, { color: colors.accentPrimary }]}>
-                {group.transactionCount === 1 ? '1 transaction' : `${group.transactionCount} transactions`}
+      <Card.Content>
+        <View style={styles.cardHeaderRow}>
+          <View style={styles.cardHeaderText}>
+            <View style={styles.merchantRow}>
+              <Text variant="bodyLarge" style={{ color: theme.colors.onSurface, flexShrink: 1 }} numberOfLines={1}>
+                {group.merchant}
               </Text>
+              <Chip compact style={{ backgroundColor: `${theme.colors.primary}20` }} textStyle={{ color: theme.colors.primary }}>
+                {group.transactionCount === 1 ? '1 transaction' : `${group.transactionCount} transactions`}
+              </Chip>
+            </View>
+            <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant, marginTop: 2 }}>
+              Latest: {formatDateTime(group.latestDate, { dateFormat: 'MMM d', use24h: false })}
+            </Text>
+          </View>
+          <View style={styles.amountCol}>
+            <Text variant="bodyLarge" style={{ color: theme.colors.onSurface, fontWeight: 'bold' }}>
+              {formatCurrency(group.totalAmount)}
+            </Text>
+            {group.transactionCount > 1 ? (
+              <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>total</Text>
+            ) : null}
+          </View>
+        </View>
+
+        <Button
+          mode="outlined"
+          onPress={() => setPickerOpen(true)}
+          style={styles.categoryButton}
+          contentStyle={styles.categoryButtonContent}
+          textColor={selectedCategory ? theme.colors.onSurface : theme.colors.onSurfaceVariant}
+          icon={() => <Ionicons name="chevron-down" size={18} color={theme.colors.onSurfaceVariant} />}
+        >
+          {selectedCategory ? capitalize(selectedCategory) : 'Pick a category…'}
+        </Button>
+
+        <Modal visible={pickerOpen} transparent animationType="slide" onRequestClose={() => setPickerOpen(false)}>
+          <View style={[styles.modalOverlay, { backgroundColor: 'rgba(0,0,0,0.6)' }]}>
+            <View style={[styles.modalContent, { backgroundColor: theme.colors.surfaceVariant }]}>
+              <Text variant="titleLarge" style={{ color: theme.colors.onSurface, marginBottom: spacing.base }}>
+                Pick a category
+              </Text>
+              <FlashList
+                data={CATEGORIZE_CATEGORIES}
+                keyExtractor={(item) => item}
+                renderItem={({ item }) => (
+                  <Button
+                    mode="text"
+                    onPress={() => {
+                      setSelectedCategory(item);
+                      setPickerOpen(false);
+                      onCategorySelected(item);
+                    }}
+                    style={styles.modalRow}
+                    textColor={theme.colors.onSurface}
+                  >
+                    {capitalize(item)}
+                  </Button>
+                )}
+              />
             </View>
           </View>
-          <Text style={[styles.latest, { color: colors.textTertiary }]}>
-            Latest: {formatDateTime(group.latestDate, { dateFormat: 'MMM d', use24h: false })}
-          </Text>
-        </View>
-        <View style={styles.amountCol}>
-          <Text style={[styles.amount, { color: colors.textPrimary }]}>{formatCurrency(group.totalAmount)}</Text>
-          {group.transactionCount > 1 ? (
-            <Text style={[styles.totalLabel, { color: colors.textTertiary }]}>total</Text>
-          ) : null}
-        </View>
-      </View>
-
-      <TouchableOpacity
-        style={[styles.categoryField, { borderColor: colors.border, backgroundColor: colors.bgTertiary }]}
-        onPress={() => setPickerOpen(true)}
-      >
-        <Text style={[styles.categoryFieldText, { color: selectedCategory ? colors.textPrimary : colors.textTertiary }]}>
-          {selectedCategory ? capitalize(selectedCategory) : 'Pick a category…'}
-        </Text>
-        <Ionicons name="chevron-down" size={18} color={colors.textSecondary} />
-      </TouchableOpacity>
-
-      <Modal visible={pickerOpen} transparent animationType="slide" onRequestClose={() => setPickerOpen(false)}>
-        <View style={[styles.modalOverlay, { backgroundColor: colors.glassBlack }]}>
-          <View style={[styles.modalContent, { backgroundColor: colors.bgSecondary }]}>
-            <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>Pick a category</Text>
-            <FlatList
-              data={CATEGORIZE_CATEGORIES}
-              keyExtractor={(item) => item}
-              renderItem={({ item }) => (
-                <TouchableOpacity
-                  style={styles.modalRow}
-                  onPress={() => {
-                    setSelectedCategory(item);
-                    setPickerOpen(false);
-                    onCategorySelected(item);
-                  }}
-                >
-                  <Text style={[styles.modalRowText, { color: colors.textPrimary }]}>{capitalize(item)}</Text>
-                </TouchableOpacity>
-              )}
-            />
-          </View>
-        </View>
-      </Modal>
+        </Modal>
+      </Card.Content>
     </GlassCard>
   );
 }
@@ -210,52 +225,16 @@ function capitalize(value: string): string {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: spacing.sm,
-  },
-  backButton: {
-    width: 32,
-  },
-  headerText: {
-    flex: 1,
-    alignItems: 'center',
-  },
-  eyebrow: {
-    fontSize: typography.sizes.xs,
-    fontWeight: typography.weights.medium,
-    textTransform: 'uppercase',
-    letterSpacing: 0.8,
-  },
-  title: {
-    fontSize: typography.sizes.lg,
-    fontWeight: typography.weights.semibold,
-    marginTop: 2,
-  },
-  content: {
-    paddingHorizontal: spacing.screenHorizontal, paddingVertical: spacing.lg,
-    paddingTop: spacing.sm,
-  },
   loadingWrap: {
     alignItems: 'center',
     gap: spacing.sm,
     paddingVertical: spacing['3xl'],
   },
-  loadingText: {
-    fontSize: typography.sizes.sm,
-  },
   countLabel: {
-    fontSize: typography.sizes.sm,
-    fontWeight: typography.weights.medium,
     marginBottom: spacing.base,
   },
   card: {
     marginBottom: spacing.base,
-    gap: spacing.sm,
   },
   cardHeaderRow: {
     flexDirection: 'row',
@@ -271,45 +250,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: spacing.sm,
   },
-  merchant: {
-    fontSize: typography.sizes.base,
-    fontWeight: typography.weights.semibold,
-    flexShrink: 1,
-  },
-  countBadge: {
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 2,
-    borderRadius: borderRadius.full,
-  },
-  countBadgeText: {
-    fontSize: typography.sizes.xs,
-    fontWeight: typography.weights.medium,
-  },
-  latest: {
-    fontSize: typography.sizes.xs,
-    marginTop: 2,
-  },
   amountCol: {
     alignItems: 'flex-end',
   },
-  amount: {
-    fontSize: typography.sizes.base,
-    fontWeight: typography.weights.bold,
-  },
-  totalLabel: {
-    fontSize: typography.sizes.xs,
-  },
-  categoryField: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    borderWidth: 1,
+  categoryButton: {
+    marginTop: spacing.sm,
     borderRadius: borderRadius.full,
-    paddingHorizontal: spacing.base,
-    height: 44,
   },
-  categoryFieldText: {
-    fontSize: typography.sizes.base,
+  categoryButtonContent: {
+    flexDirection: 'row-reverse',
+    justifyContent: 'space-between',
   },
   modalOverlay: {
     flex: 1,
@@ -321,15 +271,7 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: borderRadius['2xl'],
     borderTopRightRadius: borderRadius['2xl'],
   },
-  modalTitle: {
-    fontSize: typography.sizes.lg,
-    fontWeight: typography.weights.bold,
-    marginBottom: spacing.base,
-  },
   modalRow: {
-    paddingVertical: spacing.base,
-  },
-  modalRowText: {
-    fontSize: typography.sizes.base,
+    justifyContent: 'flex-start',
   },
 });

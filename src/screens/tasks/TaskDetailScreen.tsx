@@ -1,20 +1,25 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, StyleSheet, Alert } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { View, StyleSheet, Alert, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import { useSQLiteContext } from 'expo-sqlite';
-import { useThemeColors } from '../../hooks/useThemeColors';
+import { useTheme, Card, Text, Button, Chip, IconButton } from 'react-native-paper';
+import { PageScaffold } from '../../components/common/PageScaffold';
 import { useCalendarStore } from '../../store';
 import { TaskRepository, type TaskRecord } from '../../database/repositories/TaskRepository';
 import { formatDateTime } from '../../utils/formatters';
-import { spacing, typography, borderRadius } from '../../theme';
+import { spacing, borderRadius } from '../../theme';
+import { GlassCard } from '../../components/common/GlassCard';
+import { syncTaskReminders } from '../../services/notificationSyncService';
+import { cancelTaskReminders } from '../../services/notificationService';
+import { haptic } from '../../services/haptics';
+import { useDataVersion } from '../../store/dataVersion';
 import type { RootStackParamList } from '../../navigation/types';
 
 type TaskDetailRouteProp = RouteProp<RootStackParamList, 'TaskDetail'>;
 
 export function TaskDetailScreen() {
-  const colors = useThemeColors();
+  const theme = useTheme();
   const db = useSQLiteContext();
   const navigation = useNavigation<any>();
   const route = useRoute<TaskDetailRouteProp>();
@@ -32,9 +37,12 @@ export function TaskDetailScreen() {
     if (!task) return;
     const repo = new TaskRepository(db);
     await repo.toggleComplete(taskId);
+    await syncTaskReminders(db, taskId);
     const updated = await repo.findById(taskId);
     setTask(updated);
+    useDataVersion.getState().bump();
     await loadCalendar(db);
+    haptic(updated?.status === 'completed' ? 'success' : 'light');
   };
 
   const handleDelete = () => {
@@ -46,7 +54,10 @@ export function TaskDetailScreen() {
         onPress: async () => {
           const repo = new TaskRepository(db);
           await repo.softDelete(taskId);
+          await cancelTaskReminders(taskId);
+          useDataVersion.getState().bump();
           await loadCalendar(db);
+          haptic('warning');
           navigation.goBack();
         },
       },
@@ -55,111 +66,100 @@ export function TaskDetailScreen() {
 
   if (!task) {
     return (
-      <SafeAreaView style={[styles.container, { backgroundColor: colors.bgPrimary }]} edges={['top']}>
-        <View style={[styles.header, { paddingHorizontal: spacing.screenHorizontal }]}>
-          <TouchableOpacity onPress={() => navigation.goBack()}>
-            <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
-          </TouchableOpacity>
+      <PageScaffold title="Task" onBack={() => navigation.goBack()} scrollable={false}>
+        <View style={styles.loading}>
+          <ActivityIndicator color={theme.colors.primary} />
         </View>
-      </SafeAreaView>
+      </PageScaffold>
     );
   }
 
-  const priorityColor = colors.priority[task.priority];
+  const priorityColor =
+    task.priority === 'high'
+      ? theme.colors.error
+      : task.priority === 'medium'
+      ? '#F5CB5C'
+      : theme.colors.primary;
   const isCompleted = task.status === 'completed';
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.bgPrimary }]} edges={['top']}>
-      <ScrollView contentContainerStyle={styles.content}>
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()}>
-            <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
-          </TouchableOpacity>
-          <Text style={[styles.title, { color: colors.textPrimary }]}>Task</Text>
-          <TouchableOpacity onPress={handleDelete}>
-            <Ionicons name="trash-outline" size={22} color={colors.danger} />
-          </TouchableOpacity>
-        </View>
-
-        <View style={[styles.card, { backgroundColor: colors.glassWhite, borderColor: colors.border }]}>
-          <View style={[styles.priorityBadge, { backgroundColor: `${priorityColor}20` }]}>
-            <Text style={[styles.priorityText, { color: priorityColor }]}>
-              {task.priority.toUpperCase()}
-            </Text>
-          </View>
-          <Text style={[styles.taskTitle, isCompleted && styles.completed, { color: colors.textPrimary }]}>
+    <PageScaffold
+      title="Task"
+      onBack={() => navigation.goBack()}
+      actions={
+        <IconButton
+          icon={() => <Ionicons name="trash-outline" size={22} color={theme.colors.error} />}
+          onPress={handleDelete}
+        />
+      }
+    >
+      <GlassCard style={styles.card}>
+        <Card.Content style={styles.cardContent}>
+          <Chip
+            style={{ backgroundColor: `${priorityColor}33`, marginBottom: spacing.base }}
+            textStyle={{ color: priorityColor }}
+          >
+            {task.priority.toUpperCase()}
+          </Chip>
+          <Text
+            variant="headlineSmall"
+            style={[styles.taskTitle, isCompleted && styles.completed, { color: theme.colors.onSurface }]}
+          >
             {task.title}
           </Text>
           {task.description ? (
-            <Text style={[styles.description, { color: colors.textSecondary }]}>{task.description}</Text>
-          ) : null}
-          {task.deadline ? (
-            <Text style={[styles.deadline, { color: colors.textSecondary }]}>
-              {formatDateTime(task.deadline)}
+            <Text variant="bodyMedium" style={[styles.description, { color: theme.colors.onSurfaceVariant }]}>
+              {task.description}
             </Text>
           ) : null}
-        </View>
+          {task.deadline ? (
+            <View style={styles.deadlineRow}>
+              <Ionicons name="time-outline" size={14} color={theme.colors.onSurfaceVariant} />
+              <Text variant="bodyMedium" style={[styles.deadline, { color: theme.colors.onSurfaceVariant }]}>
+                {formatDateTime(task.deadline)}
+              </Text>
+            </View>
+          ) : null}
+        </Card.Content>
+      </GlassCard>
 
-        <TouchableOpacity
-          style={[
-            styles.statusButton,
-            { backgroundColor: isCompleted ? colors.success : colors.accentPrimary },
-          ]}
-          onPress={handleToggleComplete}
-        >
-          <Text style={[styles.statusButtonText, { color: colors.textInverse }]}>
-            {isCompleted ? 'Mark as Active' : 'Mark as Completed'}
-          </Text>
-        </TouchableOpacity>
+      <Button
+        mode="contained"
+        onPress={handleToggleComplete}
+        style={{ backgroundColor: isCompleted ? theme.colors.primary : theme.colors.tertiary, marginTop: spacing.base }}
+        textColor={isCompleted ? theme.colors.onPrimary : theme.colors.onTertiary}
+      >
+        {isCompleted ? 'Mark as Active' : 'Mark as Completed'}
+      </Button>
 
-        <TouchableOpacity
-          style={[styles.editButton, { backgroundColor: colors.glassWhiteStrong, borderColor: colors.border }]}
-          onPress={() => navigation.navigate('TaskForm', { taskId })}
-        >
-          <Text style={[styles.editButtonText, { color: colors.textPrimary }]}>Edit Task</Text>
-        </TouchableOpacity>
-      </ScrollView>
-    </SafeAreaView>
+      <Button
+        mode="outlined"
+        onPress={() => navigation.navigate('TaskForm', { taskId })}
+        style={{ marginTop: spacing.base }}
+        textColor={theme.colors.onSurface}
+      >
+        Edit Task
+      </Button>
+    </PageScaffold>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  loading: {
     flex: 1,
-  },
-  header: {
-    flexDirection: 'row',
+    justifyContent: 'center',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: spacing.sm,
-  },
-  title: {
-    fontSize: typography.sizes.lg,
-    fontWeight: typography.weights.semibold,
-  },
-  content: {
-    paddingHorizontal: spacing.screenHorizontal, paddingVertical: spacing.lg,
   },
   card: {
     borderRadius: borderRadius['2xl'],
     borderWidth: 1,
-    padding: spacing.xl,
+    borderColor: 'transparent',
+  },
+  cardContent: {
+    padding: spacing.lg,
     alignItems: 'center',
-    marginBottom: spacing.xl,
-  },
-  priorityBadge: {
-    paddingHorizontal: spacing.base,
-    paddingVertical: spacing.sm,
-    borderRadius: borderRadius.full,
-    marginBottom: spacing.base,
-  },
-  priorityText: {
-    fontSize: typography.sizes.xs,
-    fontWeight: typography.weights.bold,
   },
   taskTitle: {
-    fontSize: typography.sizes.xl,
-    fontWeight: typography.weights.bold,
     textAlign: 'center',
   },
   completed: {
@@ -167,33 +167,16 @@ const styles = StyleSheet.create({
     opacity: 0.6,
   },
   description: {
-    fontSize: typography.sizes.base,
     textAlign: 'center',
     marginTop: spacing.base,
   },
-  deadline: {
-    fontSize: typography.sizes.sm,
+  deadlineRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
     marginTop: spacing.sm,
+    gap: spacing.xs,
   },
-  statusButton: {
-    marginTop: spacing.base,
-    paddingVertical: spacing.base,
-    borderRadius: borderRadius.lg,
-    alignItems: 'center',
-  },
-  statusButtonText: {
-    fontSize: typography.sizes.base,
-    fontWeight: typography.weights.semibold,
-  },
-  editButton: {
-    marginTop: spacing.base,
-    paddingVertical: spacing.base,
-    borderRadius: borderRadius.lg,
-    alignItems: 'center',
-    borderWidth: 1,
-  },
-  editButtonText: {
-    fontSize: typography.sizes.base,
-    fontWeight: typography.weights.semibold,
+  deadline: {
+    textAlign: 'center',
   },
 });

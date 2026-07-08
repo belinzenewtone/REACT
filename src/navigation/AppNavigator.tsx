@@ -49,6 +49,32 @@ import { LearningScreen } from '../screens/learning/LearningScreen';
 import { WeekReviewScreen } from '../screens/review/WeekReviewScreen';
 import { ScreenLockScreen } from '../screens/settings/ScreenLockScreen';
 import { NotificationsScreen } from '../screens/settings/NotificationsScreen';
+import {
+  reconcilePermissionState,
+  syncDailyDigest,
+  syncTaskReminders,
+  syncEventReminders,
+  syncRecurringReminders,
+  syncBillReminders,
+  syncAllNotifications,
+} from '../services/notificationSyncService';
+import { checkAllBudgetThresholds } from '../services/budgetAlertService';
+import {
+  fireNewTransactionAlert,
+  addNotificationDeliveredListener,
+  addNotificationTappedListener,
+  type NotificationData,
+} from '../services/notificationService';
+import {
+  addNewTransactionListener,
+  addFulizaLimitNeededListener,
+  enableBackgroundReceiver,
+  setFulizaLimit,
+  ensureIngestSweep,
+} from '../../modules/lifeos-sms';
+import { FulizaLimitModal } from '../components/settings/FulizaLimitModal';
+import { useDataVersion } from '../store/dataVersion';
+import { useGlobalDataSync } from '../hooks/useGlobalDataSync';
 import type { RootStackParamList } from './types';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -79,6 +105,11 @@ export function AppNavigator() {
     setIsAppLocked,
   } = useAppStore();
   const [dbReady, setDbReady] = useState(false);
+  useGlobalDataSync(dbReady ? db : null);
+  const [fulizaModalVisible, setFulizaModalVisible] = useState(false);
+  // Once the user has seen and acted on the Fuliza prompt in this session,
+  // ignore further native events so a long-running import doesn't reopen it.
+  const hasHandledFulizaPrompt = useRef(false);
   const appState = useRef(AppState.currentState);
   const armedForLock = useRef(false);
   const backgroundedAt = useRef<number | null>(null);
@@ -100,6 +131,186 @@ export function AppNavigator() {
       mounted = false;
     };
   }, [db, setIsLoading]);
+
+  // Bootstrap notifications once the DB and persisted store are ready.
+  // IMPORTANT: uses `reconcilePermissionState()` — a PASSIVE check that never
+  // fires the OS permission dialog. The dialog is only shown when the user
+  // taps "Allow" in the onboarding permission step or the Settings toggle.
+  useEffect(() => {
+    if (!dbReady || !hasHydrated) return;
+    let cancelled = false;
+    async function bootstrapNotifications() {
+      try {
+        // Reconcile persisted JS settings → native SharedPreferences on boot.
+        // Handles fresh installs where JS defaults (e.g. fulizaLimit: 10000)
+        // haven't yet been pushed to the native worker, and keeps state in
+        // sync if the JS side changed while the process was killed.
+        try {
+          const s = useAppStore.getState().settings;
+          await enableBackgroundReceiver(s.smsBackgroundReceiver ?? false);
+          await setFulizaLimit(s.fulizaLimit ?? 0);
+          // Register the 15-minute ingest-queue sweep and drain any SMS rows
+          // that accumulated while the app was closed/killed.
+          await ensureIngestSweep();
+        } catch {}
+        if (cancelled) return;
+        await reconcilePermissionState();
+        if (cancelled) return;
+        // These sync fns are no-ops (or cancel) when permission is not granted.
+        await syncDailyDigest();
+        if (cancelled) return;
+        await syncTaskReminders(db);
+        if (cancelled) return;
+        await syncEventReminders(db);
+        if (cancelled) return;
+        await syncRecurringReminders(db);
+        if (cancelled) return;
+        await syncBillReminders(db);
+        if (cancelled) return;
+        // Re-evaluate budget alerts on cold start in case spending crossed a
+        // threshold while the app was closed.
+        await checkAllBudgetThresholds(db);
+      } catch (error) {
+        console.warn('Notification bootstrap failed:', error);
+      }
+    }
+    bootstrapNotifications();
+    return () => {
+      cancelled = true;
+    };
+  }, [db, dbReady, hasHydrated]);
+
+  // Auto-reschedule the NEXT occurrence when a repeating notification fires
+  // (delivered in foreground, or tapped from background/killed). Previously
+  // recurring rules, bills, and repeating events (birthday/anniversary/
+  // countdown/weekly…) fired once and went silent until the next app relaunch.
+  useEffect(() => {
+    if (!dbReady || !hasHydrated) return;
+    const reschedule = (data: NotificationData) => {
+      const run = async () => {
+        switch (data?.type) {
+          case 'recurring':
+            await syncRecurringReminders(db, data.id);
+            break;
+          case 'bill':
+            await syncBillReminders(db, data.id);
+            break;
+          case 'task':
+            await syncTaskReminders(db, data.id);
+            break;
+          case 'event':
+          case 'birthday':
+          case 'anniversary':
+          case 'countdown':
+            await syncEventReminders(db, data.id);
+            break;
+          default:
+            break; // daily_digest repeats natively; txn/budget are one-shots
+        }
+      };
+      run().catch((e) => console.warn('Notification reschedule failed:', e));
+    };
+    const delivered = addNotificationDeliveredListener(reschedule);
+    const tapped = addNotificationTappedListener(reschedule);
+    return () => {
+      delivered.remove();
+      tapped.remove();
+    };
+  }, [db, dbReady, hasHydrated]);
+
+  // Re-sync all reminders when the app returns to the foreground (throttled),
+  // covering notifications that fired while the app was backgrounded — the
+  // delivered-listener above only runs in the foreground.
+  const lastForegroundSync = useRef(0);
+  useEffect(() => {
+    if (!dbReady || !hasHydrated) return;
+    const sub = AppState.addEventListener('change', (state: AppStateStatus) => {
+      if (state !== 'active') return;
+      // The background SmsProcessWorker writes to SQLite from its own native
+      // connection while the app is backgrounded/killed — the onNewTransaction
+      // event can be missed if JS was paused. Bump the data version on every
+      // return to foreground so all subscribed screens (Finance, Import
+      // Health, Dashboard…) re-read from disk immediately. Cheap: reads only.
+      useDataVersion.getState().bump();
+      const now = Date.now();
+      if (now - lastForegroundSync.current < 60_000) return;
+      lastForegroundSync.current = now;
+      syncAllNotifications(db).catch((e) =>
+        console.warn('Foreground notification resync failed:', e)
+      );
+      checkAllBudgetThresholds(db).catch(() => {});
+    });
+    return () => sub.remove();
+  }, [db, dbReady, hasHydrated]);
+
+  // Listen for real-time SMS transactions and re-evaluate budget thresholds.
+  useEffect(() => {
+    if (!dbReady || !hasHydrated) return;
+    const subscription = addNewTransactionListener((tx) => {
+      // Native worker just wrote to SQLite from its own connection.
+      // Bump so every subscribed store re-reads from disk.
+      useDataVersion.getState().bump();
+
+      // Heads-up notification for the auto-imported transaction, gated by
+      // the user's notification preferences. Skip Fuliza fee/charge notices —
+      // they are service debits, not user-initiated transactions, and can fire
+      // every midnight, which feels like "SMS everywhere".
+      const s = useAppStore.getState().settings;
+      if (
+        s.notificationsEnabled &&
+        s.notificationTypes?.transactionAlerts !== false &&
+        tx?.mpesaCode &&
+        tx.transactionType !== 'fuliza'
+      ) {
+        fireNewTransactionAlert(
+          tx.mpesaCode,
+          tx.amount,
+          tx.merchant,
+          tx.transactionType,
+        ).catch(() => {});
+      }
+
+      checkAllBudgetThresholds(db).catch((error) => {
+        console.warn('Budget check after SMS failed:', error);
+      });
+    });
+    return () => subscription.remove();
+  }, [db, dbReady, hasHydrated]);
+
+  // The native worker emits onFulizaLimitNeeded when a Fuliza SMS is detected
+  // but the user has never set their credit limit. This event previously had
+  // NO listener — the FulizaLimitModal could only be reached via Settings.
+  useEffect(() => {
+    if (!dbReady || !hasHydrated) return;
+    const sub = addFulizaLimitNeededListener(() => {
+      if (hasHandledFulizaPrompt.current) return;
+      const s = useAppStore.getState().settings;
+      // Only prompt when the user hasn't configured a limit.
+      if (!s.fulizaLimit || s.fulizaLimit <= 0) {
+        setFulizaModalVisible(true);
+      }
+    });
+    return () => sub.remove();
+  }, [dbReady, hasHydrated]);
+
+  const handleFulizaLimitSave = (limit: number) => {
+    hasHandledFulizaPrompt.current = true;
+    setFulizaModalVisible(false);
+    // Native first — the background worker reads SharedPreferences, not JS state.
+    setFulizaLimit(limit)
+      .then(() => {
+        useAppStore.setState((state) => ({ settings: { ...state.settings, fulizaLimit: limit } }));
+      })
+      .catch(() => {
+        // Still persist in JS; bootstrap pushes JS → native on next launch.
+        useAppStore.setState((state) => ({ settings: { ...state.settings, fulizaLimit: limit } }));
+      });
+  };
+
+  const handleFulizaLimitCancel = () => {
+    hasHandledFulizaPrompt.current = true;
+    setFulizaModalVisible(false);
+  };
 
   // Cold start is handled synchronously during store rehydration (see useAppStore).
   // Here we only need to re-arm the lock when the app returns to the foreground after
@@ -145,6 +356,13 @@ export function AppNavigator() {
   }
 
   return (
+    <>
+    <FulizaLimitModal
+      visible={fulizaModalVisible}
+      currentLimit={settings.fulizaLimit ?? 0}
+      onSave={handleFulizaLimitSave}
+      onCancel={handleFulizaLimitCancel}
+    />
     <NavigationContainer theme={NAV_THEME}>
       <Stack.Navigator
         screenOptions={{
@@ -204,5 +422,6 @@ export function AppNavigator() {
         )}
       </Stack.Navigator>
     </NavigationContainer>
+    </>
   );
 }

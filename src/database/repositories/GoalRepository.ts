@@ -101,4 +101,12 @@ export class GoalRepository extends BaseRepository<GoalDbRecord> {
       `SELECT * FROM goals WHERE ${this.notDeletedClause()} ORDER BY created_at DESC`
     );
   }
+
+  async search(query: string, limit: number = 50): Promise<GoalDbRecord[]> {
+    const like = `%${query}%`;
+    return await this.db.getAllAsync<GoalDbRecord>(
+      `SELECT * FROM goals WHERE ${this.notDeletedClause()} AND (title LIKE ? OR description LIKE ? OR category LIKE ?) ORDER BY created_at DESC LIMIT ?`,
+      [like, like, like, limit]
+    );
+  }
 }

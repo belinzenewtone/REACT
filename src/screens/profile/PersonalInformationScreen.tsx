@@ -1,10 +1,7 @@
 import React, { useState } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
-  TouchableOpacity,
-  TextInput,
   Modal,
   ScrollView,
 } from 'react-native';
@@ -12,10 +9,10 @@ import { TopBanner } from '../../components/common/TopBanner';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
-import { useThemeColors } from '../../hooks/useThemeColors';
+import { Text, TextInput, Button, IconButton, useTheme } from 'react-native-paper';
 import { useAppStore } from '../../store';
 import { GlassCard } from '../../components/common/GlassCard';
-import { spacing, typography, borderRadius } from '../../theme';
+import { spacing } from '../../theme';
 
 interface InfoRow {
   key: 'name' | 'email' | 'username';
@@ -28,7 +25,7 @@ interface InfoRow {
 }
 
 export function PersonalInformationScreen() {
-  const colors = useThemeColors();
+  const theme = useTheme();
   const navigation = useNavigation();
   const profile = useAppStore((state) => state.profile);
   const updateProfile = useAppStore((state) => state.updateProfile);
@@ -92,23 +89,26 @@ export function PersonalInformationScreen() {
   const editingRow = rows.find((r) => r.key === editKey);
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.bgPrimary }]} edges={['top']}>
+    <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]} edges={['top']}>
       <TopBanner tone="success" message={successMsg ?? ''} visible={!!successMsg} autoDismissMs={2000} onDismiss={() => setSuccessMsg(null)} />
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-            <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
-          </TouchableOpacity>
-          <Text style={[styles.title, { color: colors.textPrimary }]}>Personal Information</Text>
+          <IconButton
+            icon={() => <Ionicons name="arrow-back" size={24} color={theme.colors.onSurface} />}
+            size={24}
+            onPress={() => navigation.goBack()}
+            style={{ margin: 0 }}
+          />
+          <Text variant="titleLarge" style={{ color: theme.colors.onSurface, flex: 1, textAlign: 'center' }} numberOfLines={1}>Personal Information</Text>
           <View style={styles.headerSpacer} />
         </View>
 
         <GlassCard style={styles.card}>
           <View style={styles.cardHeader}>
-            <Text style={[styles.cardTitle, { color: colors.textPrimary }]}>
+            <Text variant="titleMedium" style={{ color: theme.colors.onSurface }}>
               Personal Information
             </Text>
-            <Ionicons name="pencil" size={18} color={colors.accentPrimary} />
+            <Ionicons name="pencil" size={18} color={theme.colors.primary} />
           </View>
 
           {rows.map((row, index) => (
@@ -116,43 +116,42 @@ export function PersonalInformationScreen() {
               key={row.key}
               style={[
                 styles.row,
-                index < rows.length - 1 && { borderBottomColor: colors.border, borderBottomWidth: 1 },
+                index < rows.length - 1 && { borderBottomColor: theme.colors.outlineVariant, borderBottomWidth: 1 },
               ]}
             >
-              <View style={[styles.iconCircle, { backgroundColor: colors.glassWhiteStrong }]}>
-                <Ionicons name={row.icon} size={20} color={colors.accentPrimary} />
+              <View style={[styles.iconCircle, { backgroundColor: theme.colors.surfaceVariant }]}>
+                <Ionicons name={row.icon} size={20} color={theme.colors.primary} />
               </View>
               <View style={styles.rowText}>
-                <Text style={[styles.rowLabel, { color: colors.textSecondary }]}>{row.label}</Text>
-                <Text style={[styles.rowValue, { color: colors.textPrimary }]} numberOfLines={1}>
+                <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>{row.label}</Text>
+                <Text variant="bodyMedium" style={{ color: theme.colors.onSurface }} numberOfLines={1}>
                   {row.value || row.placeholder}
                 </Text>
               </View>
-              <TouchableOpacity onPress={() => handleEdit(row)}>
-                <Ionicons name="pencil" size={18} color={colors.accentPrimary} />
-              </TouchableOpacity>
+              <IconButton
+                icon={() => <Ionicons name="pencil" size={18} color={theme.colors.primary} />}
+                size={18}
+                onPress={() => handleEdit(row)}
+                style={{ margin: 0 }}
+              />
             </View>
           ))}
         </GlassCard>
       </ScrollView>
 
       <Modal visible={!!editingRow} transparent animationType="slide">
-        <View style={[styles.modalOverlay, { backgroundColor: colors.glassBlack }]}>
-          <View style={[styles.modalContent, { backgroundColor: colors.bgSecondary }]}>
-            <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>
+        <View style={[styles.modalOverlay, { backgroundColor: 'rgba(0,0,0,0.6)' }]}>
+          <View style={[styles.modalContent, { backgroundColor: theme.colors.surfaceVariant }]}>
+            <Text variant="titleLarge" style={{ color: theme.colors.onSurface, marginBottom: spacing.lg }}>
               Edit {editingRow?.label}
             </Text>
             <TextInput
-              style={[
-                styles.modalInput,
-                {
-                  color: colors.textPrimary,
-                  borderColor: colors.border,
-                  backgroundColor: colors.glassWhite,
-                },
-              ]}
+              mode="outlined"
+              dense
+              style={{ backgroundColor: theme.colors.surfaceVariant, marginBottom: spacing.base }}
+              textColor={theme.colors.onSurface}
               placeholder={editingRow?.placeholder}
-              placeholderTextColor={colors.textTertiary}
+              placeholderTextColor={theme.colors.outline}
               value={editValue}
               onChangeText={(text) => {
                 if (editKey === 'username') {
@@ -166,15 +165,12 @@ export function PersonalInformationScreen() {
               autoFocus
               maxLength={editKey === 'username' ? 8 : undefined}
             />
-            <TouchableOpacity
-              style={[styles.saveButton, { backgroundColor: colors.accentPrimary }]}
-              onPress={handleSave}
-            >
-              <Text style={[styles.saveText, { color: colors.textInverse }]}>Save</Text>
-            </TouchableOpacity>
-            <TouchableOpacity onPress={() => setEditKey(null)}>
-              <Text style={[styles.cancelText, { color: colors.textSecondary }]}>Cancel</Text>
-            </TouchableOpacity>
+            <Button mode="contained" onPress={handleSave}>
+              Save
+            </Button>
+            <Button mode="text" onPress={() => setEditKey(null)} textColor={theme.colors.onSurfaceVariant}>
+              Cancel
+            </Button>
           </View>
         </View>
       </Modal>
@@ -191,21 +187,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingBottom: spacing.sm,
   },
-  backButton: {
-    padding: spacing.sm,
-    marginLeft: -spacing.sm,
-  },
-  title: {
-    flex: 1,
-    fontSize: typography.sizes['2xl'],
-    fontWeight: typography.weights.bold,
-    textAlign: 'center',
-  },
   headerSpacer: {
     width: 40,
   },
   content: {
-    paddingHorizontal: spacing.screenHorizontal, paddingVertical: spacing.lg,
+    paddingHorizontal: spacing.screenHorizontal,
+    paddingVertical: spacing.lg,
   },
   card: {
     padding: 0,
@@ -219,10 +206,6 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: 'transparent',
   },
-  cardTitle: {
-    fontSize: typography.sizes.lg,
-    fontWeight: typography.weights.semibold,
-  },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -233,56 +216,21 @@ const styles = StyleSheet.create({
   iconCircle: {
     width: 44,
     height: 44,
-    borderRadius: borderRadius.lg,
+    borderRadius: 12,
     justifyContent: 'center',
     alignItems: 'center',
   },
   rowText: {
     flex: 1,
   },
-  rowLabel: {
-    fontSize: typography.sizes.sm,
-    marginBottom: 2,
-  },
-  rowValue: {
-    fontSize: typography.sizes.base,
-    fontWeight: typography.weights.medium,
-  },
   modalOverlay: {
     flex: 1,
     justifyContent: 'flex-end',
   },
   modalContent: {
-    paddingHorizontal: spacing.screenHorizontal, paddingVertical: spacing.lg,
-    borderTopLeftRadius: borderRadius['2xl'],
-    borderTopRightRadius: borderRadius['2xl'],
-  },
-  modalTitle: {
-    fontSize: typography.sizes.xl,
-    fontWeight: typography.weights.bold,
-    marginBottom: spacing.lg,
-  },
-  modalInput: {
-    borderWidth: 1,
-    borderRadius: borderRadius.lg,
-    paddingHorizontal: spacing.base,
-    paddingVertical: spacing.base,
-    marginBottom: spacing.base,
-    fontSize: typography.sizes.base,
-  },
-  saveButton: {
-    paddingVertical: spacing.base,
-    borderRadius: borderRadius.lg,
-    alignItems: 'center',
-    marginTop: spacing.base,
-  },
-  saveText: {
-    fontSize: typography.sizes.base,
-    fontWeight: typography.weights.semibold,
-  },
-  cancelText: {
-    textAlign: 'center',
-    marginTop: spacing.lg,
-    fontSize: typography.sizes.base,
+    paddingHorizontal: spacing.screenHorizontal,
+    paddingVertical: spacing.lg,
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
   },
 });

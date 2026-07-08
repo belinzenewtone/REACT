@@ -11,6 +11,9 @@ import type { Transaction, TransactionType, TransactionStatus } from '../types';
 import type { TransactionRecord } from '../database/repositories/TransactionRepository';
 import type { TransactionRepository } from '../database/repositories/TransactionRepository';
 import { useDataVersion } from './dataVersion';
+import { checkBudgetThresholds } from '../services/budgetAlertService';
+import { toLocalIso } from '../utils/formatters';
+import { haptic } from '../services/haptics';
 
 export type TransactionPeriod = 'all' | 'today' | 'week' | 'month';
 
@@ -77,16 +80,16 @@ export const useTransactionStore = create<TransactionState>((set, get) => ({
       const now = new Date();
       switch (filters.period) {
         case 'today':
-          startDate = startOfDay(now).toISOString();
-          endDate = endOfDay(now).toISOString();
+          startDate = toLocalIso(startOfDay(now));
+          endDate = toLocalIso(endOfDay(now));
           break;
         case 'week':
-          startDate = startOfWeek(now, { weekStartsOn: 1 }).toISOString();
-          endDate = endOfWeek(now, { weekStartsOn: 1 }).toISOString();
+          startDate = toLocalIso(startOfWeek(now, { weekStartsOn: 1 }));
+          endDate = toLocalIso(endOfWeek(now, { weekStartsOn: 1 }));
           break;
         case 'month':
-          startDate = startOfMonth(now).toISOString();
-          endDate = endOfMonth(now).toISOString();
+          startDate = toLocalIso(startOfMonth(now));
+          endDate = toLocalIso(endOfMonth(now));
           break;
       }
 
@@ -116,17 +119,28 @@ export const useTransactionStore = create<TransactionState>((set, get) => ({
     await repo.create(data);
     useDataVersion.getState().bump();
     await get().loadTransactions(repo, true);
+    // Fire budget alerts for the transaction's category (no-op if the user
+    // hasn't enabled budget alerts).
+    if (data.category && data.transactionType === 'expense') {
+      checkBudgetThresholds(repo.database, data.category).catch(() => {});
+    }
+    haptic('success');
   },
 
   updateTransaction: async (repo, id, data) => {
     await repo.update(id, data);
     useDataVersion.getState().bump();
     await get().loadTransactions(repo, true);
+    if (data.category && data.transactionType === 'expense') {
+      checkBudgetThresholds(repo.database, data.category).catch(() => {});
+    }
+    haptic('light');
   },
 
   deleteTransaction: async (repo, id) => {
     await repo.softDelete(id);
     useDataVersion.getState().bump();
     await get().loadTransactions(repo, true);
+    haptic('warning');
   },
 }));

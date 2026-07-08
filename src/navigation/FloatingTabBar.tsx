@@ -1,9 +1,9 @@
 import React, { useEffect, useRef } from 'react';
-import { View, Text, Pressable, Animated, StyleSheet, type ViewStyle } from 'react-native';
+import { View, Pressable, Animated, StyleSheet, type ViewStyle } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
-import { useThemeColors } from '../hooks/useThemeColors';
+import { Text, useTheme } from 'react-native-paper';
 import { spacing, borderRadius, typography, motion } from '../theme';
 
 const LABELS: Record<string, string> = {
@@ -23,7 +23,7 @@ const ICONS: Record<string, { active: keyof typeof Ionicons.glyphMap; inactive: 
 };
 
 export function FloatingTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
-  const colors = useThemeColors();
+  const theme = useTheme();
   const insets = useSafeAreaInsets();
 
   return (
@@ -31,8 +31,8 @@ export function FloatingTabBar({ state, descriptors, navigation }: BottomTabBarP
       style={[
         styles.container,
         {
-          backgroundColor: colors.bgSecondary,
-          borderColor: colors.border,
+          backgroundColor: theme.colors.surfaceVariant,
+          borderColor: theme.colors.outlineVariant,
           bottom: Math.max(insets.bottom, spacing.sm) + spacing.sm,
         },
       ]}
@@ -70,7 +70,6 @@ export function FloatingTabBar({ state, descriptors, navigation }: BottomTabBarP
             label={label}
             icons={icons}
             accessibilityLabel={options.tabBarAccessibilityLabel}
-            colors={colors}
             onPress={onPress}
             onLongPress={onLongPress}
           />
@@ -85,7 +84,6 @@ function TabButton({
   label,
   icons,
   accessibilityLabel,
-  colors,
   onPress,
   onLongPress,
 }: {
@@ -93,10 +91,10 @@ function TabButton({
   label: string;
   icons: { active: keyof typeof Ionicons.glyphMap; inactive: keyof typeof Ionicons.glyphMap };
   accessibilityLabel?: string;
-  colors: ReturnType<typeof useThemeColors>;
   onPress: () => void;
   onLongPress: () => void;
 }) {
+  const theme = useTheme();
   const scale = useRef(new Animated.Value(isFocused ? 1 : 0.9)).current;
   const pillOpacity = useRef(new Animated.Value(isFocused ? 1 : 0)).current;
 
@@ -127,17 +125,24 @@ function TabButton({
         <Ionicons
           name={isFocused ? icons.active : icons.inactive}
           size={24}
-          color={isFocused ? colors.accentPrimary : colors.textTertiary}
+          color={isFocused ? theme.colors.primary : theme.colors.onSurfaceVariant}
         />
       </Animated.View>
       <View style={styles.labelPill}>
         <Animated.View
-          style={[styles.labelPillFill, { backgroundColor: colors.glassWhiteStrong, opacity: pillOpacity }]}
+          style={[
+            styles.labelPillFill,
+            {
+              backgroundColor: theme.colors.primaryContainer,
+              opacity: pillOpacity,
+            },
+          ]}
         />
         <Text
+          variant="labelSmall"
           style={[
             styles.label,
-            { color: isFocused ? colors.accentPrimary : colors.textTertiary },
+            { color: isFocused ? theme.colors.primary : theme.colors.onSurfaceVariant },
           ]}
         >
           {label}

@@ -1,26 +1,30 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  ScrollView,
   StyleSheet,
+  ScrollView,
   Alert,
   Animated,
   PanResponder,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { useSQLiteContext } from 'expo-sqlite';
-import { useThemeColors } from '../../hooks/useThemeColors';
+import { Ionicons } from '@expo/vector-icons';
+import { Card, Text, Checkbox, IconButton, TextInput, TouchableRipple, useTheme } from 'react-native-paper';
 import { useCalendarStore } from '../../store';
 import { TaskRepository, type TaskRecord } from '../../database/repositories/TaskRepository';
-import { spacing, typography, borderRadius } from '../../theme';
+import { spacing, borderRadius } from '../../theme';
+import { GlassCard } from '../../components/common/GlassCard';
 import { animateLayout } from '../../utils/animation';
+import { syncTaskReminders } from '../../services/notificationSyncService';
+import { cancelTaskReminders } from '../../services/notificationService';
+import { haptic } from '../../services/haptics';
+import { useDataVersion } from '../../store/dataVersion';
+import { PageScaffold } from '../../components/common/PageScaffold';
 
 const COMPLETED_LIMIT = 20;
+const SUCCESS = '#7BC47B';
+const WARNING = '#F5CB5C';
 
 interface TimerState {
   taskId: string;
@@ -28,8 +32,44 @@ interface TimerState {
   baseSeconds: number;
 }
 
+interface PrioritySectionProps {
+  title: string;
+  color: string;
+  tasks: TaskRecord[];
+  onToggleComplete: (task: TaskRecord) => void;
+  onToggleTimer: (task: TaskRecord) => void;
+  onDelete: (task: TaskRecord) => void;
+  activeTimerId: string | null;
+  getElapsed: (taskId: string) => number;
+  formatTimer: (seconds: number) => string;
+  onPressTask: (task: TaskRecord) => void;
+}
+
+interface SwipeableTaskCardProps {
+  task: TaskRecord;
+  color: string;
+  onToggleComplete: () => void;
+  onToggleTimer: () => void;
+  onDelete: () => void;
+  isTimerActive: boolean;
+  elapsed: number;
+  formatTimer: (seconds: number) => string;
+  onPress: () => void;
+}
+
+interface TaskCardProps {
+  task: TaskRecord;
+  color: string;
+  onToggleComplete: () => void;
+  onToggleTimer: () => void;
+  isTimerActive: boolean;
+  elapsed: number;
+  formatTimer: (seconds: number) => string;
+  onPress: () => void;
+}
+
 export function TasksScreen() {
-  const colors = useThemeColors();
+  const theme = useTheme();
   const db = useSQLiteContext();
   const navigation = useNavigation<any>();
   const { loadCalendar } = useCalendarStore();
@@ -85,9 +125,12 @@ export function TasksScreen() {
   const handleToggleComplete = async (task: TaskRecord) => {
     const repo = new TaskRepository(db);
     await repo.toggleComplete(task.id);
+    await syncTaskReminders(db, task.id);
+    useDataVersion.getState().bump();
     animateLayout();
     await loadCalendar(db);
     await loadTasks();
+    haptic(task.status === 'active' ? 'success' : 'light');
   };
 
   const handleDelete = (task: TaskRecord) => {
@@ -99,9 +142,12 @@ export function TasksScreen() {
         onPress: async () => {
           const repo = new TaskRepository(db);
           await repo.softDelete(task.id);
+          await cancelTaskReminders(task.id);
+          useDataVersion.getState().bump();
           animateLayout();
           await loadCalendar(db);
           await loadTasks();
+          haptic('warning');
         },
       },
     ]);
@@ -140,135 +186,122 @@ export function TasksScreen() {
   };
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.bgPrimary }]} edges={['top']}>
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()}>
-            <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
-          </TouchableOpacity>
-          <View>
-            <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>Tasks</Text>
-            <Text style={[styles.headerSubtitle, { color: colors.textSecondary }]}>
-              {openCount} open · {completedCount} completed
-            </Text>
-          </View>
-          <TouchableOpacity onPress={() => navigation.navigate('TaskForm')}>
-            <Ionicons name="add" size={24} color={colors.accentPrimary} />
-          </TouchableOpacity>
-        </View>
-
-        <View style={[styles.searchBar, { backgroundColor: colors.glassWhite, borderColor: colors.border }]}>
-          <Ionicons name="search" size={18} color={colors.textTertiary} />
-          <TextInput
-            style={[styles.searchInput, { color: colors.textPrimary }]}
-            placeholder="Search tasks"
-            placeholderTextColor={colors.textTertiary}
-            value={query}
-            onChangeText={setQuery}
+    <PageScaffold
+      title="Tasks"
+      subtitle={`${openCount} open · ${completedCount} completed`}
+      onBack={() => navigation.goBack()}
+      actions={
+        <IconButton
+          icon={() => <Ionicons name="add" size={22} color={theme.colors.onSurface} />}
+          onPress={() => navigation.navigate('TaskForm')}
+        />
+      }
+    >
+      <TextInput
+        mode="outlined"
+        dense
+        value={query}
+        onChangeText={setQuery}
+        placeholder="Search tasks"
+        style={[styles.searchInput, { backgroundColor: theme.colors.surfaceVariant }]}
+        left={
+          <TextInput.Icon
+            icon={() => <Ionicons name="search" size={18} color={theme.colors.onSurfaceVariant} />}
           />
-        </View>
+        }
+      />
 
-        {grouped.urgent.length > 0 && (
-          <PrioritySection
-            title="Urgent"
-            color={colors.priority.high}
-            tasks={grouped.urgent}
-            onToggleComplete={handleToggleComplete}
-            onToggleTimer={handleToggleTimer}
-            onDelete={handleDelete}
-            activeTimerId={activeTimer?.taskId ?? null}
-            getElapsed={getElapsed}
-            formatTimer={formatTimer}
-            onPressTask={(task) => navigation.navigate('TaskDetail', { taskId: task.id })}
-          />
-        )}
+      {grouped.urgent.length > 0 && (
+        <PrioritySection
+          title="Urgent"
+          color={theme.colors.error}
+          tasks={grouped.urgent}
+          onToggleComplete={handleToggleComplete}
+          onToggleTimer={handleToggleTimer}
+          onDelete={handleDelete}
+          activeTimerId={activeTimer?.taskId ?? null}
+          getElapsed={getElapsed}
+          formatTimer={formatTimer}
+          onPressTask={(task) => navigation.navigate('TaskDetail', { taskId: task.id })}
+        />
+      )}
 
-        {grouped.important.length > 0 && (
-          <PrioritySection
-            title="Important"
-            color={colors.priority.medium}
-            tasks={grouped.important}
-            onToggleComplete={handleToggleComplete}
-            onToggleTimer={handleToggleTimer}
-            onDelete={handleDelete}
-            activeTimerId={activeTimer?.taskId ?? null}
-            getElapsed={getElapsed}
-            formatTimer={formatTimer}
-            onPressTask={(task) => navigation.navigate('TaskDetail', { taskId: task.id })}
-          />
-        )}
+      {grouped.important.length > 0 && (
+        <PrioritySection
+          title="Important"
+          color={WARNING}
+          tasks={grouped.important}
+          onToggleComplete={handleToggleComplete}
+          onToggleTimer={handleToggleTimer}
+          onDelete={handleDelete}
+          activeTimerId={activeTimer?.taskId ?? null}
+          getElapsed={getElapsed}
+          formatTimer={formatTimer}
+          onPressTask={(task) => navigation.navigate('TaskDetail', { taskId: task.id })}
+        />
+      )}
 
-        {grouped.rest.length > 0 && (
-          <PrioritySection
-            title="Other"
-            color={colors.priority.low}
-            tasks={grouped.rest}
-            onToggleComplete={handleToggleComplete}
-            onToggleTimer={handleToggleTimer}
-            onDelete={handleDelete}
-            activeTimerId={activeTimer?.taskId ?? null}
-            getElapsed={getElapsed}
-            formatTimer={formatTimer}
-            onPressTask={(task) => navigation.navigate('TaskDetail', { taskId: task.id })}
-          />
-        )}
+      {grouped.rest.length > 0 && (
+        <PrioritySection
+          title="Other"
+          color={theme.colors.primary}
+          tasks={grouped.rest}
+          onToggleComplete={handleToggleComplete}
+          onToggleTimer={handleToggleTimer}
+          onDelete={handleDelete}
+          activeTimerId={activeTimer?.taskId ?? null}
+          getElapsed={getElapsed}
+          formatTimer={formatTimer}
+          onPressTask={(task) => navigation.navigate('TaskDetail', { taskId: task.id })}
+        />
+      )}
 
-        {grouped.completed.length > 0 && (
-          <View style={styles.section}>
-            <TouchableOpacity
-              style={styles.sectionHeader}
-              onPress={() => setCompletedExpanded((v) => !v)}
-              activeOpacity={0.7}
-            >
-              <View style={[styles.sectionIndicator, { backgroundColor: colors.textTertiary }]} />
-              <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>Completed</Text>
-              <Text style={[styles.sectionCount, { color: colors.textSecondary }]}>{grouped.completed.length}</Text>
+      {grouped.completed.length > 0 && (
+        <View style={styles.section}>
+          <TouchableRipple onPress={() => setCompletedExpanded((v) => !v)}>
+            <View style={styles.sectionHeader}>
+              <View style={[styles.sectionIndicator, { backgroundColor: theme.colors.outline }]} />
+              <Text variant="titleMedium" style={{ color: theme.colors.onSurface, flex: 1 }}>
+                Completed
+              </Text>
+              <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
+                {grouped.completed.length}
+              </Text>
               <Ionicons
                 name={completedExpanded ? 'chevron-up' : 'chevron-down'}
                 size={18}
-                color={colors.textSecondary}
+                color={theme.colors.onSurfaceVariant}
               />
-            </TouchableOpacity>
-            {completedExpanded &&
-              grouped.completed.map((task) => (
-                <SwipeableTaskCard
-                  key={task.id}
-                  task={task}
-                  color={colors.textTertiary}
-                  onToggleComplete={() => handleToggleComplete(task)}
-                  onToggleTimer={() => handleToggleTimer(task)}
-                  onDelete={() => handleDelete(task)}
-                  isTimerActive={activeTimer?.taskId === task.id}
-                  elapsed={getElapsed(task.id)}
-                  formatTimer={formatTimer}
-                  onPress={() => navigation.navigate('TaskDetail', { taskId: task.id })}
-                />
-              ))}
-          </View>
-        )}
+            </View>
+          </TouchableRipple>
+          {completedExpanded &&
+            grouped.completed.map((task) => (
+              <SwipeableTaskCard
+                key={task.id}
+                task={task}
+                color={theme.colors.outline}
+                onToggleComplete={() => handleToggleComplete(task)}
+                onToggleTimer={() => handleToggleTimer(task)}
+                onDelete={() => handleDelete(task)}
+                isTimerActive={activeTimer?.taskId === task.id}
+                elapsed={getElapsed(task.id)}
+                formatTimer={formatTimer}
+                onPress={() => navigation.navigate('TaskDetail', { taskId: task.id })}
+              />
+            ))}
+        </View>
+      )}
 
-        {filteredTasks.length === 0 && (
-          <View style={styles.emptyState}>
-            <Ionicons name="checkmark-done-circle-outline" size={48} color={colors.textTertiary} />
-            <Text style={[styles.emptyText, { color: colors.textSecondary }]}>No tasks found</Text>
-          </View>
-        )}
-      </ScrollView>
-    </SafeAreaView>
+      {filteredTasks.length === 0 && (
+        <View style={styles.emptyState}>
+          <Ionicons name="checkmark-done-circle-outline" size={48} color={theme.colors.outline} />
+          <Text variant="bodyLarge" style={{ color: theme.colors.onSurfaceVariant }}>
+            No tasks found
+          </Text>
+        </View>
+      )}
+    </PageScaffold>
   );
-}
-
-interface PrioritySectionProps {
-  title: string;
-  color: string;
-  tasks: TaskRecord[];
-  onToggleComplete: (task: TaskRecord) => void;
-  onToggleTimer: (task: TaskRecord) => void;
-  onDelete: (task: TaskRecord) => void;
-  activeTimerId: string | null;
-  getElapsed: (taskId: string) => number;
-  formatTimer: (seconds: number) => string;
-  onPressTask: (task: TaskRecord) => void;
 }
 
 function PrioritySection({
@@ -283,20 +316,24 @@ function PrioritySection({
   formatTimer,
   onPressTask,
 }: PrioritySectionProps) {
-  const colors = useThemeColors();
+  const theme = useTheme();
 
   return (
     <View style={styles.section}>
       <View style={styles.sectionHeader}>
         <View style={[styles.sectionIndicator, { backgroundColor: color }]} />
-        <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>{title}</Text>
-        <Text style={[styles.sectionCount, { color: colors.textSecondary }]}>{tasks.length}</Text>
+        <Text variant="titleMedium" style={{ color: theme.colors.onSurface, flex: 1 }}>
+          {title}
+        </Text>
+        <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
+          {tasks.length}
+        </Text>
       </View>
       {tasks.map((task) => (
         <SwipeableTaskCard
           key={task.id}
           task={task}
-          color={task.status === 'completed' ? colors.textTertiary : color}
+          color={task.status === 'completed' ? theme.colors.outline : color}
           onToggleComplete={() => onToggleComplete(task)}
           onToggleTimer={() => onToggleTimer(task)}
           onDelete={() => onDelete(task)}
@@ -310,22 +347,10 @@ function PrioritySection({
   );
 }
 
-interface SwipeableTaskCardProps {
-  task: TaskRecord;
-  color: string;
-  onToggleComplete: () => void;
-  onToggleTimer: () => void;
-  onDelete: () => void;
-  isTimerActive: boolean;
-  elapsed: number;
-  formatTimer: (seconds: number) => string;
-  onPress: () => void;
-}
-
-const SWIPE_ACTION_WIDTH = 64;
+const SWIPE_ACTION_WIDTH = 56;
 
 function SwipeableTaskCard({ task, onToggleComplete, onDelete, onPress, ...rest }: SwipeableTaskCardProps) {
-  const colors = useThemeColors();
+  const theme = useTheme();
   const translateX = useRef(new Animated.Value(0)).current;
   const openSide = useRef<'none' | 'left' | 'right'>('none');
 
@@ -365,25 +390,25 @@ function SwipeableTaskCard({ task, onToggleComplete, onDelete, onPress, ...rest 
     onToggleComplete();
   };
 
-  const handleDelete = () => {
+  const handleDeleteAction = () => {
     close();
     onDelete();
   };
 
   return (
     <View style={styles.swipeWrapper}>
-      <TouchableOpacity
-        style={[styles.swipeAction, styles.swipeActionLeft, { backgroundColor: colors.success }]}
+      <TouchableRipple
+        style={[styles.swipeAction, styles.swipeActionLeft, { backgroundColor: SUCCESS }]}
         onPress={handleComplete}
       >
-        <Ionicons name="checkmark" size={22} color={colors.textInverse} />
-      </TouchableOpacity>
-      <TouchableOpacity
-        style={[styles.swipeAction, styles.swipeActionRight, { backgroundColor: colors.danger }]}
-        onPress={handleDelete}
+        <Ionicons name="checkmark" size={22} color={theme.colors.onPrimary} />
+      </TouchableRipple>
+      <TouchableRipple
+        style={[styles.swipeAction, styles.swipeActionRight, { backgroundColor: theme.colors.error }]}
+        onPress={handleDeleteAction}
       >
-        <Ionicons name="trash" size={22} color={colors.textInverse} />
-      </TouchableOpacity>
+        <Ionicons name="trash" size={22} color={theme.colors.onPrimary} />
+      </TouchableRipple>
 
       <Animated.View style={{ transform: [{ translateX }] }} {...panResponder.panHandlers}>
         <TaskCard
@@ -403,17 +428,6 @@ function SwipeableTaskCard({ task, onToggleComplete, onDelete, onPress, ...rest 
   );
 }
 
-interface TaskCardProps {
-  task: TaskRecord;
-  color: string;
-  onToggleComplete: () => void;
-  onToggleTimer: () => void;
-  isTimerActive: boolean;
-  elapsed: number;
-  formatTimer: (seconds: number) => string;
-  onPress: () => void;
-}
-
 function TaskCard({
   task,
   color,
@@ -424,101 +438,68 @@ function TaskCard({
   formatTimer,
   onPress,
 }: TaskCardProps) {
-  const colors = useThemeColors();
+  const theme = useTheme();
   const displaySeconds = (task.time_spent_seconds ?? 0) + elapsed;
+  const isDone = task.status === 'completed';
 
   return (
-    <TouchableOpacity
-      style={[styles.card, { backgroundColor: colors.glassWhite, borderColor: colors.border }]}
+    <GlassCard
+      style={styles.card}
       onPress={onPress}
-      activeOpacity={0.8}
     >
-      <View style={[styles.priorityBar, { backgroundColor: color }]} />
-      <TouchableOpacity
-        style={[styles.checkbox, task.status === 'completed' && { backgroundColor: colors.success, borderColor: colors.success }]}
-        onPress={(e) => {
-          e.stopPropagation();
-          onToggleComplete();
-        }}
-      >
-        {task.status === 'completed' && <Ionicons name="checkmark" size={14} color={colors.textInverse} />}
-      </TouchableOpacity>
-      <View style={styles.cardContent}>
-        <Text
-          style={[
-            styles.cardTitle,
-            { color: colors.textPrimary },
-            task.status === 'completed' && styles.completed,
-          ]}
-          numberOfLines={1}
-        >
-          {task.title}
-        </Text>
-        {task.description ? (
-          <Text style={[styles.cardDescription, { color: colors.textSecondary }]} numberOfLines={1}>
-            {task.description}
-          </Text>
-        ) : null}
-      </View>
-      <TouchableOpacity
-        style={[styles.timerButton, isTimerActive && { backgroundColor: `${colors.accentPrimary}20` }]}
-        onPress={(e) => {
-          e.stopPropagation();
-          onToggleTimer();
-        }}
-      >
-        <Ionicons
-          name={isTimerActive ? 'stop' : 'timer-outline'}
-          size={18}
-          color={isTimerActive ? colors.accentPrimary : colors.textTertiary}
+      <Card.Content style={styles.cardRow}>
+        <View style={[styles.priorityBar, { backgroundColor: color }]} />
+        <Checkbox
+          status={isDone ? 'checked' : 'unchecked'}
+          onPress={onToggleComplete}
+          color={isDone ? SUCCESS : color}
         />
-        {(isTimerActive || displaySeconds > 0) && (
-          <Text style={[styles.timerText, { color: isTimerActive ? colors.accentPrimary : colors.textTertiary }]}>
-            {formatTimer(displaySeconds)}
+        <View style={styles.cardContent}>
+          <Text
+            variant="bodyLarge"
+            style={[
+              { color: theme.colors.onSurface },
+              isDone && styles.completed,
+            ]}
+            numberOfLines={1}
+          >
+            {task.title}
           </Text>
-        )}
-      </TouchableOpacity>
-    </TouchableOpacity>
+          {task.description ? (
+            <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }} numberOfLines={1}>
+              {task.description}
+            </Text>
+          ) : null}
+        </View>
+        <TouchableRipple
+          style={[styles.timerButton, isTimerActive && { backgroundColor: `${theme.colors.primary}20` }]}
+          onPress={onToggleTimer}
+        >
+          <View style={styles.timerInner}>
+            <Ionicons
+              name={isTimerActive ? 'stop' : 'timer-outline'}
+              size={18}
+              color={isTimerActive ? theme.colors.primary : theme.colors.outline}
+            />
+            {(isTimerActive || displaySeconds > 0) && (
+              <Text
+                variant="labelMedium"
+                style={{ color: isTimerActive ? theme.colors.primary : theme.colors.outline, marginLeft: 4 }}
+              >
+                {formatTimer(displaySeconds)}
+              </Text>
+            )}
+          </View>
+        </TouchableRipple>
+      </Card.Content>
+    </GlassCard>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: spacing.sm,
-  },
-  headerTitle: {
-    fontSize: typography.sizes.lg,
-    fontWeight: typography.weights.semibold,
-  },
-  headerSubtitle: {
-    fontSize: typography.sizes.xs,
-    marginTop: 2,
-  },
-  searchBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginHorizontal: spacing.lg,
-    marginBottom: spacing.lg,
-    borderRadius: borderRadius.xl,
-    borderWidth: 1,
-    paddingHorizontal: spacing.base,
-    paddingVertical: spacing.sm,
-  },
   searchInput: {
-    flex: 1,
-    marginLeft: spacing.sm,
-    fontSize: typography.sizes.base,
-    paddingVertical: 4,
-  },
-  scrollContent: {
-    paddingHorizontal: spacing.screenHorizontal,
-    paddingBottom: spacing['4xl'],
+    marginBottom: spacing.lg,
+    borderRadius: borderRadius.full,
   },
   section: {
     marginBottom: spacing.xl,
@@ -533,32 +514,50 @@ const styles = StyleSheet.create({
     width: 4,
     height: 18,
     borderRadius: borderRadius.full,
-    marginRight: spacing.sm,
-  },
-  sectionTitle: {
-    fontSize: typography.sizes.lg,
-    fontWeight: typography.weights.semibold,
-    flex: 1,
-  },
-  sectionCount: {
-    fontSize: typography.sizes.base,
-    fontWeight: typography.weights.medium,
   },
   card: {
+    borderRadius: 16,
+    marginBottom: 0,
+  },
+  cardRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderRadius: borderRadius['2xl'],
-    borderWidth: 1,
-    padding: spacing.base,
+    gap: spacing.sm,
+    paddingVertical: spacing.sm,
+  },
+  priorityBar: {
+    width: 4,
+    height: 40,
+    borderRadius: borderRadius.full,
+  },
+  cardContent: {
+    flex: 1,
+  },
+  completed: {
+    textDecorationLine: 'line-through',
+    opacity: 0.6,
+  },
+  timerButton: {
+    borderRadius: borderRadius.md,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 4,
+  },
+  timerInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    minWidth: 32,
   },
   swipeWrapper: {
     marginBottom: spacing.base,
+    borderRadius: borderRadius['2xl'],
+    overflow: 'hidden',
   },
   swipeAction: {
     position: 'absolute',
     top: 0,
     bottom: 0,
-    width: 64,
+    width: SWIPE_ACTION_WIDTH,
     justifyContent: 'center',
     alignItems: 'center',
     borderRadius: borderRadius['2xl'],
@@ -569,57 +568,9 @@ const styles = StyleSheet.create({
   swipeActionRight: {
     right: 0,
   },
-  priorityBar: {
-    width: 4,
-    height: 40,
-    borderRadius: borderRadius.full,
-    marginRight: spacing.base,
-  },
-  checkbox: {
-    width: 22,
-    height: 22,
-    borderRadius: 6,
-    borderWidth: 2,
-    borderColor: '#4B5563',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: spacing.base,
-  },
-  cardContent: {
-    flex: 1,
-  },
-  cardTitle: {
-    fontSize: typography.sizes.base,
-    fontWeight: typography.weights.medium,
-  },
-  completed: {
-    textDecorationLine: 'line-through',
-    opacity: 0.6,
-  },
-  cardDescription: {
-    fontSize: typography.sizes.sm,
-    marginTop: 2,
-  },
-  timerButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 4,
-    borderRadius: borderRadius.md,
-    minWidth: 32,
-    justifyContent: 'center',
-  },
-  timerText: {
-    fontSize: typography.sizes.sm,
-    fontWeight: typography.weights.semibold,
-    marginLeft: 4,
-  },
   emptyState: {
     alignItems: 'center',
     marginTop: spacing['4xl'],
-  },
-  emptyText: {
-    fontSize: typography.sizes.base,
-    marginTop: spacing.base,
+    gap: spacing.base,
   },
 });

@@ -2,16 +2,15 @@ import React, { useState, useEffect } from 'react';
 import {
   Modal,
   View,
-  Text,
-  TextInput,
-  TouchableOpacity,
   StyleSheet,
   KeyboardAvoidingView,
   Platform,
+  ScrollView,
+  Keyboard,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useThemeColors } from '../../hooks/useThemeColors';
-import { spacing, typography, borderRadius } from '../../theme';
+import { Text, TextInput, Button, useTheme } from 'react-native-paper';
+import { spacing } from '../../theme';
 
 interface FulizaLimitModalProps {
   visible: boolean;
@@ -26,66 +25,87 @@ export function FulizaLimitModal({
   onSave,
   onCancel,
 }: FulizaLimitModalProps) {
-  const colors = useThemeColors();
-  const [value, setValue] = useState(currentLimit.toString());
+  const theme = useTheme();
+  const displayValue = (value: number) => (value > 0 ? value.toString() : '');
+  const [value, setValue] = useState(displayValue(currentLimit));
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     if (visible) {
-      setValue(currentLimit.toString());
+      setValue(displayValue(currentLimit));
+      setIsSubmitting(false);
     }
   }, [visible, currentLimit]);
 
   const handleSave = () => {
+    if (isSubmitting) return;
+    setIsSubmitting(true);
+    Keyboard.dismiss();
     const parsed = parseInt(value.replace(/[^0-9]/g, ''), 10);
     onSave(Number.isNaN(parsed) ? 0 : parsed);
   };
 
-  return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onCancel}>
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+  const handleCancel = () => {
+    if (isSubmitting) return;
+    Keyboard.dismiss();
+    onCancel();
+  };
+
+  const body = (
+    <SafeAreaView
+      style={[styles.container, { backgroundColor: theme.colors.background }]}
+      edges={['top', 'bottom']}
+    >
+      <View style={styles.header}>
+        <Button mode="text" onPress={handleCancel} disabled={isSubmitting} textColor={theme.colors.onSurfaceVariant}>
+          Later
+        </Button>
+        <Text variant="titleLarge" style={{ color: theme.colors.onSurface }}>
+          Fuliza Credit Limit
+        </Text>
+        <Button mode="text" onPress={handleSave} disabled={isSubmitting} loading={isSubmitting}>
+          Save
+        </Button>
+      </View>
+
+      <ScrollView
         style={styles.flex}
+        contentContainerStyle={styles.scrollContent}
+        keyboardShouldPersistTaps="always"
+        keyboardDismissMode="none"
       >
-        <SafeAreaView
-          style={[styles.container, { backgroundColor: colors.bgPrimary }]}
-          edges={['top', 'bottom']}
-        >
-          <View style={styles.header}>
-            <TouchableOpacity onPress={onCancel}>
-              <Text style={[styles.headerAction, { color: colors.textSecondary }]}>Later</Text>
-            </TouchableOpacity>
-            <Text style={[styles.title, { color: colors.textPrimary }]}>Fuliza Credit Limit</Text>
-            <TouchableOpacity onPress={handleSave}>
-              <Text style={[styles.headerAction, { color: colors.accentPrimary }]}>Save</Text>
-            </TouchableOpacity>
-          </View>
+        <View style={styles.content}>
+          <Text variant="bodyMedium" style={{ color: theme.colors.onSurfaceVariant, textAlign: 'center', marginBottom: spacing.xl }}>
+            We detected Fuliza activity. Enter your personal Fuliza limit in KES to improve debt tracking accuracy.
+          </Text>
 
-          <View style={styles.content}>
-            <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
-              We detected Fuliza activity. Enter your personal Fuliza limit in KES to improve debt tracking accuracy.
-            </Text>
+          <TextInput
+            mode="outlined"
+            value={value}
+            onChangeText={(text) => setValue(text.replace(/[^0-9]/g, ''))}
+            keyboardType="number-pad"
+            placeholder="0"
+            autoFocus
+            returnKeyType="done"
+            onSubmitEditing={handleSave}
+            editable={!isSubmitting}
+            left={<TextInput.Affix text="KSh " />}
+            style={[styles.input, { backgroundColor: theme.colors.surfaceVariant }]}
+          />
+        </View>
+      </ScrollView>
+    </SafeAreaView>
+  );
 
-            <View
-              style={[
-                styles.inputContainer,
-                { backgroundColor: colors.glassWhite, borderColor: colors.border },
-              ]}
-            >
-              <Text style={[styles.currency, { color: colors.textSecondary }]}>KSh</Text>
-              <TextInput
-                style={[styles.input, { color: colors.textPrimary }]}
-                value={value}
-                onChangeText={(text) => setValue(text.replace(/[^0-9]/g, ''))}
-                keyboardType="number-pad"
-                placeholder="0"
-                placeholderTextColor={colors.textTertiary}
-                autoFocus
-                selectionColor={colors.accentPrimary}
-              />
-            </View>
-          </View>
-        </SafeAreaView>
-      </KeyboardAvoidingView>
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={handleCancel}>
+      {Platform.OS === 'ios' ? (
+        <KeyboardAvoidingView behavior="padding" style={styles.flex}>
+          {body}
+        </KeyboardAvoidingView>
+      ) : (
+        body
+      )}
     </Modal>
   );
 }
@@ -97,6 +117,9 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
+  scrollContent: {
+    flexGrow: 1,
+  },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -104,40 +127,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.base,
   },
-  title: {
-    fontSize: typography.sizes.lg,
-    fontWeight: typography.weights.semibold,
-  },
-  headerAction: {
-    fontSize: typography.sizes.base,
-    fontWeight: typography.weights.medium,
-  },
   content: {
     flex: 1,
     padding: spacing.lg,
     paddingTop: spacing.xl,
   },
-  subtitle: {
-    fontSize: typography.sizes.base,
-    textAlign: 'center',
-    marginBottom: spacing.xl,
-  },
-  inputContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderRadius: borderRadius.xl,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.lg,
-  },
-  currency: {
-    fontSize: typography.sizes.lg,
-    fontWeight: typography.weights.medium,
-    marginRight: spacing.base,
-  },
   input: {
-    flex: 1,
-    fontSize: typography.sizes['3xl'],
-    fontWeight: typography.weights.bold,
+    fontSize: 28,
+    fontWeight: '700',
   },
 });

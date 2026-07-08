@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type { SQLiteDatabase } from 'expo-sqlite';
+import { toLocalIso } from '../utils/formatters';
 import { computeAnalytics, type AnalyticsData } from '../services/analyticsService';
 
 export type DateRange = 'this_week' | 'this_month';
@@ -32,7 +33,8 @@ function getDateRange(range: DateRange): { start: string; end: string } {
       break;
   }
 
-  return { start: start.toISOString(), end: end.toISOString() };
+  // Local datetime strings to match SMS-imported transaction date storage.
+  return { start: toLocalIso(start), end: toLocalIso(end) };
 }
 
 export const useAnalyticsStore = create<AnalyticsState>((set, get) => ({
@@ -47,8 +49,9 @@ export const useAnalyticsStore = create<AnalyticsState>((set, get) => ({
   loadAnalytics: async (db) => {
     set({ isLoading: true });
     try {
-      const { start, end } = getDateRange(get().dateRange);
-      const data = await computeAnalytics(db, start, end);
+      const range = get().dateRange;
+      const { start, end } = getDateRange(range);
+      const data = await computeAnalytics(db, start, end, range);
       set({ data, isLoading: false });
     } catch (error) {
       console.error('Failed to load analytics:', error);

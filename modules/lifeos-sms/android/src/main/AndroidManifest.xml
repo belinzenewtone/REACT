@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
   <!-- SMS permissions — user must grant at runtime (Android 6+) -->
   <uses-permission android:name="android.permission.RECEIVE_SMS" />
@@ -8,6 +9,13 @@
   <!-- Required for WorkManager foreground service (bulk import progress) -->
   <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
   <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+
+  <!-- Lets the app ask the user to exempt it from Doze/battery optimization so
+       the background SMS receiver + WorkManager run reliably when app is killed -->
+  <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+
+  <!-- Re-arm the ingest sweep after reboot without waiting for app launch -->
+  <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
   <application>
     <!--
@@ -25,6 +33,32 @@
         <action android:name="android.provider.Telephony.SMS_RECEIVED" />
       </intent-filter>
     </receiver>
+
+    <!--
+      Re-arms the ingest sweep + drains pending SMS after device reboot or
+      app update, without requiring the user to open the app first.
+    -->
+    <receiver
+      android:name=".BootReceiver"
+      android:enabled="true"
+      android:exported="true">
+      <intent-filter>
+        <action android:name="android.intent.action.BOOT_COMPLETED" />
+        <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+      </intent-filter>
+    </receiver>
+
+    <!--
+      Android 14 (API 34) requires the WorkManager foreground service to
+      declare its foregroundServiceType. WorkManager's own manifest doesn't
+      include "dataSync", so calling setForeground(...DATA_SYNC) crashes with
+      MissingForegroundServiceTypeException and the import call is rejected.
+      Merge the type into the library's service declaration.
+    -->
+    <service
+      android:name="androidx.work.impl.foreground.SystemForegroundService"
+      android:foregroundServiceType="dataSync"
+      tools:node="merge" />
   </application>
 
 </manifest>

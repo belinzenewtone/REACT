@@ -1,28 +1,33 @@
 import React, { useCallback, useRef } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
   ScrollView,
-  RefreshControl,
-  TouchableOpacity,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
+import {
+  Card,
+  Text,
+  IconButton,
+  useTheme,
+} from 'react-native-paper';
 import { useDataVersion } from '../../store/dataVersion';
 import { format } from 'date-fns';
-import { useThemeColors } from '../../hooks/useThemeColors';
 import { useDashboardStore } from '../../store/useDashboardStore';
 import { useAppStore } from '../../store';
-import { MetricCard, HomeMenuCard, WeeklyResetCard } from '../../components/dashboard';
+import { HomeMenuCard, WeeklyResetCard } from '../../components/dashboard';
 import { TopBanner } from '../../components/common/TopBanner';
 import { ShimmerLoadingState } from '../../components/common/ShimmerLoadingState';
-import { spacing, typography, BOTTOM_NAV_SAFE_AREA } from '../../theme';
+import { formatCurrency } from '../../utils/formatters';
+import { spacing, BOTTOM_NAV_SAFE_AREA } from '../../theme';
+import { FrostCard } from '../../components/common/FrostCard';
+import { LinearGradient } from 'expo-linear-gradient';
 
-export function HomeScreen() {
-  const colors = useThemeColors();
+function HomeScreenContent() {
+  const theme = useTheme();
   const db = useSQLiteContext();
   const navigation = useNavigation<any>();
   const profile = useAppStore((state) => state.profile);
@@ -63,38 +68,49 @@ export function HomeScreen() {
   };
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.bgPrimary }]} edges={['top']}>
+    <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]} edges={['top']}>
+      {/* Ambient aurora glow behind the header/greeting */}
+      <View pointerEvents="none" style={styles.aurora}>
+        <LinearGradient
+          colors={theme.dark
+            ? ['rgba(18,48,74,0.55)', 'rgba(14,27,46,0.25)', 'rgba(10,10,11,0)']
+            : ['rgba(186,230,253,0.30)', 'rgba(224,242,254,0.12)', 'rgba(248,250,252,0)']}
+          start={{ x: 0.2, y: 0 }}
+          end={{ x: 0.8, y: 1 }}
+          style={StyleSheet.absoluteFill}
+        />
+        <View style={[styles.auroraRing, { top: -140, right: -90, width: 340, height: 340, backgroundColor: theme.dark ? 'rgba(87,185,255,0.08)' : 'rgba(3,105,161,0.05)' }]} />
+        <View style={[styles.auroraRing, { top: -100, right: -50, width: 250, height: 250, backgroundColor: theme.dark ? 'rgba(87,185,255,0.09)' : 'rgba(3,105,161,0.06)' }]} />
+        <View style={[styles.auroraRing, { top: 60, left: -120, width: 280, height: 280, backgroundColor: theme.dark ? 'rgba(94,234,212,0.05)' : 'rgba(15,118,110,0.04)' }]} />
+      </View>
       <TopBanner tone="error" message={error ?? ''} visible={!!error} />
       <ScrollView
         contentContainerStyle={styles.content}
-        refreshControl={
-          <RefreshControl
-            refreshing={isLoading}
-            onRefresh={() => loadDashboard(db)}
-            tintColor={colors.accentPrimary}
-            colors={[colors.accentPrimary]}
-          />
-        }
       >
         <View style={styles.header}>
           <View style={styles.headerText}>
-            <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>Today</Text>
-            <Text style={[styles.headerDate, { color: colors.textSecondary }]}>{todayLabel}</Text>
+            <Text variant="headlineSmall" style={{ color: theme.colors.onSurface }}>
+              Today
+            </Text>
+            <Text variant="bodyMedium" style={{ color: theme.colors.onSurfaceVariant }}>
+              {todayLabel}
+            </Text>
           </View>
-          <TouchableOpacity
-            style={[styles.profileButton, { backgroundColor: colors.glassWhite }]}
+          <IconButton
+            icon={() => <Ionicons name="person-outline" size={22} color={theme.colors.onSurface} />}
+            containerColor={theme.colors.surfaceVariant}
             onPress={() => navigateToTab('Profile')}
-          >
-            <Ionicons name="person-outline" size={22} color={colors.textPrimary} />
-          </TouchableOpacity>
+          />
         </View>
 
         <View style={styles.focusSection}>
-          <Text style={[styles.focusLabel, { color: colors.accentPrimary }]}>Daily focus</Text>
-          <Text style={[styles.greeting, { color: colors.textPrimary }]}>
+          <Text variant="labelLarge" style={{ color: theme.colors.primary }}>
+            Daily focus
+          </Text>
+          <Text variant="headlineLarge" style={{ color: theme.colors.onSurface }} numberOfLines={2}>
             {greeting}, {name}
           </Text>
-          <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
+          <Text variant="bodyLarge" style={{ color: theme.colors.onSurfaceVariant }}>
             Review priorities, schedule, and your spend trend.
           </Text>
         </View>
@@ -104,9 +120,9 @@ export function HomeScreen() {
         ) : (
           <>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.metricsRow}>
-              <MetricCard label="Today" amount={todaySpend} />
-              <MetricCard label="Week" amount={weekSpend} />
-              <MetricCard label="Month" amount={expense} />
+              <MetricCard label="Today" amount={todaySpend} glow="blue" />
+              <MetricCard label="Week" amount={weekSpend} glow="teal" />
+              <MetricCard label="Month" amount={expense} glow="blue" />
             </ScrollView>
 
             <View style={styles.section}>
@@ -133,6 +149,24 @@ export function HomeScreen() {
   );
 }
 
+export function HomeScreen() {
+  return <HomeScreenContent />;
+}
+
+function MetricCard({ label, amount, glow }: { label: string; amount: number; glow?: 'blue' | 'teal' | 'none' }) {
+  const theme = useTheme();
+  return (
+    <FrostCard style={styles.metricCard} glow={glow ?? 'blue'}>
+      <Text variant="bodyMedium" style={{ color: theme.colors.onSurfaceVariant }}>
+        {label}
+      </Text>
+      <Text variant="headlineMedium" style={{ color: theme.colors.onSurface, marginTop: spacing.sm }} numberOfLines={1}>
+        {formatCurrency(amount, { decimals: 0 })}
+      </Text>
+    </FrostCard>
+  );
+}
+
 function getGreeting(): string {
   const hour = new Date().getHours();
   if (hour < 12) return 'Good morning';
@@ -145,7 +179,8 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   content: {
-    paddingHorizontal: spacing.screenHorizontal, paddingVertical: spacing.lg,
+    paddingHorizontal: spacing.screenHorizontal,
+    paddingVertical: spacing.lg,
     paddingTop: spacing.sm,
     paddingBottom: BOTTOM_NAV_SAFE_AREA,
   },
@@ -158,44 +193,33 @@ const styles = StyleSheet.create({
   headerText: {
     flex: 1,
   },
-  headerTitle: {
-    fontSize: typography.sizes['2xl'],
-    fontWeight: typography.weights.bold,
-  },
-  headerDate: {
-    fontSize: typography.sizes.base,
-    marginTop: 2,
-  },
-  profileButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 14,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
   focusSection: {
     marginBottom: spacing.xl,
-  },
-  focusLabel: {
-    fontSize: typography.sizes.sm,
-    fontWeight: typography.weights.medium,
-  },
-  greeting: {
-    fontSize: typography.sizes['3xl'],
-    fontWeight: typography.weights.bold,
-    marginTop: spacing.sm,
-  },
-  subtitle: {
-    fontSize: typography.sizes.base,
-    marginTop: spacing.sm,
-    lineHeight: typography.sizes.base * typography.lineHeights.relaxed,
+    gap: spacing.sm,
   },
   metricsRow: {
     flexDirection: 'row',
     paddingBottom: spacing.xl,
-    paddingRight: spacing.lg, // allow last card to scroll past edge
+    paddingRight: spacing.lg,
+    gap: spacing.base,
+  },
+  metricCard: {
+    minWidth: 140,
+    marginRight: spacing.base,
   },
   section: {
     marginBottom: spacing.xl,
+  },
+  aurora: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 420,
+    overflow: 'hidden',
+  },
+  auroraRing: {
+    position: 'absolute',
+    borderRadius: 999,
   },
 });

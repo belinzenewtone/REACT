@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "Expo Go",
+      "runtimeExecutable": "cmd",
+      "runtimeArgs": ["/c", "set CI=true&& npx expo start --lan"],
+      "port": 8081
+    }
+  ]
+}
