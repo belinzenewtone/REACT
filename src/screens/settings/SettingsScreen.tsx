@@ -26,7 +26,7 @@ import { SegmentedControl } from '../../components/settings/SegmentedControl';
 import { FulizaLimitModal } from '../../components/settings/FulizaLimitModal';
 import { APP_NAME, APP_VERSION } from '../../constants';
 import { formatCurrency } from '../../utils/formatters';
-import { spacing, BOTTOM_NAV_SAFE_AREA } from '../../theme';
+import { spacing, borderRadius, BOTTOM_NAV_SAFE_AREA } from '../../theme';
 import type { ThemeMode } from '../../theme';
 
 const THEME_OPTIONS: { value: ThemeMode; label: string }[] = [
@@ -456,7 +456,7 @@ const styles = StyleSheet.create({
   },
   permBanner: {
     marginBottom: spacing.sm,
-    borderRadius: 16,
+    borderRadius: borderRadius.lg,
   },
   permBannerContent: {
     flexDirection: 'row',

@@ -516,7 +516,7 @@ const styles = StyleSheet.create({
     borderRadius: borderRadius.full,
   },
   card: {
-    borderRadius: 16,
+    borderRadius: borderRadius.lg,
     marginBottom: 0,
   },
   cardRow: {

@@ -6,6 +6,7 @@ import {
   ScrollView,
   Modal,
   Alert,
+  Pressable,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -118,7 +119,10 @@ export function ProfileScreen() {
       quality: 0.8,
     });
     if (!result.canceled && result.assets[0]) {
-      const dest = `${FileSystem.documentDirectory}avatar.jpg`;
+      if (profile?.avatarUri) {
+        await FileSystem.deleteAsync(profile.avatarUri, { idempotent: true }).catch(() => {});
+      }
+      const dest = `${FileSystem.documentDirectory}avatar_${Date.now()}.jpg`;
       await FileSystem.copyAsync({ from: result.assets[0].uri, to: dest });
       setProfile(profile ? { ...profile, avatarUri: dest, updatedAt: new Date().toISOString() } : null);
       setSuccessMessage('Profile photo updated');
@@ -346,11 +350,11 @@ export function ProfileScreen() {
       </Modal>
 
       <Modal visible={photoViewerVisible} transparent animationType="fade" onRequestClose={() => setPhotoViewerVisible(false)}>
-        <TouchableRipple style={styles.photoViewerOverlay} onPress={() => setPhotoViewerVisible(false)}>
+        <Pressable style={styles.photoViewerOverlay} onPress={() => setPhotoViewerVisible(false)}>
           {profile?.avatarUri && (
             <Image source={{ uri: profile.avatarUri }} style={styles.photoViewerImage} resizeMode="contain" />
           )}
-        </TouchableRipple>
+        </Pressable>
       </Modal>
     </SafeAreaView>
   );

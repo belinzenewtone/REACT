@@ -19,7 +19,7 @@ import { WeeklySpendByCategoryChart } from '../../components/analytics/WeeklySpe
 import { TopMerchants } from '../../components/analytics/TopMerchants';
 import { GlassCard } from '../../components/common/GlassCard';
 import { animateLayout } from '../../utils/animation';
-import { spacing, BOTTOM_NAV_SAFE_AREA } from '../../theme';
+import { spacing, borderRadius, BOTTOM_NAV_SAFE_AREA } from '../../theme';
 
 const SUCCESS = '#7BC47B';
 const WARNING = '#F5CB5C';
@@ -235,7 +235,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   tabBar: {
-    borderRadius: 16,
+    borderRadius: borderRadius.lg,
     marginBottom: spacing.base,
   },
   rangeContainer: {

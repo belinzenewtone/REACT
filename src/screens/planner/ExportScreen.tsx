@@ -761,7 +761,7 @@ const styles = StyleSheet.create({
   previewIcon: {
     width: 32,
     height: 32,
-    borderRadius: 16,
+    borderRadius: borderRadius.full,
     justifyContent: 'center',
     alignItems: 'center',
   },

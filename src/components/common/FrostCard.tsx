@@ -2,6 +2,7 @@ import React, { type ReactNode } from 'react';
 import { View, StyleSheet, type ViewStyle } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { TouchableRipple, useTheme } from 'react-native-paper';
+import { borderRadius as br } from '../../theme';
 
 type Glow = 'blue' | 'teal' | 'none';
 
@@ -60,7 +61,7 @@ export function FrostCard({ children, style, contentStyle, glow = 'blue', onPres
         style={StyleSheet.absoluteFill}
       />
       {glowRings}
-      <View pointerEvents="none" style={[StyleSheet.absoluteFill, { borderRadius: 16, backgroundColor: filmColor }]} />
+      <View pointerEvents="none" style={[StyleSheet.absoluteFill, { borderRadius: br.lg, backgroundColor: filmColor }]} />
       <View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.hairline, { borderColor: hairlineColor }]} />
       <View style={[styles.content, contentStyle]}>{children}</View>
     </View>
@@ -76,7 +77,7 @@ export function FrostCard({ children, style, contentStyle, glow = 'blue', onPres
 
 const styles = StyleSheet.create({
   root: {
-    borderRadius: 16,
+    borderRadius: br.lg,
     overflow: 'hidden',
   },
   ring: {
@@ -84,7 +85,7 @@ const styles = StyleSheet.create({
     borderRadius: 999,
   },
   hairline: {
-    borderRadius: 16,
+    borderRadius: br.lg,
     borderWidth: 1,
   },
   content: {

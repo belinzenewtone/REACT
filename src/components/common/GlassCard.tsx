@@ -2,6 +2,7 @@ import React, { type ReactNode } from 'react';
 import { StyleSheet, View, type ViewStyle } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Card, TouchableRipple, useTheme } from 'react-native-paper';
+import { borderRadius as br } from '../../theme';
 
 interface GlassCardProps {
   children: ReactNode;
@@ -42,7 +43,7 @@ export function GlassCard({ children, style, variant = 'default', intensity, onP
         style={StyleSheet.absoluteFill}
       />
       <View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: tint }]} />
-      <View pointerEvents="none" style={[StyleSheet.absoluteFill, { ...StyleSheet.absoluteFillObject, borderRadius: 16, backgroundColor: filmColor }]} />
+      <View pointerEvents="none" style={[StyleSheet.absoluteFill, { ...StyleSheet.absoluteFillObject, borderRadius: br.lg, backgroundColor: filmColor }]} />
       <View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.hairline, { borderColor }]} />
       <Card style={styles.transparentCard} contentStyle={styles.cardContent}>
         {children}
@@ -60,11 +61,11 @@ export function GlassCard({ children, style, variant = 'default', intensity, onP
 
 const styles = StyleSheet.create({
   root: {
-    borderRadius: 16,
+    borderRadius: br.lg,
     overflow: 'hidden',
   },
   hairline: {
-    borderRadius: 16,
+    borderRadius: br.lg,
     borderWidth: 1,
   },
   transparentCard: {

@@ -2,7 +2,7 @@ import React, { type ReactNode } from 'react';
 import { View, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Text, Button, useTheme } from 'react-native-paper';
-import { spacing } from '../../theme';
+import { spacing, borderRadius } from '../../theme';
 
 type InlineBannerTone = 'warning' | 'success' | 'info';
 
@@ -69,7 +69,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: spacing.sm,
     borderWidth: 1,
-    borderRadius: 16,
+    borderRadius: borderRadius.lg,
     padding: spacing.base,
     marginBottom: spacing.base,
   },

@@ -46,7 +46,7 @@ export const lifeosPaperTheme: MD3Theme = {
       level5: '#212124',
     },
   },
-  roundness: 4,
+  roundness: 6,
   fonts: {
     ...MD3DarkTheme.fonts,
     headlineLarge: {
@@ -132,7 +132,7 @@ export const lifeosPaperThemeLight: MD3Theme = {
       level5: '#94A3B8',
     },
   },
-  roundness: 4,
+  roundness: 6,
   fonts: {
     ...MD3LightTheme.fonts,
     headlineLarge: {

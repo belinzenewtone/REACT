@@ -16,7 +16,7 @@ import { useAssistantStore, useAppStore } from '../../store';
 import { ChatMessage, type ChatMessageData } from '../../components/assistant/ChatMessage';
 import { ChatInput } from '../../components/assistant/ChatInput';
 import { SuggestedPrompts } from '../../components/assistant/SuggestedPrompts';
-import { spacing, BOTTOM_NAV_SAFE_AREA } from '../../theme';
+import { spacing, borderRadius, BOTTOM_NAV_SAFE_AREA } from '../../theme';
 
 const SUGGESTED_PROMPTS = [
   'How much did I spend this week?',
@@ -232,7 +232,7 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
     paddingHorizontal: spacing.base,
     paddingVertical: spacing.sm,
-    borderRadius: 16,
+    borderRadius: borderRadius.lg,
     borderWidth: 1,
     gap: 4,
     marginTop: spacing.sm,

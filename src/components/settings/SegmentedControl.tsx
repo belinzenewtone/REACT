@@ -1,6 +1,7 @@
 import React from 'react';
 import { StyleSheet } from 'react-native';
 import { SegmentedButtons, useTheme } from 'react-native-paper';
+import { borderRadius } from '../../theme';
 
 interface SegmentedControlProps<T extends string> {
   options: { value: T; label: string }[];
@@ -30,6 +31,6 @@ export function SegmentedControl<T extends string>({
 
 const styles = StyleSheet.create({
   container: {
-    borderRadius: 16,
+    borderRadius: borderRadius.lg,
   },
 });

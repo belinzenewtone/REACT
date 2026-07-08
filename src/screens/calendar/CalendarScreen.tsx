@@ -24,7 +24,7 @@ import {
 import { useCalendarStore, useAppStore } from '../../store';
 import { useDataVersion } from '../../store/dataVersion';
 import { CalendarMonthView } from '../../components/calendar/CalendarMonthView';
-import { spacing, BOTTOM_NAV_SAFE_AREA } from '../../theme';
+import { spacing, borderRadius, BOTTOM_NAV_SAFE_AREA } from '../../theme';
 import { GlassCard } from '../../components/common/GlassCard';
 import { animateLayout } from '../../utils/animation';
 import { syncTaskReminders } from '../../services/notificationSyncService';
@@ -482,7 +482,7 @@ const styles = StyleSheet.create({
     gap: spacing.base,
   },
   tabBar: {
-    borderRadius: 16,
+    borderRadius: borderRadius.lg,
   },
   emptyState: {
     alignItems: 'center',

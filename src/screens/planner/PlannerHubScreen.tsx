@@ -4,7 +4,7 @@ import { useNavigation } from '@react-navigation/native';
 import { Card, Text, useTheme } from 'react-native-paper';
 import { Ionicons } from '@expo/vector-icons';
 import { PageScaffold } from '../../components/common/PageScaffold';
-import { spacing } from '../../theme';
+import { spacing, borderRadius } from '../../theme';
 import { GlassCard } from '../../components/common/GlassCard';
 
 const HUB_SECTIONS = [
@@ -60,7 +60,7 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   card: {
-    borderRadius: 16,
+    borderRadius: borderRadius.lg,
   },
   row: {
     flexDirection: 'row',
