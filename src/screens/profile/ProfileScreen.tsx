@@ -172,7 +172,11 @@ export function ProfileScreen() {
             >
               <View style={styles.avatarRingInner}>
                 {profile?.avatarUri ? (
-                  <Image source={{ uri: profile.avatarUri }} style={styles.avatarImage} />
+                  <Image
+                    source={{ uri: profile.avatarUri }}
+                    style={styles.avatarImage}
+                    onError={() => setProfile(profile ? { ...profile, avatarUri: undefined } : null)}
+                  />
                 ) : (
                   <View style={[styles.avatar, { backgroundColor: theme.colors.primary }]}>
                     <Text variant="headlineSmall" style={{ color: theme.colors.onPrimary }}>
