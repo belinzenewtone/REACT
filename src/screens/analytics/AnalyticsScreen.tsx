@@ -284,7 +284,7 @@ const styles = StyleSheet.create({
   insightIcon: {
     width: 36,
     height: 36,
-    borderRadius: 18,
+    borderRadius: borderRadius.full,
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: spacing.sm,

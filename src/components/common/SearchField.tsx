@@ -1,7 +1,7 @@
 import React from 'react';
 import { StyleSheet } from 'react-native';
 import { Searchbar, useTheme } from 'react-native-paper';
-import { spacing } from '../../theme';
+import { spacing, borderRadius } from '../../theme';
 
 interface SearchFieldProps {
   value: string;
@@ -39,7 +39,7 @@ export function SearchField({ value, onChangeText, placeholder = 'Search…', au
 
 const styles = StyleSheet.create({
   searchbar: {
-    borderRadius: 12,
+    borderRadius: borderRadius.lg,
     borderWidth: 1,
     height: 44,
     minHeight: 44,

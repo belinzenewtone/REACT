@@ -12,7 +12,7 @@ import { useNavigation } from '@react-navigation/native';
 import { Text, TextInput, Button, IconButton, useTheme } from 'react-native-paper';
 import { useAppStore } from '../../store';
 import { GlassCard } from '../../components/common/GlassCard';
-import { spacing } from '../../theme';
+import { spacing, borderRadius } from '../../theme';
 
 interface InfoRow {
   key: 'name' | 'email' | 'username';
@@ -216,7 +216,7 @@ const styles = StyleSheet.create({
   iconCircle: {
     width: 44,
     height: 44,
-    borderRadius: 12,
+    borderRadius: borderRadius.md,
     justifyContent: 'center',
     alignItems: 'center',
   },

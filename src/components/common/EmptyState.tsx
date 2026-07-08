@@ -2,7 +2,7 @@ import React from 'react';
 import { View, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Card, Text, Button, useTheme } from 'react-native-paper';
-import { spacing } from '../../theme';
+import { spacing, borderRadius } from '../../theme';
 
 interface EmptyStateProps {
   icon: keyof typeof Ionicons.glyphMap;
@@ -59,7 +59,7 @@ const styles = StyleSheet.create({
   iconCircle: {
     width: 56,
     height: 56,
-    borderRadius: 28,
+    borderRadius: borderRadius.full,
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: spacing.base,

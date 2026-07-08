@@ -15,7 +15,7 @@ import { useSearchStore } from '../../store';
 import { searchAll, type SearchResults, type SearchResultType } from '../../services/searchService';
 import { GlassCard } from '../../components/common/GlassCard';
 import { formatCurrency, formatDate, formatDateTime } from '../../utils/formatters';
-import { spacing, BOTTOM_NAV_SAFE_AREA } from '../../theme';
+import { spacing, borderRadius, BOTTOM_NAV_SAFE_AREA } from '../../theme';
 
 type FilterType = 'all' | SearchResultType;
 
@@ -644,11 +644,11 @@ const styles = StyleSheet.create({
   },
   card: { marginBottom: spacing.sm },
   cardRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  iconBox: { width: 36, height: 36, borderRadius: 18, justifyContent: 'center', alignItems: 'center', flexShrink: 0 },
+  iconBox: { width: 36, height: 36, borderRadius: borderRadius.full, justifyContent: 'center', alignItems: 'center', flexShrink: 0 },
   resultCheckbox: {
     width: 24,
     height: 24,
-    borderRadius: 12,
+    borderRadius: borderRadius.full,
     borderWidth: 2,
     justifyContent: 'center',
     alignItems: 'center',
