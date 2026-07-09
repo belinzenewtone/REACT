@@ -88,6 +88,10 @@ internal class DbWriter private constructor(context: Context) {
         }
     }
 
+    /** Execute arbitrary SQL — only for integration test schema setup. */
+    @androidx.annotation.VisibleForTesting
+    internal fun execForTest(sql: String) = db.execSQL(sql)
+
     companion object {
         const val TAG = "LifeOS/DbWriter"
 
@@ -97,6 +101,12 @@ internal class DbWriter private constructor(context: Context) {
             INSTANCE ?: synchronized(this) {
                 INSTANCE ?: DbWriter(context.applicationContext).also { INSTANCE = it }
             }
+
+        /** Reset the singleton between integration tests so each test gets a fresh DB. */
+        @androidx.annotation.VisibleForTesting
+        internal fun resetForTest() {
+            synchronized(this) { INSTANCE = null }
+        }
     }
 
     // ─── Transaction helpers ─────────────────────────────────────────────────
@@ -108,6 +118,10 @@ internal class DbWriter private constructor(context: Context) {
     // ─── Auto-migrate import_audit if absent ──────────────────────────────────
 
     private fun ensureImportAuditTable() {
+        // Column definitions and defaults must stay in sync with schema.ts (JS owns the
+        // canonical definition). This is a fallback for workers that run before the JS
+        // migration has had a chance to execute (e.g. a background WorkManager job on
+        // first boot). If JS already created the table this is a no-op.
         db.execSQL(
             """
             CREATE TABLE IF NOT EXISTS import_audit (
@@ -119,10 +133,12 @@ internal class DbWriter private constructor(context: Context) {
                 outcome       TEXT NOT NULL,
                 failure_reason TEXT,
                 confidence    TEXT,
-                created_at    TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+                created_at    TEXT NOT NULL DEFAULT (datetime('now'))
             )
             """.trimIndent()
         )
+        db.execSQL("CREATE INDEX IF NOT EXISTS idx_import_audit_outcome ON import_audit(outcome)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS idx_import_audit_created_at ON import_audit(created_at DESC)")
     }
 
     // ─── Durable SMS ingest queue ─────────────────────────────────────────────
@@ -134,6 +150,9 @@ internal class DbWriter private constructor(context: Context) {
     // next_retry_at timestamps drained by the periodic sweep worker.
 
     private fun ensureIngestQueueTable() {
+        // Also defined in schema.ts — keep column definitions in sync with JS.
+        // This fallback ensures the queue exists even when workers fire before the
+        // JS migration runs (fresh install, background boot, etc.).
         db.execSQL(
             """
             CREATE TABLE IF NOT EXISTS sms_ingest_queue (
@@ -733,7 +752,7 @@ internal class DbWriter private constructor(context: Context) {
 
     fun getQuarantinedById(id: Long): Map<String, Any?>? {
         return db.rawQuery(
-            "SELECT id, raw_message, mpesa_code, amount, merchant FROM import_audit WHERE id = ? LIMIT 1",
+            "SELECT id, raw_message, mpesa_code, amount, merchant, outcome FROM import_audit WHERE id = ? LIMIT 1",
             arrayOf(id.toString())
         ).use { c ->
             if (!c.moveToFirst()) return@use null
@@ -743,6 +762,7 @@ internal class DbWriter private constructor(context: Context) {
                 "mpesaCode"  to c.getString(2),
                 "amount"     to if (c.isNull(3)) null else c.getDouble(3),
                 "merchant"   to c.getString(4),
+                "outcome"    to (c.getString(5) ?: ""),
             )
         }
     }

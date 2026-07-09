@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import type { SQLiteDatabase } from 'expo-sqlite';
 import { AssistantMessageRepository } from '../database/repositories/AssistantMessageRepository';
-import { AssistantEngine } from '../services/assistant/AssistantEngine';
+import { AssistantEngine, type HistoryMessage } from '../services/assistant/AssistantEngine';
 import type { ChatMessageData } from '../components/assistant/ChatMessage';
 
 const CONVERSATION_ID = 'default';
@@ -43,7 +43,12 @@ export const useAssistantStore = create<AssistantState>((set, get) => ({
     try {
       const userRecord = await repo.createMessage(CONVERSATION_ID, 'user', text);
 
-      const response = await engine.process(text);
+      // Pass last 10 messages as context so follow-up questions resolve correctly.
+      const recentHistory: HistoryMessage[] = get().messages
+        .slice(-10)
+        .map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content }));
+
+      const response = await engine.process(text, recentHistory);
       const assistantRecord = await repo.createMessage(
         CONVERSATION_ID,
         'assistant',

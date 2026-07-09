@@ -61,6 +61,7 @@ function EntryCard({
   onDismiss: () => void;
 }) {
   const theme = useTheme();
+  const isReview = entry.outcome.includes('review');
   return (
     <GlassCard style={styles.entryCard}>
       <View style={styles.entryHeader}>
@@ -77,6 +78,11 @@ function EntryCard({
       <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }} numberOfLines={3}>
         {entry.rawMessage?.substring(0, 140)}
       </Text>
+      {isReview && (
+        <Text variant="bodySmall" style={{ color: theme.colors.primary }}>
+          Already in your ledger — tap Approve to confirm.
+        </Text>
+      )}
       {entry.failureReason && (
         <Text variant="bodySmall" style={{ color: theme.colors.error }}>
           {entry.failureReason}
@@ -98,7 +104,7 @@ function EntryCard({
           loading={isProcessing}
           style={{ flex: 1 }}
         >
-          Recover
+          {isReview ? 'Approve' : 'Recover'}
         </Button>
         <Button
           mode="outlined"
@@ -171,10 +177,10 @@ export function ReviewQueueScreen() {
     try {
       if (entry.outcome.includes('quarantine')) {
         const result = await retrySingle(entry.id);
-        if (result.ok || result.note === 'already_exists') {
+        if (result.ok || result.note?.startsWith('already_exists')) {
           setEntries((prev) => prev.filter((e) => e.id !== entry.id));
           useDataVersion.getState().bump();
-          setMessage({ text: result.note === 'already_exists' ? 'Already in ledger — marked complete.' : 'Transaction recovered.', ok: true });
+          setMessage({ text: result.note?.startsWith('already_exists') ? 'Already in ledger — marked complete.' : 'Transaction recovered.', ok: true });
         } else {
           setMessage({ text: `Could not recover: ${result.error ?? 'still quarantined'}`, ok: false });
         }
@@ -182,7 +188,7 @@ export function ReviewQueueScreen() {
         await approveReviewEntry(entry);
         setEntries((prev) => prev.filter((e) => e.id !== entry.id));
         useDataVersion.getState().bump();
-        setMessage({ text: 'Transaction approved.', ok: true });
+        setMessage({ text: 'Transaction approved — already in your ledger.', ok: true });
       } else {
         await dismissEntry(entry);
         setEntries((prev) => prev.filter((e) => e.id !== entry.id));

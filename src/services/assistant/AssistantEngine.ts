@@ -7,6 +7,7 @@ import { IncomeRepository } from '../../database/repositories/IncomeRepository';
 import { BillRepository } from '../../database/repositories/BillRepository';
 import { FulizaLoanRepository } from '../../database/repositories/FulizaLoanRepository';
 import { EventRepository } from '../../database/repositories/EventRepository';
+import { RecurringRuleRepository } from '../../database/repositories/RecurringRuleRepository';
 import { formatCurrency } from '../../utils/formatters';
 
 interface AssistantResponse {
@@ -20,6 +21,11 @@ interface Period {
   endMs: number;
   year: number;
   month: number;
+}
+
+export interface HistoryMessage {
+  role: 'user' | 'assistant';
+  content: string;
 }
 
 const CATEGORY_KEYWORDS: Record<string, string[]> = {
@@ -37,6 +43,7 @@ const CATEGORY_KEYWORDS: Record<string, string[]> = {
 };
 
 export class AssistantEngine {
+  private db: SQLiteDatabase;
   private txRepo: TransactionRepository;
   private taskRepo: TaskRepository;
   private budgetRepo: BudgetRepository;
@@ -45,8 +52,10 @@ export class AssistantEngine {
   private billRepo: BillRepository;
   private fulizaRepo: FulizaLoanRepository;
   private eventRepo: EventRepository;
+  private recurringRepo: RecurringRuleRepository;
 
   constructor(db: SQLiteDatabase) {
+    this.db = db;
     this.txRepo = new TransactionRepository(db);
     this.taskRepo = new TaskRepository(db);
     this.budgetRepo = new BudgetRepository(db);
@@ -55,10 +64,26 @@ export class AssistantEngine {
     this.billRepo = new BillRepository(db);
     this.fulizaRepo = new FulizaLoanRepository(db);
     this.eventRepo = new EventRepository(db);
+    this.recurringRepo = new RecurringRuleRepository(db);
   }
 
-  async process(message: string): Promise<AssistantResponse> {
+  async process(message: string, history?: HistoryMessage[]): Promise<AssistantResponse> {
     const text = message.toLowerCase().trim();
+
+    // Follow-up resolution: "what about last month?" or "and this week?" are resolved
+    // by prepending the last user question so period/category intent is preserved.
+    if (history && history.length > 0 && this.isFollowUpMessage(text)) {
+      const lastUserMsg = [...history].reverse().find((h) => h.role === 'user')?.content.toLowerCase() ?? '';
+      if (lastUserMsg) {
+        const stripped = text
+          .replace(/^(what|how)\s+about\s+/i, '')
+          .replace(/^(same|and)\s+for\s+/i, '')
+          .replace(/^and\s+(last|this)\s+/i, '$1 ')
+          .replace(/^what\s+of\s+/i, '');
+        return this.process(`${lastUserMsg} ${stripped}`, undefined);
+      }
+    }
+
     const period = this.extractPeriod(text);
 
     // Greetings
@@ -77,8 +102,13 @@ export class AssistantEngine {
     }
 
     // Bills
-    if (this.any(text, ['bill', 'bills', 'due soon', 'next payment', 'overdue', 'upcoming payment', 'what do i owe', 'recurring payment', 'when is my'])) {
+    if (this.any(text, ['bill', 'bills', 'due soon', 'next payment', 'overdue', 'upcoming payment', 'what do i owe', 'when is my'])) {
       return this.getBillsSummary();
+    }
+
+    // Recurring rules
+    if (this.any(text, ['recurring', 'scheduled', 'automatic', 'auto payment', 'repeating', 'regular payment', 'standing order', 'every month', 'monthly rule', 'weekly rule'])) {
+      return this.getRecurringRules();
     }
 
     // Goals
@@ -132,6 +162,11 @@ export class AssistantEngine {
       return this.getRecentTransactions();
     }
 
+    // Top merchants
+    if (this.any(text, ['merchant', 'merchants', 'top merchant', 'where did i spend', 'where i spend', 'most spent at', 'biggest merchant', 'frequen'])) {
+      return this.getTopMerchantsResponse(period);
+    }
+
     // Comparison / trends
     if (this.any(text, ['compare', 'vs ', 'versus', 'more than last', 'less than last', 'trend', 'increase', 'decrease', 'better or worse', 'compared to'])) {
       return this.getSpendingComparison();
@@ -142,10 +177,19 @@ export class AssistantEngine {
       return this.getFinancialSnapshot();
     }
 
-    return {
-      content: "I didn't quite catch that. You can ask about your spending, income, balance, budgets, goals, bills, tasks, or calendar.\n\nTry: \"How much did I spend this week?\" or \"What bills are due?\"",
-      actions: ['How much did I spend this month?', 'What bills are due?', 'Show my goals', 'Show budgets'],
-    };
+    return this.getFallback(text);
+  }
+
+  // ─── Follow-up detection ──────────────────────────────────────────────────
+  // Recognises messages that are continuations of the previous question rather
+  // than new standalone intents — e.g. "what about last month?" after asking
+  // about spending this month.
+
+  private isFollowUpMessage(text: string): boolean {
+    return [
+      'what about ', 'how about ', 'same for ', 'and for ',
+      'and last ', 'and this ', 'what of ', 'and what about ',
+    ].some((p) => text.startsWith(p));
   }
 
   // ─── Period extraction ────────────────────────────────────────────────────
@@ -205,13 +249,55 @@ export class AssistantEngine {
     return null;
   }
 
+  // Converts a period's millisecond boundary to a local ISO string that matches
+  // how expo-sqlite stores dates (no Z suffix, no milliseconds).
+  private toLocalIso(ms: number): string {
+    return new Date(ms).toISOString().replace('Z', '').split('.')[0];
+  }
+
+  // ─── User profile ─────────────────────────────────────────────────────────
+
+  private async getUserName(): Promise<string | null> {
+    try {
+      const row = await this.db.getFirstAsync<{ name: string }>(
+        'SELECT name FROM user_profile LIMIT 1'
+      );
+      return row?.name?.trim() || null;
+    } catch {
+      return null;
+    }
+  }
+
+  // ─── Top merchants ────────────────────────────────────────────────────────
+
+  private async getTopMerchantsList(startIso: string, endIso: string, limit = 3): Promise<{ merchant: string; total: number }[]> {
+    try {
+      return await this.db.getAllAsync<{ merchant: string; total: number }>(
+        `SELECT merchant, SUM(amount) AS total
+         FROM transactions
+         WHERE deleted_at IS NULL
+           AND transaction_type IN ('expense', 'transfer', 'fuliza')
+           AND date >= ? AND date <= ?
+           AND status = 'completed'
+         GROUP BY merchant
+         ORDER BY total DESC
+         LIMIT ?`,
+        [startIso, endIso, limit]
+      );
+    } catch {
+      return [];
+    }
+  }
+
   // ─── Intent handlers ──────────────────────────────────────────────────────
 
-  private getGreeting(): AssistantResponse {
+  private async getGreeting(): Promise<AssistantResponse> {
     const hour = new Date().getHours();
     const greet = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
+    const name = await this.getUserName();
+    const nameStr = name ? ` ${name}` : '';
     return {
-      content: `${greet}! I can help with your M-Pesa spending, budgets, bills, goals, tasks, and calendar. What would you like to know?`,
+      content: `${greet}${nameStr}! I can help with your M-Pesa spending, budgets, bills, goals, tasks, and calendar. What would you like to know?`,
       actions: ['How much did I spend this month?', 'What bills are due?', 'Show my goals', 'Show tasks'],
     };
   }
@@ -225,11 +311,14 @@ export class AssistantEngine {
         '⚖️ Balance — "What is my net balance?" · "Am I saving?"',
         '📊 Budgets — "Am I over budget?"',
         '🧾 Bills — "What bills are due?" · "Overdue bills"',
+        '🔁 Recurring — "Show recurring payments" · "Scheduled rules"',
         '🎯 Goals — "How are my savings goals?"',
         '✅ Tasks — "What tasks are pending?"',
         '📅 Calendar — "What is on today?" · "Upcoming events"',
-        '📉 Fuliza — "How much Fuliza do I owe?"\n',
+        '📉 Fuliza — "How much Fuliza do I owe?"',
+        '🏪 Merchants — "Where did I spend most?" · "Top merchants"\n',
         'Add time periods: "today", "this week", "last month", "this year".',
+        'Follow-up: "What about last month?" after any question.',
       ].join('\n'),
       actions: ['How much did I spend this month?', 'What bills are due?', 'Show my goals'],
     };
@@ -258,31 +347,48 @@ export class AssistantEngine {
       comparisonText = ` That is ${Math.abs(change).toFixed(1)}% ${dir} from last month.`;
     }
 
-    const top3 = categoryTotals.slice(0, 3)
+    const top3Categories = categoryTotals.slice(0, 3)
       .map((c) => `${c.category} ${formatCurrency(c.total)}`)
       .join(' · ');
-    const topText = top3 ? `\n\nTop categories: ${top3}.` : '';
+    const topCatText = top3Categories ? `\n\nTop categories: ${top3Categories}.` : '';
+
+    // Top merchants via SQL aggregate — no full-table scan needed
+    const startIso = `${period.year}-${String(period.month).padStart(2, '0')}-01T00:00:00`;
+    const endIso = period.month === 12
+      ? `${period.year + 1}-01-01T00:00:00`
+      : `${period.year}-${String(period.month + 1).padStart(2, '0')}-01T00:00:00`;
+    const merchants = await this.getTopMerchantsList(startIso, endIso, 3);
+    const topMerchants = merchants.map((m) => `${m.merchant} ${formatCurrency(m.total)}`).join(' · ');
+    const topMerchantText = topMerchants ? `\n\nTop merchants: ${topMerchants}.` : '';
 
     return {
-      content: `You spent ${formatCurrency(totals.expense)} ${period.label}.${comparisonText}${topText}`,
+      content: `You spent ${formatCurrency(totals.expense)} ${period.label}.${comparisonText}${topCatText}${topMerchantText}`,
       actions: ['View transactions', 'View budgets', 'Break down by category'],
     };
   }
 
   private async getSpendingForRange(period: Period): Promise<AssistantResponse> {
-    const txs = await this.txRepo.findAll({ limit: 500, orderBy: 'date_desc' });
-    const inRange = txs.filter((t) => {
-      const ms = new Date(t.date).getTime();
-      return ms >= period.startMs && ms <= period.endMs && (t.transaction_type === 'expense' || t.transaction_type === 'transfer' || t.transaction_type === 'fuliza');
-    });
+    // Use SQL date filter — avoids fetching all transactions into JS memory.
+    const startIso = this.toLocalIso(period.startMs);
+    const endIso = this.toLocalIso(period.endMs);
 
-    if (inRange.length === 0) {
+    const txs = await this.txRepo.findAll({
+      startDate: startIso,
+      endDate: endIso,
+      orderBy: 'date_desc',
+      limit: 200,
+    });
+    const expenses = txs.filter((t) =>
+      t.transaction_type === 'expense' || t.transaction_type === 'transfer' || t.transaction_type === 'fuliza'
+    );
+
+    if (expenses.length === 0) {
       return { content: `No expenses recorded ${period.label}.`, actions: ['View transactions'] };
     }
 
-    const total = inRange.reduce((sum, t) => sum + t.amount, 0);
+    const total = expenses.reduce((sum, t) => sum + t.amount, 0);
     const byCategory: Record<string, number> = {};
-    for (const t of inRange) {
+    for (const t of expenses) {
       byCategory[t.category] = (byCategory[t.category] ?? 0) + t.amount;
     }
     const top3 = Object.entries(byCategory)
@@ -291,8 +397,13 @@ export class AssistantEngine {
       .map(([cat, amt]) => `${cat} ${formatCurrency(amt)}`)
       .join(' · ');
 
+    const merchants = await this.getTopMerchantsList(startIso, endIso, 3);
+    const topMerchantText = merchants.length > 0
+      ? `\n\nTop merchants: ${merchants.map((m) => `${m.merchant} ${formatCurrency(m.total)}`).join(' · ')}.`
+      : '';
+
     return {
-      content: `You spent ${formatCurrency(total)} ${period.label} across ${inRange.length} transaction${inRange.length !== 1 ? 's' : ''}.\n\nTop: ${top3 || 'no categories'}`,
+      content: `You spent ${formatCurrency(total)} ${period.label} across ${expenses.length} transaction${expenses.length !== 1 ? 's' : ''}.\n\nTop categories: ${top3 || 'none'}${topMerchantText}`,
       actions: ['View transactions', 'View budgets'],
     };
   }
@@ -314,19 +425,19 @@ export class AssistantEngine {
       };
     }
 
-    const txs = await this.txRepo.findAll({ limit: 500, orderBy: 'date_desc' });
-    const inRange = txs.filter((t) => {
-      const ms = new Date(t.date).getTime();
-      return ms >= period.startMs && ms <= period.endMs && t.category.toLowerCase().includes(category);
-    });
+    // Range periods: use SQL date filter, check category in JS (flexible substring match).
+    const startIso = this.toLocalIso(period.startMs);
+    const endIso = this.toLocalIso(period.endMs);
+    const txs = await this.txRepo.findAll({ startDate: startIso, endDate: endIso, orderBy: 'date_desc', limit: 200 });
+    const inCategory = txs.filter((t) => t.category.toLowerCase().includes(category));
 
-    if (inRange.length === 0) {
+    if (inCategory.length === 0) {
       return { content: `No ${category} spending ${period.label}.`, actions: ['View transactions'] };
     }
 
-    const total = inRange.reduce((sum, t) => sum + t.amount, 0);
+    const total = inCategory.reduce((sum, t) => sum + t.amount, 0);
     return {
-      content: `You spent ${formatCurrency(total)} on ${category} ${period.label} across ${inRange.length} transaction${inRange.length !== 1 ? 's' : ''}.`,
+      content: `You spent ${formatCurrency(total)} on ${category} ${period.label} across ${inCategory.length} transaction${inCategory.length !== 1 ? 's' : ''}.`,
       actions: ['View transactions'],
     };
   }
@@ -480,6 +591,46 @@ export class AssistantEngine {
     return { content: text.trim(), actions: ['View bills'] };
   }
 
+  private async getRecurringRules(): Promise<AssistantResponse> {
+    const rules = await this.recurringRepo.findAll();
+    const active = rules.filter((r) => r.enabled);
+
+    if (active.length === 0) {
+      return {
+        content: "No recurring rules set up yet. Go to Planner to create scheduled payments or income.",
+        actions: ['View planner'],
+      };
+    }
+
+    const now = new Date();
+    const in14Days = new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000);
+
+    const dueNext = active
+      .filter((r) => new Date(r.next_run_at) <= in14Days)
+      .slice(0, 5);
+
+    const upcoming = dueNext.length > 0
+      ? dueNext.map((r) => {
+          const date = new Date(r.next_run_at).toLocaleDateString('en-KE', { weekday: 'short', day: 'numeric', month: 'short' });
+          const amt = r.amount != null ? ` — ${formatCurrency(r.amount)}` : '';
+          const cadence = r.cadence ? ` (${r.cadence})` : '';
+          return `• ${r.title}${amt}${cadence} · next: ${date}`;
+        }).join('\n')
+      : null;
+
+    const expenseRules = active.filter((r) => r.type === 'expense');
+    const incomeRules = active.filter((r) => r.type === 'income');
+    const totalMonthlyExpense = expenseRules
+      .filter((r) => r.cadence === 'monthly' && r.amount != null)
+      .reduce((s, r) => s + (r.amount ?? 0), 0);
+
+    let content = `${active.length} active recurring rule${active.length !== 1 ? 's' : ''} (${expenseRules.length} expense, ${incomeRules.length} income).`;
+    if (totalMonthlyExpense > 0) content += `\nMonthly scheduled expenses: ${formatCurrency(totalMonthlyExpense)}.`;
+    if (upcoming) content += `\n\nDue in 14 days:\n${upcoming}`;
+
+    return { content, actions: ['View planner'] };
+  }
+
   private async getFulizaSummary(): Promise<AssistantResponse> {
     const loans = await this.fulizaRepo.findAll();
     const active = loans.filter((l) => l.status === 'active');
@@ -582,6 +733,22 @@ export class AssistantEngine {
     return { content: `Recent transactions:\n\n${list}`, actions: ['View all transactions'] };
   }
 
+  private async getTopMerchantsResponse(period: Period): Promise<AssistantResponse> {
+    const startIso = this.toLocalIso(period.startMs);
+    const endIso = this.toLocalIso(period.endMs);
+    const merchants = await this.getTopMerchantsList(startIso, endIso, 8);
+
+    if (merchants.length === 0) {
+      return { content: `No merchant spending data ${period.label}.`, actions: ['View transactions'] };
+    }
+
+    const list = merchants.map((m, i) => `${i + 1}. ${m.merchant} — ${formatCurrency(m.total)}`).join('\n');
+    return {
+      content: `Top merchants ${period.label}:\n\n${list}`,
+      actions: ['View transactions', 'View budgets'],
+    };
+  }
+
   private async getSpendingComparison(): Promise<AssistantResponse> {
     const now = new Date();
     const year = now.getUTCFullYear();
@@ -618,13 +785,14 @@ export class AssistantEngine {
     const year = now.getUTCFullYear();
     const month = now.getUTCMonth() + 1;
 
-    const [totals, budgets, spent, goals, bills, fulizaLoans] = await Promise.all([
+    const [totals, budgets, spent, goals, bills, fulizaLoans, recurringRules] = await Promise.all([
       this.txRepo.getMonthlyTotals(year, month),
       this.budgetRepo.findAll(),
       this.budgetRepo.getSpentByCategory(year, month),
       this.goalRepo.findAll(),
       this.billRepo.findAll(),
       this.fulizaRepo.findAll(),
+      this.recurringRepo.findAll(),
     ]);
 
     const net = totals.income - totals.expense;
@@ -635,6 +803,7 @@ export class AssistantEngine {
     const activeBills = bills.filter((b) => b.is_active);
     const dueSoonCount = activeBills.filter((b) => new Date(b.next_due_date) <= in7).length;
     const activeFuliza = fulizaLoans.filter((l) => l.status === 'active');
+    const activeRecurring = recurringRules.filter((r) => r.enabled).length;
 
     const lines = [
       `${net >= 0 ? '✓' : '⚠'} This month: income ${formatCurrency(totals.income)}, expenses ${formatCurrency(totals.expense)}, net ${formatCurrency(net)}`,
@@ -644,11 +813,40 @@ export class AssistantEngine {
       dueSoonCount > 0 ? `  ${dueSoonCount} bill${dueSoonCount > 1 ? 's' : ''} due in 7 days` : null,
       activeGoals > 0 ? `  ${activeGoals} active savings goal${activeGoals > 1 ? 's' : ''}` : null,
       activeFuliza.length > 0 ? `  ⚠ Fuliza outstanding: ${formatCurrency(activeFuliza.reduce((s, l) => s + l.draw_amount_kes, 0))}` : null,
+      activeRecurring > 0 ? `  ${activeRecurring} active recurring rule${activeRecurring > 1 ? 's' : ''}` : null,
     ].filter(Boolean);
 
     return {
       content: lines.join('\n'),
       actions: ['View budgets', 'What bills are due?', 'Show my goals', 'How much did I spend?'],
+    };
+  }
+
+  // ─── Fallback ─────────────────────────────────────────────────────────────
+
+  private getFallback(text: string): AssistantResponse {
+    // Suggest the most likely intent based on any partial keyword match.
+    if (this.any(text, ['ksh', 'money', 'cash', 'pay', 'paid', 'mpesa', 'm-pesa', 'send', 'sent', 'receive'])) {
+      return {
+        content: "Looks like you are asking about money. Try one of these:",
+        actions: ['How much did I spend this month?', 'What is my income?', 'Show recent transactions', 'What is my balance?'],
+      };
+    }
+    if (this.any(text, ['when', 'due', 'next', 'upcoming', 'remind'])) {
+      return {
+        content: "Looking for something coming up? Try:",
+        actions: ['What bills are due?', 'What tasks are pending?', "What's on today?", 'Show recurring payments'],
+      };
+    }
+    if (this.any(text, ['how', 'much', 'total', 'amount', 'sum'])) {
+      return {
+        content: "Need a total or amount? Try:",
+        actions: ['How much did I spend this month?', 'What is my net balance?', 'Am I over budget?'],
+      };
+    }
+    return {
+      content: "I didn't quite catch that. You can ask about your spending, income, balance, budgets, goals, bills, tasks, or calendar.\n\nTip: follow up any answer with \"what about last month?\" or \"and this week?\"",
+      actions: ['How much did I spend this month?', 'What bills are due?', 'Show my goals', 'Show budgets'],
     };
   }
 

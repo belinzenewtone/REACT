@@ -68,7 +68,7 @@ const RULES: Rule[] = [
     id: 'fuliza_repayment', category: 'LOAN', transactionType: 'fuliza', appCategory: 'fuliza',
     // Repayment only: the user paid/repaid an outstanding Fuliza balance.
     // "Your Fuliza limit is..." is a service notice, not a repayment.
-    test: (t) => /(?:paid|repaid|pay)\s+(?:the\s+)?(?:outstanding\s+)?fuliza|fuliza\s+(?:repaid|repayment|paid)/i.test(t),
+    test: (t) => /(?:paid|repaid|pay)\s+(?:the\s+)?(?:outstanding\s+)?fuliza|fuliza\s+(?:repaid|repayment|paid)|used to\s+(?:partially\s+)?pay\s+(?:your\s+)?(?:outstanding\s+)?fuliza/i.test(t),
   },
   {
     id: 'sent', category: 'SENT', transactionType: 'transfer', appCategory: 'transfer',

@@ -2,28 +2,13 @@
   "expo": {
     "name": "PersonalOS",
     "slug": "RFINAL",
-    "version": "1.0.70",
+    "version": "1.0.72",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "splash": {
-      "image": "./assets/splash-icon.png",
-      "backgroundColor": "#0B0E14",
-      "resizeMode": "contain",
-      "imageWidth": 200,
-      "dark": {
-        "image": "./assets/splash-icon.png",
-        "backgroundColor": "#0B0E14",
-        "resizeMode": "contain",
-        "imageWidth": 200
-      }
-    },
     "userInterfaceStyle": "dark",
     "androidStatusBar": {
       "backgroundColor": "#0B0E14",
       "barStyle": "light-content"
-    },
-    "androidNavigationBar": {
-      "backgroundColor": "#0B0E14"
     },
     "ios": {
       "supportsTablet": true,
@@ -53,6 +38,19 @@
     "plugins": [
       "expo-sqlite",
       [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "backgroundColor": "#0B0E14",
+          "resizeMode": "contain",
+          "imageWidth": 200,
+          "dark": {
+            "image": "./assets/splash-icon.png",
+            "backgroundColor": "#0B0E14"
+          }
+        }
+      ],
+      [
         "expo-notifications",
         {
           "icon": "./assets/icon.png",
@@ -75,7 +73,8 @@
       ],
       "@react-native-community/datetimepicker",
       "./plugins/withAllowBackup.js",
-      "./plugins/withDesugaring.js"
+      "./plugins/withDesugaring.js",
+      "expo-font"
     ],
     "extra": {
       "eas": {

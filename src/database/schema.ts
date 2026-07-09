@@ -294,4 +294,18 @@ CREATE TABLE IF NOT EXISTS import_audit (
 
 CREATE INDEX IF NOT EXISTS idx_import_audit_outcome    ON import_audit(outcome);
 CREATE INDEX IF NOT EXISTS idx_import_audit_created_at ON import_audit(created_at DESC);
+
+CREATE TABLE IF NOT EXISTS sms_ingest_queue (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  body          TEXT NOT NULL,
+  body_hash     TEXT NOT NULL UNIQUE,
+  status        TEXT NOT NULL DEFAULT 'pending',
+  attempts      INTEGER NOT NULL DEFAULT 0,
+  last_error    TEXT,
+  received_at   TEXT NOT NULL DEFAULT (datetime('now')),
+  next_retry_at TEXT NOT NULL DEFAULT (datetime('now')),
+  claimed_at    TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_ingest_pending ON sms_ingest_queue (status, next_retry_at);
 `;

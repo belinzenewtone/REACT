@@ -16,7 +16,11 @@ import expo.modules.kotlin.exception.CodedException
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * Expo Module exposing the native M-Pesa SMS pipeline to React Native JS.
@@ -201,6 +205,12 @@ class SmsReceiverModule : Module() {
             val db = DbWriter.getInstance(ctx)
             val entry = db.getQuarantinedById(id.toLong())
                 ?: return@AsyncFunction mapOf("ok" to false, "error" to "not_found")
+
+            val outcome = entry["outcome"] as? String ?: ""
+            val retryableOutcomes = setOf("quarantined", "batch_pending", "pending")
+            if (!retryableOutcomes.any { outcome.contains(it) }) {
+                return@AsyncFunction mapOf("ok" to false, "error" to "not_retryable:$outcome")
+            }
 
             val rawMsg = entry["rawMessage"] as? String ?: return@AsyncFunction mapOf("ok" to false, "error" to "no_message")
             val result = SmsParser.parse(rawMsg)
@@ -395,11 +405,23 @@ class SmsReceiverModule : Module() {
     }
 
     internal fun emitFulizaLimitNeeded(outstandingKes: Double, type: String) {
-        // Debounce: the worker can process many Fuliza messages in quick succession
-        // during historical import or a flurry of realtime SMS. Only ask once.
+        // Fast path: already emitted this process lifetime.
         if (fulizaLimitNeededEmitted) {
-            Log.d(TAG, "emitFulizaLimitNeeded skipped: already emitted")
+            Log.d(TAG, "emitFulizaLimitNeeded skipped: already emitted this session")
             return
+        }
+        // Persist-aware guard: if the user set a positive limit in a prior session,
+        // the in-memory flag starts false after a process kill+restart but the limit
+        // is already stored — don't re-open the modal.
+        val ctx = appContext.reactContext
+        if (ctx != null) {
+            val storedLimit = ctx.getSharedPreferences(SmsReceiver.PREFS_NAME, Context.MODE_PRIVATE)
+                .getFloat(SmsProcessWorker.KEY_FULIZA_LIMIT, 0f)
+            if (storedLimit > 0f) {
+                fulizaLimitNeededEmitted = true
+                Log.d(TAG, "emitFulizaLimitNeeded skipped: limit already persisted ($storedLimit)")
+                return
+            }
         }
         try {
             sendEvent(
@@ -414,19 +436,19 @@ class SmsReceiverModule : Module() {
     }
 
     // ── WorkManager await helper ─────────────────────────────────────────────
+    // Suspends the calling coroutine (never blocks a thread) until the work
+    // reaches a terminal state, or until the 5-minute deadline is exceeded.
+    // WorkManager emits a new WorkInfo into the Flow on every state transition,
+    // so we are notified the instant the worker finishes — no polling delay.
 
-    private fun awaitWork(ctx: Context, workId: java.util.UUID): WorkInfo? {
-        val wm = WorkManager.getInstance(ctx)
-        val deadline = System.currentTimeMillis() + 5 * 60 * 1000L
-        while (System.currentTimeMillis() < deadline) {
-            val info = wm.getWorkInfoById(workId).get()
-            if (info != null && (info.state == WorkInfo.State.SUCCEEDED || info.state == WorkInfo.State.FAILED || info.state == WorkInfo.State.CANCELLED)) {
-                return info
-            }
-            Thread.sleep(400)
+    private suspend fun awaitWork(ctx: Context, workId: java.util.UUID): WorkInfo? =
+        withTimeoutOrNull(5 * 60 * 1000L) {
+            WorkManager.getInstance(ctx)
+                .getWorkInfoByIdFlow(workId)
+                .filterNotNull()
+                .filter { it.state.isFinished }
+                .first()
         }
-        return null
-    }
 
     companion object {
         const val TAG = "LifeOS/SmsReceiverModule"
