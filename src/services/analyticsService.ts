@@ -2,6 +2,7 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 import { TransactionRepository } from '../database/repositories/TransactionRepository';
 import { BudgetRepository } from '../database/repositories/BudgetRepository';
 import { TaskRepository } from '../database/repositories/TaskRepository';
+import { toLocalIso } from '../utils/formatters';
 
 interface WeeklyTrendItem {
   week: string;
@@ -45,6 +46,22 @@ interface ProductivityData {
   completionRate: number;
 }
 
+export interface CategorySparklineItem {
+  category: string;
+  color: string;
+  total: number;
+  pctOfTotal: number;
+  weeklyAmounts: number[]; // 4 values, oldest → newest
+  topMerchant: string | null;
+}
+
+export interface FeesData {
+  total: number;
+  topCategory: string | null;
+  avgFee: number;
+  txCount: number;
+}
+
 export interface AnalyticsData {
   totalSpend: number;
   totalIncome: number;
@@ -57,6 +74,10 @@ export interface AnalyticsData {
   topMerchants: MerchantSpendItem[];
   insights: InsightItem[];
   productivity: ProductivityData;
+  currentMonthSpend: number;
+  prevMonthSpend: number;
+  categorySparklines: CategorySparklineItem[];
+  feesData: FeesData;
 }
 
 export async function computeAnalytics(
@@ -156,6 +177,35 @@ export async function computeAnalytics(
   const totalTasks = tasksCompleted + tasksPending;
   const completionRate = totalTasks > 0 ? (tasksCompleted / totalTasks) * 100 : 0;
 
+  // Month-on-month spend (always calendar months, independent of selected range)
+  const now = new Date();
+  const currMonthStart = toLocalIso(new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0));
+  const currMonthEnd = toLocalIso(new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999));
+  const prevMonthStart = toLocalIso(new Date(now.getFullYear(), now.getMonth() - 1, 1, 0, 0, 0));
+  const prevMonthEnd = toLocalIso(new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999));
+  const [currentMonthSpend, prevMonthSpend] = await Promise.all([
+    txRepo.getSpendTotal(currMonthStart, currMonthEnd),
+    txRepo.getSpendTotal(prevMonthStart, prevMonthEnd),
+  ]);
+
+  // Category sparklines (from current range transactions)
+  const categorySparklines = computeCategorySparklines(transactions, totalSpend, categoryColors);
+
+  // Fees (from fee column on transactions in the current range)
+  const feeTxs = transactions.filter((tx) => tx.fee != null && tx.fee > 0 && tx.status === 'completed');
+  const feesTotal = feeTxs.reduce((sum, tx) => sum + (tx.fee ?? 0), 0);
+  const feeCatMap = new Map<string, number>();
+  for (const tx of feeTxs) {
+    feeCatMap.set(tx.category, (feeCatMap.get(tx.category) ?? 0) + (tx.fee ?? 0));
+  }
+  const topFeeCategory = Array.from(feeCatMap.entries()).sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+  const feesData: FeesData = {
+    total: feesTotal,
+    topCategory: topFeeCategory,
+    avgFee: feeTxs.length > 0 ? feesTotal / feeTxs.length : 0,
+    txCount: feeTxs.length,
+  };
+
   // Generate insights
   const rangeTitle =
     rangeLabel === 'this_week' ? 'This week' :
@@ -212,6 +262,10 @@ export async function computeAnalytics(
     topMerchants,
     insights,
     productivity: { tasksCompleted, tasksPending, completionRate },
+    currentMonthSpend,
+    prevMonthSpend,
+    categorySparklines,
+    feesData,
   };
 }
 
@@ -292,6 +346,54 @@ function computeWeeklyTrend(transactions: { date: string; transaction_type: stri
   }
 
   return weeks;
+}
+
+function computeCategorySparklines(
+  transactions: { date: string; transaction_type: string; amount: number; category: string; merchant: string }[],
+  totalSpend: number,
+  categoryColors: Record<string, string>
+): CategorySparklineItem[] {
+  const now = new Date();
+  // 4 weekly buckets: W-3, W-2, W-1, this week
+  const weekBounds: { start: Date; end: Date }[] = [];
+  for (let i = 3; i >= 0; i--) {
+    const end = new Date(now);
+    end.setDate(end.getDate() - i * 7);
+    end.setHours(23, 59, 59, 999);
+    const start = new Date(end);
+    start.setDate(start.getDate() - 6);
+    start.setHours(0, 0, 0, 0);
+    weekBounds.push({ start, end });
+  }
+
+  const catMap = new Map<string, { total: number; weeklyAmounts: number[]; merchantMap: Map<string, number> }>();
+
+  for (const tx of transactions) {
+    if (tx.transaction_type !== 'expense' && tx.transaction_type !== 'transfer' && tx.transaction_type !== 'fuliza') continue;
+    const cat = tx.category;
+    if (!catMap.has(cat)) catMap.set(cat, { total: 0, weeklyAmounts: [0, 0, 0, 0], merchantMap: new Map() });
+    const entry = catMap.get(cat)!;
+    entry.total += tx.amount;
+    entry.merchantMap.set(tx.merchant, (entry.merchantMap.get(tx.merchant) ?? 0) + tx.amount);
+    const txDate = new Date(tx.date);
+    for (let i = 0; i < 4; i++) {
+      if (txDate >= weekBounds[i].start && txDate <= weekBounds[i].end) {
+        entry.weeklyAmounts[i] += tx.amount;
+        break;
+      }
+    }
+  }
+
+  return Array.from(catMap.entries())
+    .map(([category, { total, weeklyAmounts, merchantMap }]) => ({
+      category,
+      color: categoryColors[category] ?? '#6B7280',
+      total,
+      pctOfTotal: totalSpend > 0 ? (total / totalSpend) * 100 : 0,
+      weeklyAmounts,
+      topMerchant: Array.from(merchantMap.entries()).sort((a, b) => b[1] - a[1])[0]?.[0] ?? null,
+    }))
+    .sort((a, b) => b.total - a.total);
 }
 
 function computeMonthlyTrend(transactions: { date: string; transaction_type: string; amount: number }[]): MonthlyTrendItem[] {

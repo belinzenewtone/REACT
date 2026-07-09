@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, ScrollView, StyleSheet, RefreshControl } from 'react-native';
+import { View, ScrollView, StyleSheet, RefreshControl, Pressable } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
@@ -12,17 +12,18 @@ import {
   IconButton,
   useTheme,
 } from 'react-native-paper';
+import { TransactionRepository } from '../../database/repositories/TransactionRepository';
 import { useAnalyticsStore, type DateRange } from '../../store/useAnalyticsStore';
 import { useDataVersion } from '../../store/dataVersion';
 import { AnalyticsSummaryCards } from '../../components/analytics/AnalyticsSummaryCards';
-import { WeeklySpendByCategoryChart } from '../../components/analytics/WeeklySpendByCategoryChart';
-import { TopMerchants } from '../../components/analytics/TopMerchants';
+import { SpendingComparisonCard } from '../../components/analytics/SpendingComparisonCard';
+import { CategorySpendCards } from '../../components/analytics/CategorySpendCards';
+import { FeesCard } from '../../components/analytics/FeesCard';
 import { GlassCard } from '../../components/common/GlassCard';
 import { animateLayout } from '../../utils/animation';
+import { formatCurrency } from '../../utils/formatters';
 import { spacing, borderRadius, BOTTOM_NAV_SAFE_AREA } from '../../theme';
 
-const SUCCESS = '#7BC47B';
-const WARNING = '#F5CB5C';
 
 type Tab = 'analytics' | 'insights';
 
@@ -43,10 +44,21 @@ export function AnalyticsScreen() {
   const [tab, setTab] = useState<Tab>('analytics');
   const { data, isLoading, dateRange, setDateRange, loadAnalytics } = useAnalyticsStore();
   const dataVersion = useDataVersion((s) => s.version);
+  const [uncategorizedCount, setUncategorizedCount] = useState(0);
+  const [uncategorizedAmount, setUncategorizedAmount] = useState(0);
+  const [nudgeDismissed, setNudgeDismissed] = useState(false);
 
   useEffect(() => {
     loadAnalytics(db);
   }, [db, dateRange, loadAnalytics, dataVersion]);
+
+  useEffect(() => {
+    const repo = new TransactionRepository(db);
+    repo.getUncategorized().then((rows) => {
+      setUncategorizedCount(rows.length);
+      setUncategorizedAmount(rows.reduce((sum, r) => sum + r.amount, 0));
+    });
+  }, [db, dataVersion]);
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]} edges={['top']}>
@@ -120,6 +132,26 @@ export function AnalyticsScreen() {
               })}
             </ScrollView>
 
+            {uncategorizedCount > 0 && !nudgeDismissed && (
+              <Pressable
+                onPress={() => navigation.navigate('Categorize')}
+                style={[styles.uncatBanner, { backgroundColor: theme.colors.surfaceVariant, borderColor: theme.colors.outlineVariant }]}
+              >
+                <Ionicons name="alert-circle-outline" size={16} color={theme.colors.onSurfaceVariant} />
+                <Text variant="bodySmall" style={{ flex: 1, color: theme.colors.onSurfaceVariant }}>
+                  {uncategorizedCount} transactions ({formatCurrency(uncategorizedAmount, { decimals: 0 })}) uncategorized — charts may be incomplete
+                </Text>
+                <Pressable onPress={(e) => { e.stopPropagation(); setNudgeDismissed(true); }} hitSlop={8}>
+                  <Ionicons name="close" size={16} color={theme.colors.outline} />
+                </Pressable>
+              </Pressable>
+            )}
+
+            <SpendingComparisonCard
+              currentMonthSpend={data.currentMonthSpend}
+              prevMonthSpend={data.prevMonthSpend}
+            />
+
             <AnalyticsSummaryCards
               spend={data.totalSpend}
               income={data.totalIncome}
@@ -127,56 +159,15 @@ export function AnalyticsScreen() {
               average={data.averageTransaction}
             />
 
-            <View style={styles.section}>
-              <WeeklySpendByCategoryChart data={data.weeklyCategorySpend} />
-            </View>
+            <CategorySpendCards items={data.categorySparklines} />
 
-            <View style={styles.section}>
-              <TopMerchants merchants={data.topMerchants} />
-            </View>
+            <FeesCard {...data.feesData} />
           </>
         )}
 
         {data && tab === 'insights' && (
           <>
-            <GlassCard style={styles.productivityCard}>
-              <View style={styles.productivityHeader}>
-                <Ionicons name="checkbox-outline" size={18} color={SUCCESS} />
-                <Text variant="titleMedium" style={{ color: theme.colors.onSurface }}>
-                  Productivity
-                </Text>
-              </View>
-              <View style={styles.productivityStats}>
-                <View style={styles.productivityStat}>
-                  <Text variant="headlineSmall" style={{ color: SUCCESS }}>
-                    {data.productivity.tasksCompleted}
-                  </Text>
-                  <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
-                    Tasks completed
-                  </Text>
-                </View>
-                <View style={[styles.productivityDivider, { backgroundColor: theme.colors.outlineVariant }]} />
-                <View style={styles.productivityStat}>
-                  <Text variant="headlineSmall" style={{ color: WARNING }}>
-                    {data.productivity.tasksPending}
-                  </Text>
-                  <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
-                    Tasks pending
-                  </Text>
-                </View>
-                <View style={[styles.productivityDivider, { backgroundColor: theme.colors.outlineVariant }]} />
-                <View style={styles.productivityStat}>
-                  <Text variant="headlineSmall" style={{ color: theme.colors.primary }}>
-                    {data.productivity.completionRate.toFixed(0)}%
-                  </Text>
-                  <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
-                    Rate
-                  </Text>
-                </View>
-              </View>
-            </GlassCard>
-
-            {data.insights.length > 0 && (
+            {data.insights.length > 0 ? (
               <View style={styles.insightsSection}>
                 <Text variant="titleMedium" style={{ color: theme.colors.onSurface, marginBottom: spacing.base }}>
                   Key Insights
@@ -196,6 +187,12 @@ export function AnalyticsScreen() {
                     </GlassCard>
                   ))}
                 </View>
+              </View>
+            ) : (
+              <View style={styles.emptyState}>
+                <Text variant="bodyLarge" style={{ color: theme.colors.outline }}>
+                  No insights yet — add more transactions to unlock patterns.
+                </Text>
               </View>
             )}
           </>
@@ -245,30 +242,6 @@ const styles = StyleSheet.create({
   rangeChip: {
     borderWidth: 1,
   },
-  section: {
-    marginTop: spacing.xl,
-  },
-  productivityCard: {
-    marginTop: spacing.base,
-  },
-  productivityHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    marginBottom: spacing.base,
-  },
-  productivityStats: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  productivityStat: {
-    flex: 1,
-    alignItems: 'center',
-  },
-  productivityDivider: {
-    width: 1,
-    height: 36,
-  },
   insightsSection: {
     marginTop: spacing.xl,
   },
@@ -292,5 +265,13 @@ const styles = StyleSheet.create({
   emptyState: {
     paddingTop: spacing['4xl'],
     alignItems: 'center',
+  },
+  uncatBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    padding: spacing.sm,
+    borderRadius: borderRadius.md,
+    borderWidth: 1,
   },
 });

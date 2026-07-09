@@ -251,6 +251,18 @@ export class TransactionRepository extends BaseRepository<TransactionRecord> {
     return row?.total ?? 0;
   }
 
+  async getSpendTotal(startDate: string, endDate: string): Promise<number> {
+    const row = await this.db.getFirstAsync<{ total: number | null }>(
+      `SELECT SUM(amount) as total FROM transactions
+       WHERE date >= ? AND date <= ?
+         AND transaction_type IN ('expense', 'transfer', 'fuliza')
+         AND status = 'completed'
+         AND ${this.notDeletedClause()}`,
+      [startDate, endDate]
+    );
+    return row?.total ?? 0;
+  }
+
   async getUncategorized(): Promise<TransactionRecord[]> {
     return await this.db.getAllAsync<TransactionRecord>(
       `SELECT * FROM transactions WHERE ${this.notDeletedClause()} AND category = 'uncategorized' ORDER BY date DESC`

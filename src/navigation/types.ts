@@ -50,6 +50,7 @@ export type RootStackParamList = {
   Changelog: undefined;
   Learning: undefined;
   WeekReview: undefined;
+  MonthlyWrapped: undefined;
   ScreenLock: undefined;
   Notifications: undefined;
 };

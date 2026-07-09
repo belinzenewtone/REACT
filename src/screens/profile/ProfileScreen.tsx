@@ -34,6 +34,7 @@ const TOOL_HUB: ToolItem[] = [
   { icon: 'repeat-outline', label: 'Recurring', color: '#34D399', route: 'Recurring' },
   { icon: 'download-outline', label: 'Export', color: '#FBBF24', route: 'Export' },
   { icon: 'library-outline', label: 'Hub', color: '#22D3EE', route: 'Planner' },
+  { icon: 'gift-outline', label: 'Wrapped', color: '#F472B6', route: 'MonthlyWrapped' },
 ];
 
 function ToolHubCard({ item, onPress }: { item: ToolItem; onPress: () => void }) {

@@ -47,6 +47,7 @@ import { SmsImportHealthScreen } from '../screens/settings/SmsImportHealthScreen
 import { ChangelogScreen } from '../screens/settings/ChangelogScreen';
 import { LearningScreen } from '../screens/learning/LearningScreen';
 import { WeekReviewScreen } from '../screens/review/WeekReviewScreen';
+import { MonthlyWrappedScreen } from '../screens/profile/MonthlyWrappedScreen';
 import { ScreenLockScreen } from '../screens/settings/ScreenLockScreen';
 import { NotificationsScreen } from '../screens/settings/NotificationsScreen';
 import {
@@ -416,6 +417,7 @@ export function AppNavigator() {
             <Stack.Screen name="Changelog" component={ChangelogScreen} />
             <Stack.Screen name="Learning" component={LearningScreen} />
             <Stack.Screen name="WeekReview" component={WeekReviewScreen} />
+            <Stack.Screen name="MonthlyWrapped" component={MonthlyWrappedScreen} />
             <Stack.Screen name="ScreenLock" component={ScreenLockScreen} />
             <Stack.Screen name="Notifications" component={NotificationsScreen} />
           </>

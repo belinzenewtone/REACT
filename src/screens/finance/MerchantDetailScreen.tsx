@@ -66,6 +66,21 @@ export function MerchantDetailScreen() {
   const totalSpend = transactions.reduce((s, t) => s + t.amount, 0);
   const avgAmount = transactions.length > 0 ? totalSpend / transactions.length : 0;
 
+  // Temporal stats — outflows only so income transactions don't skew the numbers
+  const OUTFLOW_TYPES = new Set(['expense', 'transfer', 'fuliza']);
+  const dayTotals = new Map<string, number>();
+  for (const tx of transactions) {
+    if (!OUTFLOW_TYPES.has(tx.transaction_type)) continue;
+    const day = tx.date.slice(0, 10);
+    dayTotals.set(day, (dayTotals.get(day) ?? 0) + tx.amount);
+  }
+  const activeDays = dayTotals.size;
+  const avgPerDay = activeDays > 0 ? totalSpend / activeDays : 0;
+  const peakDayEntry = Array.from(dayTotals.entries()).sort((a, b) => b[1] - a[1])[0];
+  const peakDay = peakDayEntry
+    ? new Date(peakDayEntry[0]).toLocaleDateString('en-KE', { month: 'short', day: 'numeric' })
+    : '—';
+
   const INCOME_TYPES = new Set(['RECEIVED', 'DEPOSIT']);
 
   return (
@@ -97,6 +112,18 @@ export function MerchantDetailScreen() {
                   <View style={[styles.statDivider, { backgroundColor: theme.colors.outlineVariant }]} />
                   <StatColumn label="Avg. Amount" value={formatCurrency(avgAmount)} />
                 </View>
+                {activeDays > 0 && (
+                  <>
+                    <View style={[styles.rowDivider, { backgroundColor: theme.colors.outlineVariant }]} />
+                    <View style={styles.statsRow}>
+                      <StatColumn label="Active days" value={`${activeDays}`} />
+                      <View style={[styles.statDivider, { backgroundColor: theme.colors.outlineVariant }]} />
+                      <StatColumn label="Avg per day" value={formatCurrency(avgPerDay, { decimals: 0 })} />
+                      <View style={[styles.statDivider, { backgroundColor: theme.colors.outlineVariant }]} />
+                      <StatColumn label="Peak day" value={peakDay} />
+                    </View>
+                  </>
+                )}
               </Card.Content>
             </GlassCard>
 
@@ -170,6 +197,10 @@ const styles = StyleSheet.create({
   statDivider: {
     width: 1,
     height: 36,
+  },
+  rowDivider: {
+    height: 1,
+    marginVertical: spacing.base,
   },
   sectionLabel: {
     marginTop: spacing.lg,

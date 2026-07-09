@@ -56,6 +56,7 @@ const PERIODS: { key: TransactionPeriod; label: string }[] = [
 interface DateGroup {
   title: string;
   data: TransactionListItemData[];
+  dayTotal: number;
 }
 
 function FinanceScreenContent() {
@@ -82,6 +83,7 @@ function FinanceScreenContent() {
   const loadedVersion = useRef(-1);
   const [feesTotal, setFeesTotal] = useState(0);
   const [uncategorizedCount, setUncategorizedCount] = useState(0);
+  const [uncategorizedAmount, setUncategorizedAmount] = useState(0);
   const [csvSheetVisible, setCsvSheetVisible] = useState(false);
   const [smsSheetVisible, setSmsSheetVisible] = useState(false);
   const [smsImporting, setSmsImporting] = useState(false);
@@ -105,7 +107,10 @@ function FinanceScreenContent() {
     loadBudgets(db);
     loadPlanner(db);
     repo.getFeesTotalForMonth().then(setFeesTotal);
-    repo.getUncategorized().then((rows) => setUncategorizedCount(rows.length));
+    repo.getUncategorized().then((rows) => {
+      setUncategorizedCount(rows.length);
+      setUncategorizedAmount(rows.reduce((sum, r) => sum + r.amount, 0));
+    });
   }, [db, loadDashboard, loadBudgets, loadPlanner, repo]);
 
   const refreshSmsPermissionState = useCallback(async () => {
@@ -300,10 +305,16 @@ function FinanceScreenContent() {
       map.set(key, existing);
     }
     const sortedKeys = Array.from(map.keys()).sort((a, b) => b.localeCompare(a));
-    return sortedKeys.map((key) => ({
-      title: formatRelativeDay(key),
-      data: map.get(key) ?? [],
-    }));
+    return sortedKeys.map((key) => {
+      const items = map.get(key) ?? [];
+      let dayTotal = 0;
+      for (const item of items) {
+        if (item.status !== 'completed') continue;
+        if (isOutflow(item.type)) dayTotal -= item.amount;
+        else if (isInflow(item.type)) dayTotal += item.amount;
+      }
+      return { title: formatRelativeDay(key), data: items, dayTotal };
+    });
   }, [data]);
 
   const renderList = () => {
@@ -321,9 +332,16 @@ function FinanceScreenContent() {
       <>
         {grouped.map((group) => (
           <View key={group.title}>
-            <Text variant="labelMedium" style={[styles.dateHeader, { color: theme.colors.onSurfaceVariant }]}>
-              {group.title}
-            </Text>
+            <View style={styles.dateHeaderRow}>
+              <Text variant="labelMedium" style={[styles.dateHeader, { color: theme.colors.onSurfaceVariant }]}>
+                {group.title}
+              </Text>
+              {group.dayTotal !== 0 && (
+                <Text variant="labelMedium" style={[styles.dateHeaderTotal, { color: group.dayTotal < 0 ? theme.colors.error : theme.colors.primary }]}>
+                  {group.dayTotal > 0 ? '+' : ''}{formatCurrency(group.dayTotal, { decimals: 0 })}
+                </Text>
+              )}
+            </View>
             <Card style={{ backgroundColor: theme.colors.surfaceVariant, marginBottom: spacing.base }} mode="elevated">
               {group.data.map((item, index) => (
                 <React.Fragment key={item.id}>
@@ -474,10 +492,15 @@ function FinanceScreenContent() {
             onPress={() => navigation.navigate('Categorize')}
           >
             <Card.Content style={styles.uncategorizedContent}>
-              <Text variant="bodyMedium" style={{ color: theme.colors.secondary }}>
-                {uncategorizedCount} transaction{uncategorizedCount === 1 ? '' : 's'} need a category
-              </Text>
-              <Text variant="labelLarge" style={{ color: theme.colors.primary }}>Organize</Text>
+              <View style={{ flex: 1 }}>
+                <Text variant="bodyMedium" style={{ color: theme.colors.onSurface }}>
+                  {uncategorizedCount} uncategorized transaction{uncategorizedCount === 1 ? '' : 's'}
+                </Text>
+                <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
+                  {formatCurrency(uncategorizedAmount, { decimals: 0 })} missing from charts
+                </Text>
+              </View>
+              <Text variant="labelLarge" style={{ color: theme.colors.primary }}>Fix →</Text>
             </Card.Content>
           </Card>
         )}
@@ -498,6 +521,7 @@ function FinanceScreenContent() {
         <SearchFilterBar
           search={filters.search}
           onSearchChange={(search) => setFilters({ search })}
+          placeholder="Name, ref code…"
         />
 
         {!smsPermissionsGranted && (
@@ -705,12 +729,20 @@ const styles = StyleSheet.create({
     marginTop: spacing.lg,
     marginBottom: spacing.base,
   },
-  dateHeader: {
+  dateHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     paddingHorizontal: spacing.screenHorizontal,
     paddingTop: spacing.lg,
     paddingBottom: spacing.sm,
+  },
+  dateHeader: {
     textTransform: 'uppercase',
     letterSpacing: 0.5,
+  },
+  dateHeaderTotal: {
+    letterSpacing: 0.3,
   },
   divider: {
     height: 1,

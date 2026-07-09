@@ -209,7 +209,7 @@ export function SearchScreen() {
           style={{ margin: 0 }}
         />
         <Searchbar
-          placeholder="Search transactions, tasks, events…"
+          placeholder="Name, ref code, task, event…"
           onChangeText={(text) => {
             setQuery(text);
             hasAddedRecent.current = false;
@@ -259,7 +259,7 @@ export function SearchScreen() {
             <Ionicons name="search-outline" size={48} color={theme.colors.outline} />
             <Text variant="titleMedium" style={{ color: theme.colors.onSurface }}>Search everything</Text>
             <Text variant="bodyMedium" style={{ color: theme.colors.onSurfaceVariant, textAlign: 'center' }}>
-              Transactions, tasks, events, birthdays and more.
+              Search by name, M-Pesa ref code, task, event, birthday and more.
             </Text>
           </View>
         )}
