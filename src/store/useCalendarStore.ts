@@ -47,7 +47,10 @@ function expandEventOccurrences(
   if (isNaN(startBase.getTime())) return out;
   const endBase = event.end_date ? new Date(event.end_date) : startBase;
   const spanMs = Math.max(0, endBase.getTime() - startBase.getTime());
-  const spanDays = Math.max(1, Math.floor(spanMs / 86_400_000) + 1);
+  // Cap span at ~1 year: a corrupt end_date (e.g. year 2099) would otherwise
+  // make emitRange iterate tens of thousands of days per occurrence and hang
+  // the JS thread on calendar mount.
+  const spanDays = Math.min(366, Math.max(1, Math.floor(spanMs / 86_400_000) + 1));
 
   const repeatEnd = event.repeat_end_date ? new Date(event.repeat_end_date).getTime() : Number.POSITIVE_INFINITY;
   const winStartMs = windowStart.getTime();
