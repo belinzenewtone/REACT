@@ -44,6 +44,7 @@ const CATEGORY_KEYWORDS: Record<string, string[]> = {
 
 export class AssistantEngine {
   private db: SQLiteDatabase;
+  private userName: string | null;
   private txRepo: TransactionRepository;
   private taskRepo: TaskRepository;
   private budgetRepo: BudgetRepository;
@@ -54,8 +55,9 @@ export class AssistantEngine {
   private eventRepo: EventRepository;
   private recurringRepo: RecurringRuleRepository;
 
-  constructor(db: SQLiteDatabase) {
+  constructor(db: SQLiteDatabase, userName?: string | null) {
     this.db = db;
+    this.userName = userName?.trim() || null;
     this.txRepo = new TransactionRepository(db);
     this.taskRepo = new TaskRepository(db);
     this.budgetRepo = new BudgetRepository(db);
@@ -255,19 +257,6 @@ export class AssistantEngine {
     return new Date(ms).toISOString().replace('Z', '').split('.')[0];
   }
 
-  // ─── User profile ─────────────────────────────────────────────────────────
-
-  private async getUserName(): Promise<string | null> {
-    try {
-      const row = await this.db.getFirstAsync<{ name: string }>(
-        'SELECT name FROM user_profile LIMIT 1'
-      );
-      return row?.name?.trim() || null;
-    } catch {
-      return null;
-    }
-  }
-
   // ─── Top merchants ────────────────────────────────────────────────────────
 
   private async getTopMerchantsList(startIso: string, endIso: string, limit = 3): Promise<{ merchant: string; total: number }[]> {
@@ -291,11 +280,10 @@ export class AssistantEngine {
 
   // ─── Intent handlers ──────────────────────────────────────────────────────
 
-  private async getGreeting(): Promise<AssistantResponse> {
+  private getGreeting(): AssistantResponse {
     const hour = new Date().getHours();
     const greet = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
-    const name = await this.getUserName();
-    const nameStr = name ? ` ${name}` : '';
+    const nameStr = this.userName ? ` ${this.userName}` : '';
     return {
       content: `${greet}${nameStr}! I can help with your M-Pesa spending, budgets, bills, goals, tasks, and calendar. What would you like to know?`,
       actions: ['How much did I spend this month?', 'What bills are due?', 'Show my goals', 'Show tasks'],

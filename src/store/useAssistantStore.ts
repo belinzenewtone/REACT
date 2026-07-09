@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import type { SQLiteDatabase } from 'expo-sqlite';
 import { AssistantMessageRepository } from '../database/repositories/AssistantMessageRepository';
 import { AssistantEngine, type HistoryMessage } from '../services/assistant/AssistantEngine';
+import { useAppStore } from './useAppStore';
 import type { ChatMessageData } from '../components/assistant/ChatMessage';
 
 const CONVERSATION_ID = 'default';
@@ -36,7 +37,8 @@ export const useAssistantStore = create<AssistantState>((set, get) => ({
 
   sendMessage: async (db, text) => {
     const repo = new AssistantMessageRepository(db);
-    const engine = new AssistantEngine(db);
+    const userName = useAppStore.getState().profile?.name ?? null;
+    const engine = new AssistantEngine(db, userName);
 
     set({ isLoading: true });
 
