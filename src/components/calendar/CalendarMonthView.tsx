@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { View, StyleSheet, Animated, type LayoutChangeEvent } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { Ionicons } from '@expo/vector-icons';
@@ -72,22 +72,29 @@ export function CalendarMonthView({
     }).start();
   };
 
-  const swipeGesture = Gesture.Pan()
-    .enabled(swipeEnabled)
-    .activeOffsetX([-20, 20])
-    .failOffsetY([-15, 15])
-    .runOnJS(true)
-    .onEnd((e) => {
-      const dx = e.translationX;
-      const adx = Math.abs(dx);
-      if (adx <= Math.abs(e.translationY)) return;
-      const deliberate =
-        adx >= SWIPE_DISTANCE ||
-        (adx >= SWIPE_FLICK_DISTANCE && Math.abs(e.velocityX) >= SWIPE_FLICK_VELOCITY);
-      if (!deliberate) return;
-      if (dx < 0) runTransition(liveRef.current.onNextMonth, -1);
-      else runTransition(liveRef.current.onPrevMonth, 1);
-    });
+  // Memoize gesture so RNGH doesn't detach/reattach the native handler on layout re-renders.
+  // liveRef keeps callbacks fresh without the gesture needing to re-create.
+  const swipeGesture = useMemo(
+    () =>
+      Gesture.Pan()
+        .enabled(swipeEnabled)
+        .activeOffsetX([-20, 20])
+        .failOffsetY([-15, 15])
+        .runOnJS(true)
+        .onEnd((e) => {
+          const dx = e.translationX;
+          const adx = Math.abs(dx);
+          if (adx <= Math.abs(e.translationY)) return;
+          const deliberate =
+            adx >= SWIPE_DISTANCE ||
+            (adx >= SWIPE_FLICK_DISTANCE && Math.abs(e.velocityX) >= SWIPE_FLICK_VELOCITY);
+          if (!deliberate) return;
+          if (dx < 0) runTransition(liveRef.current.onNextMonth, -1);
+          else runTransition(liveRef.current.onPrevMonth, 1);
+        }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [swipeEnabled],
+  );
 
   const days = React.useMemo(() => {
     const firstDayOfMonth = new Date(Date.UTC(year, month - 1, 1));
