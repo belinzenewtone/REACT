@@ -127,7 +127,8 @@ export function CalendarMonthView({
     return result;
   }, [year, month, eventsByDate]);
 
-  const selectedDateStr = toDateString(new Date(selectedDate));
+  const _selectedDateParsed = new Date(selectedDate);
+  const selectedDateStr = isNaN(_selectedDateParsed.getTime()) ? toDateString(new Date()) : toDateString(_selectedDateParsed);
   const now = new Date();
   const isViewingCurrentMonth = year === now.getUTCFullYear() && month === now.getUTCMonth() + 1;
 

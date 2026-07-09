@@ -14,7 +14,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useNavigation } from '@react-navigation/native';
-import { format } from 'date-fns';
+import { format, isValid } from 'date-fns';
 import { useThemeColors } from '../../hooks/useThemeColors';
 import { useCalendarStore } from '../../store';
 import { CalendarMonthView } from '../../components/calendar/CalendarMonthView';
@@ -113,7 +113,7 @@ export function CalendarScreen() {
   }, [db, currentYear, currentMonth, selectedDate]);
 
   const selectedDateObj = new Date(selectedDate);
-  const selectedDateLabel = format(selectedDateObj, 'EEEE, MMM dd');
+  const selectedDateLabel = isValid(selectedDateObj) ? format(selectedDateObj, 'EEEE, MMM dd') : '';
   const headerSubtitle = format(new Date(), 'MMMM yyyy');
 
   // Calendar tab: filter day items by query
