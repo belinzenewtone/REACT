@@ -182,7 +182,7 @@ class SmsProcessWorker(
             // Emit realtime event to JS
             SmsReceiverModule.instance?.emitNewTransaction(tx)
 
-            Log.d(TAG, "Imported realtime: ${tx.mpesaCode} ${tx.category} ${tx.amount}")
+            Log.d(TAG, "Imported ($outcomeLabel): ${tx.mpesaCode} ${tx.category} ${tx.amount}")
             return Result.success()
         } catch (e: Exception) {
             Log.e(TAG, "SmsProcessWorker failed: ${e.message}", e)

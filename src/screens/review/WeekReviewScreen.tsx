@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { View, StyleSheet, ScrollView, ActivityIndicator, RefreshControl } from 'react-native';
+import { View, StyleSheet, ScrollView, ActivityIndicator, RefreshControl, Pressable } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
@@ -14,9 +14,9 @@ import { useAppStore } from '../../store';
 
 // Mon-first DOW order: 1(Mon)…6(Sat), 0(Sun)
 const WEEK_DOW_ORDER = [1, 2, 3, 4, 5, 6, 0];
-const DOW_LABELS = ['S', 'M', 'T', 'W', 'T', 'F', 'S']; // index = JS getDay()
+const DOW_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']; // index = JS getDay()
 
-const BAR_MAX_HEIGHT = 52;
+const BAR_MAX_HEIGHT = 100;
 
 type ReviewData = {
   totalSpend: number;
@@ -74,6 +74,8 @@ export function WeekReviewScreen() {
     uncategorizedCount: 0, fulizoCount: 0,
     daySpends: {}, avgByDow: {},
   });
+
+  const [selectedBarDow, setSelectedBarDow] = useState<number | null>(null);
 
   const dataVersion = useDataVersion((s) => s.version);
   const loadedVersion = useRef(-1);
@@ -350,9 +352,25 @@ export function WeekReviewScreen() {
               <View style={styles.chartRow}>
                 {dayBars.map((bar, i) => {
                   const barH = Math.max((bar.amount / maxDaySpend) * BAR_MAX_HEIGHT, bar.amount > 0 ? 2 : 0);
+                  const isSelected = selectedBarDow === bar.dow;
                   return (
-                    <View key={i} style={styles.barCol}>
+                    <Pressable
+                      key={i}
+                      style={styles.barCol}
+                      onPress={() => {
+                        if (bar.amount > 0) setSelectedBarDow(isSelected ? null : bar.dow);
+                      }}
+                    >
                       <View style={styles.barTrack}>
+                        {isSelected && bar.amount > 0 && (
+                          <View style={[styles.tooltip, { bottom: barH + 4 }]}>
+                            <View style={[styles.tooltipBadge, { backgroundColor: bar.barColor }]}>
+                              <Text style={styles.tooltipText}>
+                                {formatCurrency(bar.amount, { decimals: 0 })}
+                              </Text>
+                            </View>
+                          </View>
+                        )}
                         <View
                           style={[
                             styles.barFill,
@@ -367,22 +385,33 @@ export function WeekReviewScreen() {
                       <Text
                         style={[
                           styles.barLabel,
-                          { color: bar.isFuture ? theme.colors.outline : theme.colors.onSurfaceVariant },
+                          {
+                            color: bar.isFuture
+                              ? theme.colors.outline
+                              : isSelected
+                              ? bar.barColor
+                              : theme.colors.onSurfaceVariant,
+                          },
                         ]}
                       >
                         {bar.label}
                       </Text>
-                    </View>
+                    </Pressable>
                   );
                 })}
               </View>
               <View style={styles.legendRow}>
-                {([['#22C55E', 'Normal'], ['#F59E0B', 'High'], ['#EF4444', 'Peak']] as [string, string][]).map(([color, label]) => (
-                  <View key={label} style={styles.legendItem}>
-                    <View style={[styles.legendDot, { backgroundColor: color }]} />
-                    <Text style={[styles.barLabel, { color: theme.colors.onSurfaceVariant }]}>{label}</Text>
-                  </View>
-                ))}
+                <View style={styles.legendLeft}>
+                  {([['#22C55E', 'Normal'], ['#F59E0B', 'High'], ['#EF4444', 'Peak']] as [string, string][]).map(([color, label]) => (
+                    <View key={label} style={styles.legendItem}>
+                      <View style={[styles.legendDot, { backgroundColor: color }]} />
+                      <Text style={[styles.barLabel, { color: theme.colors.onSurfaceVariant }]}>{label}</Text>
+                    </View>
+                  ))}
+                </View>
+                <Text style={[styles.barLabel, { color: theme.colors.outline, fontStyle: 'italic' }]}>
+                  Tap bar for details
+                </Text>
               </View>
             </GlassCard>
 
@@ -500,15 +529,18 @@ const styles = StyleSheet.create({
   chartRow: {
     flexDirection: 'row',
     alignItems: 'flex-end',
-    height: BAR_MAX_HEIGHT + 20, // bars + label
+    height: BAR_MAX_HEIGHT + 48, // bars + label + tooltip headroom above tallest bar
     marginBottom: spacing.sm,
-    gap: 4,
   },
   barCol: { flex: 1, alignItems: 'center', justifyContent: 'flex-end', gap: 4 },
-  barTrack: { width: '70%', alignItems: 'center', justifyContent: 'flex-end', height: BAR_MAX_HEIGHT },
+  barTrack: { width: '85%', alignItems: 'center', justifyContent: 'flex-end', height: BAR_MAX_HEIGHT, overflow: 'visible' },
   barFill: { width: '100%', borderRadius: borderRadius.sm },
   barLabel: { fontSize: 10, lineHeight: 14 },
-  legendRow: { flexDirection: 'row', gap: spacing.base },
+  tooltip: { position: 'absolute', left: -16, right: -16, alignItems: 'center', zIndex: 10 },
+  tooltipBadge: { paddingHorizontal: 5, paddingVertical: 2, borderRadius: 4 },
+  tooltipText: { fontSize: 9, fontWeight: '700', color: '#fff' },
+  legendRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  legendLeft: { flexDirection: 'row', gap: spacing.base },
   legendItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   legendDot: { width: 8, height: 8, borderRadius: 4 },
 

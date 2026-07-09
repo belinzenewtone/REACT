@@ -1,5 +1,5 @@
-import React, { useCallback, useEffect, useState } from 'react';
-import { View, StyleSheet, ScrollView, ActivityIndicator } from 'react-native';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { View, StyleSheet, ScrollView, ActivityIndicator, Pressable } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
@@ -31,20 +31,26 @@ export function MonthlyWrappedScreen() {
   const theme = useTheme();
   const navigation = useNavigation<any>();
   const db = useSQLiteContext();
+  const nowRef = useRef(new Date());
+  const [monthOffset, setMonthOffset] = useState(0);
+  const [minMonthOffset, setMinMonthOffset] = useState(-24);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
   const [data, setData] = useState<WrappedData | null>(null);
 
-  const now = new Date();
-  const monthLabel = format(now, 'MMMM');
-  const totalDaysInMonth = getDaysInMonth(now);
+  const targetDate = new Date(nowRef.current.getFullYear(), nowRef.current.getMonth() + monthOffset, 1);
+  const monthLabel = format(targetDate, monthOffset < -11 ? 'MMMM yyyy' : 'MMMM');
 
   const load = useCallback(async () => {
     setIsLoading(true);
     setLoadError(false);
+    setData(null);
     try {
-      const mStart = toLocalIso(startOfMonth(now));
-      const mEnd = toLocalIso(endOfMonth(now));
+      const n = nowRef.current;
+      const td = new Date(n.getFullYear(), n.getMonth() + monthOffset, 1);
+      const totalDaysInMonth = getDaysInMonth(td);
+      const mStart = toLocalIso(startOfMonth(td));
+      const mEnd = toLocalIso(endOfMonth(td));
       const spendArgs = [mStart, mEnd];
       const spendWhere = `date >= ? AND date <= ?
           AND transaction_type IN ('expense','transfer','fuliza')
@@ -125,7 +131,21 @@ export function MonthlyWrappedScreen() {
     } finally {
       setIsLoading(false);
     }
-  }, [db]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [db, monthOffset]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Determine how far back we have data
+  useEffect(() => {
+    db.getFirstAsync<{ min_date: string }>('SELECT MIN(date) as min_date FROM transactions WHERE deleted_at IS NULL')
+      .then((row) => {
+        if (row?.min_date) {
+          const earliest = new Date(row.min_date);
+          const n = nowRef.current;
+          const diffMonths = (n.getFullYear() - earliest.getFullYear()) * 12 + (n.getMonth() - earliest.getMonth());
+          setMinMonthOffset(-Math.max(0, diffMonths));
+        }
+      })
+      .catch(() => {});
+  }, [db]);
 
   useEffect(() => {
     load();
@@ -144,10 +164,35 @@ export function MonthlyWrappedScreen() {
             onPress={() => navigation.goBack()}
             style={{ margin: 0 }}
           />
-          <Text variant="titleLarge" style={{ color: theme.colors.onSurface, flex: 1 }} numberOfLines={1}>
+          <Pressable
+            onPress={() => setMonthOffset((o) => o - 1)}
+            disabled={monthOffset <= minMonthOffset}
+            style={styles.navArrow}
+          >
+            <Ionicons
+              name="chevron-back"
+              size={22}
+              color={monthOffset <= minMonthOffset ? theme.colors.outline : theme.colors.onSurface}
+            />
+          </Pressable>
+          <Text
+            variant="titleLarge"
+            style={{ color: theme.colors.onSurface, flex: 1, textAlign: 'center' }}
+            numberOfLines={1}
+          >
             {monthLabel} Wrapped
           </Text>
-          <View style={{ width: 44 }} />
+          <Pressable
+            onPress={() => setMonthOffset((o) => o + 1)}
+            disabled={monthOffset >= 0}
+            style={styles.navArrow}
+          >
+            <Ionicons
+              name="chevron-forward"
+              size={22}
+              color={monthOffset >= 0 ? theme.colors.outline : theme.colors.onSurface}
+            />
+          </Pressable>
         </View>
 
         {isLoading ? (
@@ -351,6 +396,7 @@ const styles = StyleSheet.create({
     gap: spacing.base,
   },
   centered: { paddingTop: spacing['4xl'], alignItems: 'center', gap: spacing.base },
+  navArrow: { padding: 8, justifyContent: 'center', alignItems: 'center' },
   heroCard: { paddingVertical: spacing.xl },
   heroAmount: { fontSize: 44, fontWeight: '800', lineHeight: 52, marginVertical: spacing.xs },
   catRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
