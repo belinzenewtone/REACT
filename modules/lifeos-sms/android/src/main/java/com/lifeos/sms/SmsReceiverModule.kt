@@ -19,6 +19,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 
@@ -92,8 +93,8 @@ class SmsReceiverModule : Module() {
                 request,
             )
 
-            // Block until work completes (max 5 minutes) — AsyncFunction is already suspending
-            val info = awaitWork(ctx, request.id)
+            // Block until work completes (max 5 minutes) — AsyncFunction runs on a background thread
+            val info = runBlocking { awaitWork(ctx, request.id) }
                 ?: throw CodedException("import_timeout: SMS import worker did not complete in time")
 
             if (info.state == WorkInfo.State.FAILED) {
