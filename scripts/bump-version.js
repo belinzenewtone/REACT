@@ -65,3 +65,11 @@ gradle = gradle.replace(/(\bversionCode\s+)\d+/, `$1${nextCode}`);
 gradle = gradle.replace(/(\bversionName\s+")[^"]*"/, `$1${next}"`);
 fs.writeFileSync(GRADLE, gradle);
 console.log(`build.gradle: versionCode=${nextCode}, versionName="${next}"`);
+
+const STRINGS = path.resolve(__dirname, '../android/app/src/main/res/values/strings.xml');
+if (fs.existsSync(STRINGS)) {
+  let xml = fs.readFileSync(STRINGS, 'utf8');
+  xml = xml.replace(/(<string name="expo_runtime_version">)([^<]+)(<\/string>)/, `$1${next}$3`);
+  fs.writeFileSync(STRINGS, xml);
+  console.log(`strings.xml: expo_runtime_version → "${next}"`);
+}

@@ -2,7 +2,7 @@
   "expo": {
     "name": "PersonalOS",
     "slug": "RFINAL",
-    "version": "1.0.75",
+    "version": "1.0.76",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
