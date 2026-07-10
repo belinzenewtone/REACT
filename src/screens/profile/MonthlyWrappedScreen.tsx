@@ -27,12 +27,17 @@ type WrappedData = {
 const RANK_COLORS = ['#F59E0B', '#9CA3AF', '#B45309'];
 const RANK_LABELS = ['1st', '2nd', '3rd'];
 
-export function MonthlyWrappedScreen() {
+export function MonthlyWrappedScreen({ route }: { route?: { params?: { initialMonthOffset?: number } } }) {
   const theme = useTheme();
   const navigation = useNavigation<any>();
   const db = useSQLiteContext();
   const nowRef = useRef(new Date());
-  const [monthOffset, setMonthOffset] = useState(0);
+  const [monthOffset, setMonthOffset] = useState(route?.params?.initialMonthOffset ?? 0);
+
+  // Sync offset when navigate() re-focuses an already-mounted instance with new params
+  useEffect(() => {
+    setMonthOffset(route?.params?.initialMonthOffset ?? 0);
+  }, [route?.params?.initialMonthOffset]);
   const [minMonthOffset, setMinMonthOffset] = useState(-24);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);

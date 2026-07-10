@@ -19,7 +19,7 @@ import { AnalyticsSummaryCards } from '../../components/analytics/AnalyticsSumma
 import { SpendingComparisonCard } from '../../components/analytics/SpendingComparisonCard';
 import { CategorySpendCards } from '../../components/analytics/CategorySpendCards';
 import { FeesCard } from '../../components/analytics/FeesCard';
-import { GlassCard } from '../../components/common/GlassCard';
+import { InsightsTab } from '../../components/analytics/InsightsTab';
 import { animateLayout } from '../../utils/animation';
 import { formatCurrency } from '../../utils/formatters';
 import { spacing, borderRadius, BOTTOM_NAV_SAFE_AREA } from '../../theme';
@@ -165,40 +165,11 @@ export function AnalyticsScreen() {
           </>
         )}
 
-        {data && tab === 'insights' && (
-          <>
-            {data.insights.length > 0 ? (
-              <View style={styles.insightsSection}>
-                <Text variant="titleMedium" style={{ color: theme.colors.onSurface, marginBottom: spacing.base }}>
-                  Key Insights
-                </Text>
-                <View style={styles.insightsGrid}>
-                  {data.insights.map((insight, i) => (
-                    <GlassCard key={i} style={styles.insightCard}>
-                      <View style={[styles.insightIcon, { backgroundColor: `${insight.color}20` }]}>
-                        <Ionicons name={insight.icon as any} size={18} color={insight.color} />
-                      </View>
-                      <Text variant="bodyLarge" style={{ color: theme.colors.onSurface }} numberOfLines={2}>
-                        {insight.title}
-                      </Text>
-                      <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }} numberOfLines={1}>
-                        {insight.description}
-                      </Text>
-                    </GlassCard>
-                  ))}
-                </View>
-              </View>
-            ) : (
-              <View style={styles.emptyState}>
-                <Text variant="bodyLarge" style={{ color: theme.colors.outline }}>
-                  No insights yet — add more transactions to unlock patterns.
-                </Text>
-              </View>
-            )}
-          </>
+        {tab === 'insights' && (
+          <InsightsTab dataVersion={dataVersion} />
         )}
 
-        {!data && !isLoading && (
+        {!data && !isLoading && tab === 'analytics' && (
           <View style={styles.emptyState}>
             <Text variant="bodyLarge" style={{ color: theme.colors.outline }}>
               No data available
@@ -241,26 +212,6 @@ const styles = StyleSheet.create({
   },
   rangeChip: {
     borderWidth: 1,
-  },
-  insightsSection: {
-    marginTop: spacing.xl,
-  },
-  insightsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.base,
-  },
-  insightCard: {
-    flex: 1,
-    minWidth: '45%',
-  },
-  insightIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: borderRadius.full,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: spacing.sm,
   },
   emptyState: {
     paddingTop: spacing['4xl'],

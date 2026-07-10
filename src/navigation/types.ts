@@ -50,7 +50,7 @@ export type RootStackParamList = {
   Changelog: undefined;
   Learning: undefined;
   WeekReview: undefined;
-  MonthlyWrapped: undefined;
+  MonthlyWrapped: { initialMonthOffset?: number } | undefined;
   ScreenLock: undefined;
   Notifications: undefined;
 };
