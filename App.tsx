@@ -9,6 +9,7 @@ import { SQLiteProvider } from 'expo-sqlite';
 import * as SplashScreen from 'expo-splash-screen';
 import * as Updates from 'expo-updates';
 import { DATABASE_NAME, migrateDatabaseAsync } from './src/database';
+import { loadModel } from './src/services/ml/transactionClassifier';
 import { AppNavigator } from './src/navigation/AppNavigator';
 import { useAppStore } from './src/store';
 import { colors, lightColors } from './src/theme';
@@ -118,6 +119,10 @@ const otaStyles = StyleSheet.create({
 export default function App() {
   const systemColorScheme = useColorScheme();
   const themeMode = useAppStore((s) => s.settings.theme);
+
+  useEffect(() => {
+    loadModel().catch(() => {});
+  }, []);
 
   const isDark =
     themeMode === 'dark' ||

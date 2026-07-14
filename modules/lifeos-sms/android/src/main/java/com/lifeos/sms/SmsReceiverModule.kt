@@ -19,8 +19,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 
 /**
@@ -93,9 +91,12 @@ class SmsReceiverModule : Module() {
                 request,
             )
 
-            // Block until work completes (max 5 minutes) — AsyncFunction runs on a background thread
-            val info = runBlocking { awaitWork(ctx, request.id) }
-                ?: throw CodedException("import_timeout: SMS import worker did not complete in time")
+            // Suspend until work completes (max 5 minutes). runBlocking bridges the
+            // suspend call since the AsyncFunction lambda isn't in a suspend context
+            // in this Expo modules-core version.
+            val info = kotlinx.coroutines.runBlocking {
+                awaitWork(ctx, request.id)
+            } ?: throw CodedException("import_timeout: SMS import worker did not complete in time")
 
             if (info.state == WorkInfo.State.FAILED) {
                 val error = info.outputData.getString("error") ?: "import_failed"
@@ -177,7 +178,10 @@ class SmsReceiverModule : Module() {
                 val id = entry["id"] as? Long ?: continue
                 ids.add(id)
 
-                val result = SmsParser.parse(rawMsg)
+                // Preserve the original SMS receive time so Fuliza repayments without an
+                // embedded date are stamped at receipt, not at the retry invocation time.
+                val receivedAtMs = isoToEpoch(entry["createdAt"] as? String)
+                val result = SmsParser.parse(rawMsg, receivedAtMs)
                 if (result !is SmsParser.SmsParseResult.Success) continue
                 val tx = result.transaction
                 if (tx.parseRoute == SmsParser.ParseRoute.QUARANTINE) continue
@@ -214,7 +218,8 @@ class SmsReceiverModule : Module() {
             }
 
             val rawMsg = entry["rawMessage"] as? String ?: return@AsyncFunction mapOf("ok" to false, "error" to "no_message")
-            val result = SmsParser.parse(rawMsg)
+            val receivedAtMs = isoToEpoch(entry["createdAt"] as? String)
+            val result = SmsParser.parse(rawMsg, receivedAtMs)
             if (result !is SmsParser.SmsParseResult.Success) {
                 return@AsyncFunction mapOf("ok" to false, "error" to result.let { (it as SmsParser.SmsParseResult.Error).error.reason })
             }
@@ -358,6 +363,17 @@ class SmsReceiverModule : Module() {
             }
         }
 
+        // ── setFulizaRepayment ────────────────────────────────────────────────
+        // Routes a Fuliza repayment write through the native layer so it is
+        // serialised with setFulizaOutstanding() — eliminates the JS/native write
+        // race on the total_repaid_kes column. JS callers must use this instead of
+        // writing total_repaid_kes directly via expo-sqlite.
+
+        AsyncFunction("setFulizaRepayment") { amountKes: Double, availableLimitKes: Double ->
+            val ctx = appContext.reactContext ?: return@AsyncFunction
+            DbWriter.getInstance(ctx).setFulizaRepayment(amountKes, availableLimitKes)
+        }
+
         // ── setFulizaLimit ────────────────────────────────────────────────────
 
         AsyncFunction("setFulizaLimit") { limitKes: Double ->
@@ -433,6 +449,22 @@ class SmsReceiverModule : Module() {
             Log.d(TAG, "emitFulizaLimitNeeded sent: outstanding=$outstandingKes type=$type")
         } catch (e: Exception) {
             Log.w(TAG, "emitFulizaLimitNeeded failed: ${e.message}")
+        }
+    }
+
+    // ── Helpers ──────────────────────────────────────────────────────────────
+
+    /** Parse an ISO-8601 local datetime string (from import_audit.created_at) to epoch ms.
+     *  Falls back to now() so a malformed value never loses the transaction entirely. */
+    private fun isoToEpoch(iso: String?): Long {
+        if (iso.isNullOrBlank()) return System.currentTimeMillis()
+        return try {
+            java.time.LocalDateTime.parse(iso)
+                .atZone(java.time.ZoneId.systemDefault())
+                .toInstant()
+                .toEpochMilli()
+        } catch (_: Exception) {
+            System.currentTimeMillis()
         }
     }
 

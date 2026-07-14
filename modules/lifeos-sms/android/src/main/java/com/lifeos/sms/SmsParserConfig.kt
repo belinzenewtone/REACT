@@ -24,11 +24,12 @@ internal object SmsParserConfig {
 
     /**
      * M-Pesa transaction confirmation code — 9-10 alphanum chars, case-insensitive,
-     * with AT LEAST ONE DIGIT required. Real M-Pesa codes always encode digits;
-     * the digit lookahead stops ordinary 9-10 letter words ("Confirmed", names,
-     * "Withdrawal") from being grabbed as a transaction code.
+     * with AT LEAST ONE ALPHA AND ONE DIGIT required. Real M-Pesa codes always mix
+     * letters and digits (e.g. "QHL6ZKMF10"). The alpha requirement stops 10-digit
+     * phone numbers (0712345678) from satisfying the lookahead and being stored as
+     * the transaction code, which would poison Tier 1 deduplication for codeless SMS.
      */
-    val CODE_RE = Regex("""\b(?=[A-Za-z]*\d)([A-Za-z0-9]{9,10})\b""")
+    val CODE_RE = Regex("""\b(?=[A-Za-z0-9]*[A-Za-z][A-Za-z0-9]*\d)([A-Za-z0-9]{9,10})\b""")
 
     /** Primary amount — first Ksh/KES figure in the message. */
     val AMOUNT_RE = Regex("""(?:Ksh|KES)\s?([\d,]+(?:\.\d{1,2})?)""", RegexOption.IGNORE_CASE)
@@ -49,21 +50,6 @@ internal object SmsParserConfig {
      *  "3-JUL-25", "Jul 3, 2025", "3 Jul 2025 at 2:30:15 PM". */
     val DATE_RE = Regex(
         """(\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4}-\d{2}-\d{2}|\d{1,2}-[A-Za-z]{3,9}-\d{2,4}|[A-Za-z]{3,9}\s+\d{1,2},?\s+\d{2,4}|\d{1,2}\s+[A-Za-z]{3,9}\s+\d{2,4})(?:\s+(?:at\s+)?(\d{1,2}:\d{2}(?::\d{2})?(?:\s*[AP]M)?))?""",
-        RegexOption.IGNORE_CASE,
-    )
-
-    /** Lipa na M-Pesa till number (5-6 digits). */
-    val TILL_RE = Regex("""\btill\s*(?:number)?\s*[:#]?\s*(\d{5,6})\b""", RegexOption.IGNORE_CASE)
-
-    /** Agent float / till deposit patterns. */
-    val AGENT_FLOAT_DEPOSIT_RE = Regex(
-        """agent\s+float(?:\s+of)?\s+(?:Ksh|KES)\s?[\d,.]+(?:\s+deposited|\s+received)""",
-        RegexOption.IGNORE_CASE,
-    )
-
-    /** Agent float / till withdrawal patterns. */
-    val AGENT_FLOAT_WITHDRAW_RE = Regex(
-        """agent\s+float(?:\s+of)?\s+(?:Ksh|KES)\s?[\d,.]+(?:\s+withdrawn|\s+paid\s+out)""",
         RegexOption.IGNORE_CASE,
     )
 
@@ -107,17 +93,16 @@ internal object SmsParserConfig {
     /** Fast whitespace normaliser — collapse all runs to single space. */
     val WS_RE = Regex("""\s+""")
 
-    // ─── Fuliza service-notice filter keywords ─────────────────────────
-
-    val FULIZA_NOTICE_SIGNALS: Set<String> = setOf(
-        "access fee charged", "outstanding amount is", "daily charges",
-        "query charges", "select query charges", "interest accrual",
-        "interest charged", "interest accrued", "maintenance fee",
-        "overdraft balance", "overdraft notice", "fuliza service charge",
-        "overdue charge", "late payment fee", "rollover fee", "penalty fee",
-        "processing fee charged",
-        // Keep generic balance-check responses out of the ledger.
-        "your fuliza m-pesa balance",
+    // ─── Fuliza service-notice filter ──────────────────────────────────
+    // Single compiled regex — one pass instead of N string.contains() calls.
+    val FULIZA_NOTICE_RE = Regex(
+        """access fee charged|outstanding amount is|daily charges|""" +
+        """query charges|select query charges|interest accrual|""" +
+        """interest charged|interest accrued|maintenance fee|""" +
+        """overdraft balance|overdraft notice|fuliza service charge|""" +
+        """overdue charge|late payment fee|rollover fee|penalty fee|""" +
+        """processing fee charged|your fuliza m-pesa balance""",
+        RegexOption.IGNORE_CASE,
     )
 
     // ─── Category → app category mapping ──────────────────────────────
@@ -290,9 +275,13 @@ internal object SmsParserConfig {
     fun isFulizaServiceNotice(message: String): Boolean {
         val text = message.lowercase().replace(WS_RE, " ").trim()
         if (!text.contains("fuliza")) return false
-        if (text.contains("total fuliza m-pesa outstanding amount is")) return false
-        if (text.contains("from your m-pesa has been used to")) return false
-        return FULIZA_NOTICE_SIGNALS.any { text.contains(it) }
+        // Charge notices and repayment notices are real economic events — they
+        // must pass through to the main rule engine rather than being filtered here.
+        // Using the shared regex constants makes these exemptions resilient to minor
+        // phrasing changes in Safaricom's SMS templates.
+        if (FULIZA_OUTSTANDING_RE.containsMatchIn(message)) return false
+        if (LOAN_REPAYMENT_AMOUNT_RE.containsMatchIn(message)) return false
+        return FULIZA_NOTICE_RE.containsMatchIn(text)
     }
 
     // ─── Detection rule ────────────────────────────────────────────────

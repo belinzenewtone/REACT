@@ -14,6 +14,7 @@ import { useDataVersion } from './dataVersion';
 import { checkBudgetThresholds } from '../services/budgetAlertService';
 import { toLocalIso } from '../utils/formatters';
 import { haptic } from '../services/haptics';
+import { recordCorrection, trainModel } from '../services/ml/transactionClassifier';
 
 export type TransactionPeriod = 'all' | 'today' | 'week' | 'month';
 
@@ -135,6 +136,18 @@ export const useTransactionStore = create<TransactionState>((set, get) => ({
       checkBudgetThresholds(repo.database, data.category).catch(() => {});
     }
     haptic('light');
+    // Capture category correction as ML training sample, then retrain in background.
+    if (data.category) {
+      repo.findById(id).then(tx => {
+        if (!tx) return;
+        recordCorrection(repo.database, {
+          amount: tx.amount,
+          date: tx.date,
+          transaction_type: tx.transaction_type,
+          merchant: tx.merchant,
+        }, data.category!).then(() => trainModel(repo.database)).catch(() => {});
+      }).catch(() => {});
+    }
   },
 
   deleteTransaction: async (repo, id) => {

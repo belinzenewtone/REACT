@@ -2,6 +2,7 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 import type { FulizaLoan } from '../../types';
 import { BaseRepository, type SyncableRecord } from './BaseRepository';
 import { nowIso } from '../index';
+import { setFulizaRepayment as nativeSetFulizaRepayment, isSmsModuleAvailable } from '../../../modules/lifeos-sms';
 
 export interface FulizaLoanDbRecord extends SyncableRecord {
   draw_code: string | null;
@@ -81,10 +82,36 @@ export class FulizaLoanRepository extends BaseRepository<FulizaLoanDbRecord> {
     );
   }
 
-  async findAll(): Promise<FulizaLoanDbRecord[]> {
+  async findAll(limit = 50): Promise<FulizaLoanDbRecord[]> {
     return await this.db.getAllAsync<FulizaLoanDbRecord>(
-      `SELECT * FROM fuliza_loans ORDER BY draw_date DESC`
+      `SELECT * FROM fuliza_loans ORDER BY draw_date DESC LIMIT ?`,
+      [limit]
     );
+  }
+
+  async findAllPaged(offset = 0, limit = 50): Promise<FulizaLoanDbRecord[]> {
+    return await this.db.getAllAsync<FulizaLoanDbRecord>(
+      `SELECT * FROM fuliza_loans ORDER BY draw_date DESC LIMIT ? OFFSET ?`,
+      [limit, offset]
+    );
+  }
+
+  /**
+   * Record a Fuliza repayment. Routes through the native module when available
+   * so the write is serialised with DbWriter.setFulizaOutstanding() — eliminating
+   * the race where a charge-notice SMS resets total_repaid_kes to 0 after a JS write.
+   * Falls back to a direct SQLite write on Expo Go / iOS.
+   */
+  async recordRepayment(amountKes: number, availableLimitKes: number): Promise<void> {
+    if (isSmsModuleAvailable()) {
+      await nativeSetFulizaRepayment(amountKes, availableLimitKes);
+    } else {
+      const now = nowIso();
+      await this.db.runAsync(
+        `UPDATE fuliza_loans SET total_repaid_kes = total_repaid_kes + ?, last_repayment_date = ?, updated_at = ? WHERE status = 'active'`,
+        [amountKes, now, now]
+      );
+    }
   }
 
   async search(query: string, limit: number = 50): Promise<FulizaLoanDbRecord[]> {

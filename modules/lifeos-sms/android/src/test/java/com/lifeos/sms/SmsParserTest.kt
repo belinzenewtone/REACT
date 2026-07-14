@@ -314,6 +314,26 @@ class SmsParserTest {
         assertEquals("expense", tx.transactionType)
     }
 
+    @Test
+    fun `ATM withdrawal classified as WITHDRAW with ATM counterparty`() {
+        val tx = parseSuccess("QRS1TUV234 Confirmed. Ksh5,000.00 withdrawn from ATM on 12/4/26 at 2:00 PM. New M-PESA balance is Ksh2,000.00.")
+        assertEquals(SmsParserConfig.SmsCategory.WITHDRAW, tx.category)
+        assertEquals(5000.0, tx.amount)
+        assertNotNull(tx.counterparty)
+        assertTrue(tx.counterparty!!.contains("ATM", ignoreCase = true))
+        assertTrue(tx.isExpense)
+        assertEquals("expense", tx.transactionType)
+    }
+
+    @Test
+    fun `ATM withdrawal with location extracts merchant name`() {
+        val tx = parseSuccess("ATM1WDW234 Confirmed. Ksh2,500.00 withdrawn at EQUITY ATM WESTLANDS on 15/4/26 at 11:00 AM. New M-PESA balance is Ksh7,500.00.")
+        assertEquals(SmsParserConfig.SmsCategory.WITHDRAW, tx.category)
+        assertEquals(2500.0, tx.amount)
+        assertNotNull(tx.counterparty)
+        assertTrue(tx.counterparty!!.contains("EQUITY", ignoreCase = true))
+    }
+
     // ═══════════════════════════════════════════════════════════════════════
     // REVERSAL
     // ═══════════════════════════════════════════════════════════════════════
@@ -698,5 +718,21 @@ class SmsParserTest {
         val result = SmsParser.parse("MPESA Transaction completed successfully.")
         assertIs<SmsParser.SmsParseResult.Error>(result)
         assertEquals("ambiguous_receipt", result.error.reason)
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // Phase 3 keyword fallback
+    // ═══════════════════════════════════════════════════════════════════════
+
+    @Test
+    fun `unusual format falls back to phase 3 keyword match`() {
+        // "You have received payment from" fails all Phase 1+2 patterns (no Ksh
+        // directly after "received", no "received from [A-Z]" substring) but the
+        // Phase 3 keyword scan catches "you have received" and maps to the received rule.
+        val tx = parseSuccess(
+            "ZX12345678 Confirmed. Amount: Ksh500.00. You have received payment from JAMES KAMAU. Date 12/4/26."
+        )
+        assertEquals(SmsParserConfig.SmsCategory.RECEIVED, tx.category)
+        assertEquals(3, tx.matchedRulePhase)
     }
 }

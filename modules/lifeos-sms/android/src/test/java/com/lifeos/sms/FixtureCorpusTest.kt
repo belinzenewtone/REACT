@@ -64,6 +64,18 @@ class FixtureCorpusTest {
                 continue
             }
 
+            // Fixtures that assert a specific parse error (e.g. codeless SMS after H3 fix)
+            if (fx.expectedError != null) {
+                when (result) {
+                    is SmsParser.SmsParseResult.Error ->
+                        if (result.error.reason != fx.expectedError)
+                            failures += "$label: expected error '${fx.expectedError}' but got '${result.error.reason}'"
+                    is SmsParser.SmsParseResult.Success ->
+                        failures += "$label: expected error '${fx.expectedError}' but parse succeeded as ${result.transaction.category}"
+                }
+                continue
+            }
+
             val tx = when (result) {
                 is SmsParser.SmsParseResult.Error -> {
                     failures += "$label: parse failed with '${result.error.reason}'"

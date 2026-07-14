@@ -11,15 +11,22 @@
 
 import type { SmsPreviewResult } from '../../modules/lifeos-sms';
 
-// Mirrors SmsParserConfig.CODE_RE — 9-10 alphanumerics with ≥1 digit.
-const CODE_RE = /\b(?=[A-Za-z]*\d)([A-Za-z0-9]{9,10})\b/;
+// Mirrors SmsParserConfig.CODE_RE — 9-10 alphanumerics with ≥1 alpha AND ≥1 digit.
+// The alpha requirement stops 10-digit phone numbers (0712345678) from matching.
+const CODE_RE = /\b(?=[A-Za-z0-9]*[A-Za-z][A-Za-z0-9]*\d)([A-Za-z0-9]{9,10})\b/;
 const AMOUNT_RE = /(?:Ksh|KES)\s?([\d,]+(?:\.\d{1,2})?)/i;
 const BALANCE_RE = /(?:new\s*)?(?:m-pesa\s*)?(?:available\s*)?balance\s*(?:is\s*)?\s*(?:Ksh|KES)\s?([\d,]+(?:\.\d{1,2})?)/i;
 const FEE_RE = /(?:transaction\s+cost|fee|charge|access\s+fee|withdrawal\s+charges?)[,.]?\s*(?:(?:Ksh|KES)\s?)?([\d,]+(?:\.\d{1,2})?)/i;
-const FULIZA_OUTSTANDING_RE = /outstanding\s+amount\s+is\s+(?:Ksh|KES)\s?([\d,]+(?:\.\d{1,2})?)/i;
+// Anchored to Safaricom's exact wording to avoid matching generic "outstanding amount"
+// in non-Fuliza messages (e.g. insurance or loan SMS that share the same phrase).
+const FULIZA_OUTSTANDING_RE = /total\s+fuliza\s+m-pesa\s+outstanding\s+amount\s+is\s*(?:Ksh|KES)\s?([\d,]+(?:\.\d{1,2})?)/i;
+// Available limit after repayment — mirrors SmsParserConfig.FULIZA_AVAIL_LIMIT_RE.
+const FULIZA_AVAIL_LIMIT_RE = /available\s+fuliza\s+m-pesa\s+limit\s+is\s*(?:Ksh|KES)\s?([\d,]+(?:\.\d{1,2})?)/i;
 
 // M-Pesa dates are almost always DD/MM/YY (or D/M/YY). Extract the first one.
+// ISO_DATE_RE is checked first so "2024-01-15" isn't mis-parsed as day=24, month=1, year=15.
 const DATE_RE = /(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})/;
+const ISO_DATE_RE = /(\d{4})-(\d{2})-(\d{2})/;
 const TIME_RE = /at\s+(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(AM|PM)?/i;
 
 type Rule = {
@@ -68,7 +75,7 @@ const RULES: Rule[] = [
     id: 'fuliza_repayment', category: 'LOAN', transactionType: 'fuliza', appCategory: 'fuliza',
     // Repayment only: the user paid/repaid an outstanding Fuliza balance.
     // "Your Fuliza limit is..." is a service notice, not a repayment.
-    test: (t) => /(?:paid|repaid|pay)\s+(?:the\s+)?(?:outstanding\s+)?fuliza|fuliza\s+(?:repaid|repayment|paid)|used to\s+(?:partially\s+)?pay\s+(?:your\s+)?(?:outstanding\s+)?fuliza/i.test(t),
+    test: (t) => /(?:paid|repaid|pay)\s+(?:the\s+)?(?:outstanding\s+)?fuliza|fuliza\s+(?:repaid|repayment|paid)|used to\s+(?:partially|fully)\s+pay\s+(?:your\s+)?(?:outstanding\s+)?fuliza/i.test(t),
   },
   {
     id: 'sent', category: 'SENT', transactionType: 'transfer', appCategory: 'transfer',
@@ -89,6 +96,26 @@ function num(match: RegExpMatchArray | null): number | null {
  * the native side.
  */
 function parseSmsDateMs(body: string): number {
+  // ISO 8601 takes priority — avoids mis-parsing "2024-01-15" as day=24, month=1, year=15.
+  const iso = body.match(ISO_DATE_RE);
+  if (iso) {
+    const year = parseInt(iso[1], 10);
+    const month = parseInt(iso[2], 10) - 1;
+    const day = parseInt(iso[3], 10);
+    const tm = body.match(TIME_RE);
+    let hours = 0, minutes = 0, seconds = 0;
+    if (tm) {
+      hours = parseInt(tm[1], 10);
+      minutes = parseInt(tm[2], 10);
+      if (tm[3]) seconds = parseInt(tm[3], 10);
+      const meridian = tm[4]?.toUpperCase();
+      if (meridian === 'PM' && hours < 12) hours += 12;
+      if (meridian === 'AM' && hours === 12) hours = 0;
+    }
+    const date = new Date(year, month, day, hours, minutes, seconds);
+    if (!Number.isNaN(date.getTime())) return date.getTime();
+  }
+
   const d = body.match(DATE_RE);
   if (!d) return Date.now();
 
@@ -141,6 +168,7 @@ export function parseSmsPreviewFallback(body: string): SmsPreviewResult {
   const rule = RULES.find((r) => r.test(body));
   const balanceAfter = num(body.match(BALANCE_RE));
   const fee = num(body.match(FEE_RE));
+  const fulizaAvailableLimitKes = num(body.match(FULIZA_AVAIL_LIMIT_RE));
 
   // Confidence/routing mirror: known rule + balance → high/direct; known rule
   // without balance → medium/review; no rule → low/quarantine.
@@ -152,7 +180,7 @@ export function parseSmsPreviewFallback(body: string): SmsPreviewResult {
 
   // Rough counterparty: text between the directional keyword and the date/phone.
   const cpMatch = body.match(
-    /(?:from|to|paid to|sent to|received from)\s+([A-Za-z][A-Za-z .&'-]{2,40}?)(?=\s+(?:0\d{9}|on\s|for\s|via\s|\.|,|$))/i,
+    /(?:from|to|paid to|sent to|received from)\s+([A-Za-z][A-Za-z .&'-]{2,40}?)(?=\s+(?:0\d{9}|\+?254\d{9}|on\s|for\s|via\s|\.|,|$))/i,
   );
   const counterparty = cpMatch?.[1]?.trim() ?? '';
 
@@ -168,6 +196,7 @@ export function parseSmsPreviewFallback(body: string): SmsPreviewResult {
     dateMs: parseSmsDateMs(body),
     balanceAfter,
     fee,
+    fulizaAvailableLimitKes,
     rawSms: body,
     parseRoute,
     semanticHash: '', // dedupe hashes are native-only; preview doesn't insert

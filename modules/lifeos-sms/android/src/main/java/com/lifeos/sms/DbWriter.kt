@@ -88,6 +88,68 @@ internal class DbWriter private constructor(context: Context) {
         }
     }
 
+    /**
+     * Rate-limited checkpoint for the realtime SMS path. Bulk paybill confirmations
+     * arriving in a burst (within [windowMs] of each other) share a single checkpoint
+     * instead of each one triggering its own WAL flush. Isolated messages are
+     * unaffected — the first call in any 500ms window always checkpoints immediately.
+     */
+    @Volatile private var lastCheckpointMs = 0L
+
+    fun checkpointDebounced(windowMs: Long = 500L) {
+        val now = System.currentTimeMillis()
+        synchronized(this) {
+            if (now - lastCheckpointMs < windowMs) return
+            lastCheckpointMs = now
+        }
+        checkpoint()
+    }
+
+    // ── Bulk-import audit helpers ──────────────────────────────────────────────
+
+    /**
+     * Returns a pre-compiled INSERT statement for import_audit. The caller is
+     * responsible for closing it (use `stmt.use { ... }`). Compile once per batch
+     * transaction and reuse via [insertAuditReusing] — avoids one compilation per
+     * row at ~10k rows/import.
+     */
+    fun compileAuditInsertStatement(): android.database.sqlite.SQLiteStatement =
+        db.compileStatement(
+            """INSERT INTO import_audit
+               (mpesa_code, raw_message, amount, merchant, outcome, failure_reason, confidence, created_at)
+               VALUES (?,?,?,?,?,?,?,?)"""
+        )
+
+    /**
+     * Insert an audit row using a pre-compiled [stmt] from [compileAuditInsertStatement].
+     * Bindings are cleared before each use so statement recycling is safe.
+     */
+    fun insertAuditReusing(
+        stmt: android.database.sqlite.SQLiteStatement,
+        mpesaCode: String?,
+        rawMessage: String,
+        amount: Double?,
+        merchant: String?,
+        outcome: String,
+        failureReason: String? = null,
+        confidence: String? = null,
+    ) {
+        try {
+            stmt.clearBindings()
+            if (mpesaCode != null) stmt.bindString(1, mpesaCode) else stmt.bindNull(1)
+            stmt.bindString(2, rawMessage.take(1000))
+            if (amount != null) stmt.bindDouble(3, amount) else stmt.bindNull(3)
+            if (merchant != null) stmt.bindString(4, merchant) else stmt.bindNull(4)
+            stmt.bindString(5, outcome)
+            if (failureReason != null) stmt.bindString(6, failureReason) else stmt.bindNull(6)
+            if (confidence != null) stmt.bindString(7, confidence) else stmt.bindNull(7)
+            stmt.bindString(8, isoNow())
+            stmt.executeInsert()
+        } catch (e: Exception) {
+            Log.e(TAG, "insertAuditReusing failed: ${e.message}", e)
+        }
+    }
+
     /** Execute arbitrary SQL — only for integration test schema setup. */
     @androidx.annotation.VisibleForTesting
     internal fun execForTest(sql: String) = db.execSQL(sql)
@@ -107,6 +169,11 @@ internal class DbWriter private constructor(context: Context) {
         internal fun resetForTest() {
             synchronized(this) { INSTANCE = null }
         }
+
+        // Pre-compiled for normalizeMerchant — avoids 2 Regex allocations per call.
+        // At 10k bulk imports this eliminates 20k short-lived objects.
+        private val MERCHANT_NON_ALNUM = Regex("""[^a-z0-9]+""")
+        private val MERCHANT_WS        = Regex("""\s+""")
     }
 
     // ─── Transaction helpers ─────────────────────────────────────────────────
@@ -170,6 +237,11 @@ internal class DbWriter private constructor(context: Context) {
         )
         db.execSQL(
             "CREATE INDEX IF NOT EXISTS idx_ingest_pending ON sms_ingest_queue (status, next_retry_at)"
+        )
+        // Covers the stuck-worker recovery branch: `status='processing' AND claimed_at < now-5min`.
+        // Without this, that WHERE clause triggers a full table scan on every sweep run.
+        db.execSQL(
+            "CREATE INDEX IF NOT EXISTS idx_ingest_processing ON sms_ingest_queue (status, claimed_at)"
         )
         // Dedupe lookups (existsBySourceHash / existsByMpesaCode) must be
         // index hits, not table scans — they run per-candidate in the
@@ -468,8 +540,8 @@ internal class DbWriter private constructor(context: Context) {
     private fun normalizeMerchant(merchant: String?): String {
         if (merchant.isNullOrBlank()) return ""
         return merchant.lowercase()
-            .replace(Regex("""[^a-z0-9]+"""), " ")
-            .replace(Regex("""\s+"""), " ")
+            .replace(MERCHANT_NON_ALNUM, " ")
+            .replace(MERCHANT_WS, " ")
             .trim()
     }
 
@@ -583,6 +655,37 @@ internal class DbWriter private constructor(context: Context) {
             }
         } catch (e: Exception) {
             Log.e(TAG, "setFulizaOutstanding failed: ${e.message}", e)
+        }
+    }
+
+    /**
+     * Records a Fuliza repayment atomically through the native layer, eliminating the
+     * write race where a concurrent JS expo-sqlite write could be overwritten by
+     * setFulizaOutstanding() resetting total_repaid_kes to 0.
+     *
+     * Increments total_repaid_kes by [amountKes] on the active loan row and stamps
+     * last_repayment_date. [availableLimitKes] is stored for diagnostic use.
+     */
+    fun setFulizaRepayment(amountKes: Double, availableLimitKes: Double) {
+        try {
+            val now = isoNow()
+            val rows = db.compileStatement(
+                """UPDATE fuliza_loans
+                   SET total_repaid_kes = total_repaid_kes + ?,
+                       last_repayment_date = ?,
+                       updated_at = ?
+                   WHERE status = 'active'"""
+            ).use { stmt ->
+                stmt.bindDouble(1, amountKes)
+                stmt.bindString(2, now)
+                stmt.bindString(3, now)
+                stmt.executeUpdateDelete()
+            }
+            if (rows == 0) {
+                Log.w(TAG, "setFulizaRepayment: no active loan row — repayment of $amountKes unrecorded")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "setFulizaRepayment failed: ${e.message}", e)
         }
     }
 
@@ -701,7 +804,7 @@ internal class DbWriter private constructor(context: Context) {
     fun getQuarantinedMessages(): List<Map<String, Any?>> {
         val results = mutableListOf<Map<String, Any?>>()
         db.rawQuery(
-            "SELECT id, raw_message, mpesa_code, amount, merchant FROM import_audit WHERE outcome = 'quarantined' ORDER BY id DESC LIMIT 200",
+            "SELECT id, raw_message, mpesa_code, amount, merchant, created_at FROM import_audit WHERE outcome = 'quarantined' ORDER BY id DESC LIMIT 200",
             null
         ).use { c ->
             while (c.moveToNext()) {
@@ -712,6 +815,7 @@ internal class DbWriter private constructor(context: Context) {
                         "mpesaCode"  to c.getString(2),
                         "amount"     to if (c.isNull(3)) null else c.getDouble(3),
                         "merchant"   to c.getString(4),
+                        "createdAt"  to c.getString(5),
                     )
                 )
             }
@@ -752,7 +856,7 @@ internal class DbWriter private constructor(context: Context) {
 
     fun getQuarantinedById(id: Long): Map<String, Any?>? {
         return db.rawQuery(
-            "SELECT id, raw_message, mpesa_code, amount, merchant, outcome FROM import_audit WHERE id = ? LIMIT 1",
+            "SELECT id, raw_message, mpesa_code, amount, merchant, outcome, created_at FROM import_audit WHERE id = ? LIMIT 1",
             arrayOf(id.toString())
         ).use { c ->
             if (!c.moveToFirst()) return@use null
@@ -763,6 +867,7 @@ internal class DbWriter private constructor(context: Context) {
                 "amount"     to if (c.isNull(3)) null else c.getDouble(3),
                 "merchant"   to c.getString(4),
                 "outcome"    to (c.getString(5) ?: ""),
+                "createdAt"  to c.getString(6),
             )
         }
     }

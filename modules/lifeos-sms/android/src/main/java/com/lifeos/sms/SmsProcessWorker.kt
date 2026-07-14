@@ -131,8 +131,10 @@ class SmsProcessWorker(
                     }
                 } else {
                     db.insertAudit(tx.mpesaCode, smsBody, outstanding, "Fuliza M-PESA", "fuliza_balance_updated")
-                    maybeNotifyFulizaLimitNeeded(outstanding, "charge")
                 }
+                // Prompt for the user's Fuliza limit regardless of whether the charge
+                // SMS carries an access fee — both branches carry the outstanding balance.
+                maybeNotifyFulizaLimitNeeded(outstanding, "charge")
                 return Result.success()
             }
 
@@ -163,21 +165,20 @@ class SmsProcessWorker(
             val outcomeLabel = importLabel(tx.parseRoute)
             db.insertAudit(tx.mpesaCode, smsBody, tx.amount, tx.counterparty, outcomeLabel, null, tx.confidence.name.lowercase())
 
-            // Fuliza repayment: update outstanding balance from available limit
+            // Fuliza repayment: route through setFulizaRepayment so the native write
+            // is atomic with setFulizaOutstanding() — eliminates the JS write race
+            // where a concurrent expo-sqlite update could overwrite total_repaid_kes = 0.
             if (tx.category == SmsParserConfig.SmsCategory.LOAN && tx.fulizaAvailableLimitKes != null) {
-                val userLimit = getFulizaLimit().toDouble()
-                if (userLimit > 0.0) {
-                    val outstanding = userLimit - tx.fulizaAvailableLimitKes
-                    db.setFulizaOutstanding(outstanding.coerceAtLeast(0.0))
-                } else {
-                    val current = db.getFulizaOutstanding()
-                    db.setFulizaOutstanding((current - tx.amount).coerceAtLeast(0.0))
+                db.setFulizaRepayment(tx.amount, tx.fulizaAvailableLimitKes)
+                if (getFulizaLimit() <= 0f) {
                     maybeNotifyFulizaLimitNeeded(tx.fulizaAvailableLimitKes, "repayment")
                 }
             }
 
             // Flush WAL so expo-sqlite's separate JS connection sees the new row.
-            db.checkpoint()
+            // Debounced: burst paybill confirmations share one checkpoint instead
+            // of each triggering its own WAL flush.
+            db.checkpointDebounced()
 
             // Emit realtime event to JS
             SmsReceiverModule.instance?.emitNewTransaction(tx)

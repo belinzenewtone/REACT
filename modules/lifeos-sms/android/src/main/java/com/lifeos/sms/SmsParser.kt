@@ -95,7 +95,7 @@ internal object SmsParser {
                 category == SmsParserConfig.SmsCategory.SENT -> "transfer"
                 category == SmsParserConfig.SmsCategory.LOAN ||
                     category == SmsParserConfig.SmsCategory.FULIZA_CHARGE -> "fuliza"
-                category == SmsParserConfig.SmsCategory.REVERSED -> "expense"
+                category == SmsParserConfig.SmsCategory.REVERSED -> if (isReceivedReversal) "expense" else "income"
                 else      -> "expense"
             }
     }
@@ -181,6 +181,10 @@ internal object SmsParser {
     private val COUNTERPARTY_TRAILING_ACCOUNT = Regex("""\s+(?:for\s+)?(?:account|acc\.?|acct\.?|account\s+number|meter|ref\.|reference|policy|token|bill)\s*[:#]?\s*[\w-]+.*$""", RegexOption.IGNORE_CASE)
     private val COUNTERPARTY_TRAILING_AGENT  = Regex("""\s+agent\s+\d+.*$""", RegexOption.IGNORE_CASE)
     private val COUNTERPARTY_TRAILING_TIME   = Regex("""\s+at\s+\d{1,2}:\d{2}.*$""", RegexOption.IGNORE_CASE)
+    // Strips orphaned 1–4 digit suffixes (e.g. paybill head-office branch codes like
+    // "SAFARICOM 100" or merchant location codes) that survive after the code/till
+    // cleaners. Capped at 4 digits so five-digit till numbers don't get double-stripped.
+    private val COUNTERPARTY_TRAILING_SHORT_NUMBER = Regex("""\s+\d{1,4}$""")
     private val PHONE_ONLY_RE                = Regex("""^(?:\+?254|0)\d[\d\s-]{7,14}$""")
     private val CODE_FORMAT_RE               = Regex("""^[A-Za-z0-9]{9,10}$""")
     private val AMBIGUOUS_INTENT_WORDS       = listOf(
@@ -314,6 +318,9 @@ internal object SmsParser {
             .replace(COUNTERPARTY_TRAILING_PHONE, "")
             .replace(COUNTERPARTY_TRAILING_CODE, "")
             .replace(COUNTERPARTY_TRAILING_TILL, "")
+            // Strip orphaned 1–4 digit branch/location codes (must run after TILL
+            // so five-digit till numbers are already gone and can't re-trigger here).
+            .replace(COUNTERPARTY_TRAILING_SHORT_NUMBER, "")
             .trimEnd('.', ' ', ',', '-')
             .trim()
             .takeIf {

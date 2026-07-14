@@ -90,6 +90,8 @@ export interface ParsedTransaction {
   dateMs: number;
   balanceAfter: number | null;
   fee: number | null;
+  /** Available Fuliza credit limit extracted from repayment SMS. Null when not present. */
+  fulizaAvailableLimitKes: number | null;
   rawSms: string;
   parseRoute: 'direct' | 'review' | 'quarantine';
   semanticHash: string;
@@ -291,6 +293,18 @@ export async function requestIgnoreBatteryOptimizations(): Promise<boolean> {
  */
 export async function setFulizaLimit(limitKes: number): Promise<void> {
   return LifeosSmsModule?.setFulizaLimit(limitKes);
+}
+
+/**
+ * Record a Fuliza repayment atomically through the native layer.
+ *
+ * MUST be used instead of direct expo-sqlite writes to total_repaid_kes.
+ * The native layer serialises this write with setFulizaOutstanding() so a
+ * concurrent charge-notice SMS cannot reset total_repaid_kes to 0 after a
+ * JS repayment write, producing silently inconsistent outstanding balances.
+ */
+export async function setFulizaRepayment(amountKes: number, availableLimitKes: number): Promise<void> {
+  return LifeosSmsModule?.setFulizaRepayment(amountKes, availableLimitKes);
 }
 
 /**

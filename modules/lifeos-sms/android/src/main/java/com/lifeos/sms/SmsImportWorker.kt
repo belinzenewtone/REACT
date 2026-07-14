@@ -126,14 +126,16 @@ class SmsImportWorker(
 
             // Phase 2 fallback: if the address-filtered scan found no M-Pesa bodies,
             // some devices/OEMs store M-Pesa under a short code or capitalisation that
-            // doesn't match the address filter. Scan the whole inbox by body signal.
+            // doesn't match the address filter. Scan the whole inbox by body signal,
+            // but pre-filter by known M-Pesa sender address patterns first so I/O
+            // scales with M-Pesa senders rather than total inbox size.
             if (total == 0) {
                 Log.d(TAG, "Address-filtered SMS scan found 0 M-Pesa bodies; falling back to body-signal scan")
                 val phase2Cursor = applicationContext.contentResolver.query(
                     "content://sms/inbox".toUri(),
                     arrayOf("_id", "body", "date", "address"),
-                    "date >= ?",
-                    arrayOf(fromMs.coerceAtLeast(0L).toString()),
+                    "(address LIKE ? OR address LIKE ? OR address LIKE ?) AND date >= ?",
+                    arrayOf("%254%", "%MPESA%", "%M-PESA%", fromMs.coerceAtLeast(0L).toString()),
                     "date DESC",
                 )
 
@@ -179,107 +181,109 @@ class SmsImportWorker(
                 }
             }
 
-            // Parse all candidate SMS bodies in parallel (CPU-bound), then insert sequentially.
-            val parsed = candidates.map { candidate ->
-                async(Dispatchers.Default) { candidate to SmsParser.parse(candidate.body, candidate.receivedAtMs) }
-            }.awaitAll()
-
-            // Wrap DB writes in a transaction for bulk performance.
-            db.beginTransaction()
-            try {
-                for ((candidate, result) in parsed) {
-                    val body = candidate.body
-                    if (result is SmsParser.SmsParseResult.Error) {
-                        Log.w(TAG, "Parse failed: ${result.error.reason}")
-                        db.insertAudit(null, body, null, null, "parse_failed:${result.error.reason}", result.error.reason)
-                        failed++; continue
+            // Parse and insert in chunks of CHUNK_SIZE. Avoids holding ~20 MB of
+            // ParsedTransaction objects in memory before writing a single row (the old
+            // awaitAll() approach on 10k candidates). Each chunk parses in parallel then
+            // inserts in its own DB transaction so memory is released incrementally.
+            for (chunk in candidates.chunked(CHUNK_SIZE)) {
+                val parsed = chunk.map { candidate ->
+                    async(Dispatchers.Default) {
+                        candidate to SmsParser.parse(candidate.body, candidate.receivedAtMs)
                     }
+                }.awaitAll()
 
-                    val tx = (result as SmsParser.SmsParseResult.Success).transaction
-
-                    // FULIZA_CHARGE: always update outstanding balance. If the message
-                    // carries an access/maintenance fee, also record it as a ledger transaction.
-                    if (tx.category == SmsParserConfig.SmsCategory.FULIZA_CHARGE) {
-                        tx.fulizaOutstandingKes?.let {
-                            db.setFulizaOutstanding(it)
-                            maybeNotifyFulizaLimitNeeded(it, "charge")
-                        }
-
-                        val fee = tx.fee
-                        if (fee != null && fee > 0.0) {
-                            val dupReason = SmsDedupeEngine.check(dedupeCtx, tx, db)
-                            if (dupReason == SmsDedupeEngine.Result.NEW) {
-                                val rowId = db.insertTransaction(tx)
-                                if (rowId >= 0) {
-                                    val label = if (tx.parseRoute == SmsParser.ParseRoute.REVIEW) "imported_review" else "imported_batch"
-                                    db.insertAudit(tx.mpesaCode, body, tx.amount, tx.counterparty, label, null, tx.confidence.name.lowercase())
-                                    imported++; SmsDedupeEngine.markSeen(dedupeCtx, tx)
-                                } else {
-                                    db.insertAudit(tx.mpesaCode, body, tx.amount, tx.counterparty, "import_failed", "DB insert failed")
-                                    failed++
-                                }
-                            } else {
-                                db.insertAudit(tx.mpesaCode, body, tx.amount, tx.counterparty, "duplicate_detected:${dupReason.name.lowercase()}")
-                                duplicates++; SmsDedupeEngine.markSeen(dedupeCtx, tx)
+                // Pre-compile the audit INSERT once per chunk transaction — avoids
+                // one SQLiteStatement compilation per row (~200 per chunk vs 200k total).
+                db.beginTransaction()
+                db.compileAuditInsertStatement().use { auditStmt ->
+                    try {
+                        for ((candidate, result) in parsed) {
+                            val body = candidate.body
+                            if (result is SmsParser.SmsParseResult.Error) {
+                                Log.w(TAG, "Parse failed: ${result.error.reason}")
+                                db.insertAuditReusing(auditStmt, null, body, null, null,
+                                    "parse_failed:${result.error.reason}", result.error.reason)
+                                failed++; continue
                             }
-                        } else {
-                            db.insertAudit(tx.mpesaCode, body, tx.fulizaOutstandingKes, "Fuliza M-PESA", "fuliza_balance_updated")
-                            SmsDedupeEngine.markSeen(dedupeCtx, tx)
+
+                            val tx = (result as SmsParser.SmsParseResult.Success).transaction
+
+                            // FULIZA_CHARGE: update outstanding balance. If the message carries
+                            // an access/maintenance fee, also record it as a ledger transaction.
+                            if (tx.category == SmsParserConfig.SmsCategory.FULIZA_CHARGE) {
+                                tx.fulizaOutstandingKes?.let {
+                                    db.setFulizaOutstanding(it)
+                                    maybeNotifyFulizaLimitNeeded(it, "charge")
+                                }
+                                val fee = tx.fee
+                                if (fee != null && fee > 0.0) {
+                                    val dupReason = SmsDedupeEngine.check(dedupeCtx, tx, db)
+                                    if (dupReason == SmsDedupeEngine.Result.NEW) {
+                                        val rowId = db.insertTransaction(tx)
+                                        if (rowId >= 0) {
+                                            val label = if (tx.parseRoute == SmsParser.ParseRoute.REVIEW) "imported_review" else "imported_batch"
+                                            db.insertAuditReusing(auditStmt, tx.mpesaCode, body, tx.amount, tx.counterparty, label, null, tx.confidence.name.lowercase())
+                                            imported++; SmsDedupeEngine.markSeen(dedupeCtx, tx)
+                                        } else {
+                                            db.insertAuditReusing(auditStmt, tx.mpesaCode, body, tx.amount, tx.counterparty, "import_failed", "DB insert failed")
+                                            failed++
+                                        }
+                                    } else {
+                                        db.insertAuditReusing(auditStmt, tx.mpesaCode, body, tx.amount, tx.counterparty, "duplicate_detected:${dupReason.name.lowercase()}")
+                                        duplicates++; SmsDedupeEngine.markSeen(dedupeCtx, tx)
+                                    }
+                                } else {
+                                    db.insertAuditReusing(auditStmt, tx.mpesaCode, body, tx.fulizaOutstandingKes, "Fuliza M-PESA", "fuliza_balance_updated")
+                                    SmsDedupeEngine.markSeen(dedupeCtx, tx)
+                                }
+                                continue
+                            }
+
+                            // FULIZA_REPAYMENT (LOAN): route through setFulizaRepayment so the
+                            // write is atomic with setFulizaOutstanding() — same fix as SmsProcessWorker.
+                            if (tx.category == SmsParserConfig.SmsCategory.LOAN && tx.fulizaAvailableLimitKes != null) {
+                                db.setFulizaRepayment(tx.amount, tx.fulizaAvailableLimitKes)
+                                if (getFulizaLimit() <= 0f) {
+                                    maybeNotifyFulizaLimitNeeded(tx.fulizaAvailableLimitKes, "repayment")
+                                }
+                            }
+
+                            // 4-tier deduplication
+                            val dupReason = SmsDedupeEngine.check(dedupeCtx, tx, db)
+                            if (dupReason != SmsDedupeEngine.Result.NEW) {
+                                Log.d(TAG, "Duplicate detected: ${dupReason.name.lowercase()} code=${tx.mpesaCode}")
+                                db.insertAuditReusing(auditStmt, tx.mpesaCode, body, tx.amount, tx.counterparty, "duplicate_detected:${dupReason.name.lowercase()}")
+                                duplicates++; SmsDedupeEngine.markSeen(dedupeCtx, tx)
+                                continue
+                            }
+
+                            if (tx.parseRoute == SmsParser.ParseRoute.QUARANTINE) {
+                                db.insertAuditReusing(auditStmt, tx.mpesaCode, body, tx.amount, tx.counterparty, "quarantined", "Low confidence")
+                                quarantined++; SmsDedupeEngine.markSeen(dedupeCtx, tx)
+                                continue
+                            }
+
+                            val rowId = db.insertTransaction(tx)
+                            if (rowId >= 0) {
+                                val label = if (tx.parseRoute == SmsParser.ParseRoute.REVIEW) "imported_review" else "imported_batch"
+                                db.insertAuditReusing(auditStmt, tx.mpesaCode, body, tx.amount, tx.counterparty, label, null, tx.confidence.name.lowercase())
+                                imported++; SmsDedupeEngine.markSeen(dedupeCtx, tx)
+                            } else {
+                                db.insertAuditReusing(auditStmt, tx.mpesaCode, body, tx.amount, tx.counterparty, "import_failed", "DB insert failed")
+                                failed++
+                            }
                         }
-                        continue
-                    }
 
-                    // FULIZA_REPAYMENT (LOAN): update outstanding balance.
-                    if (tx.category == SmsParserConfig.SmsCategory.LOAN && tx.fulizaAvailableLimitKes != null) {
-                        val userLimit = getFulizaLimit().toDouble()
-                        if (userLimit > 0.0) {
-                            val outstanding = userLimit - tx.fulizaAvailableLimitKes
-                            db.setFulizaOutstanding(outstanding.coerceAtLeast(0.0))
-                        } else {
-                            // No user limit set: decrement the active outstanding balance by the repayment amount
-                            // and prompt the user to enter their real Fuliza limit.
-                            val current = db.getFulizaOutstanding()
-                            db.setFulizaOutstanding((current - tx.amount).coerceAtLeast(0.0))
-                            maybeNotifyFulizaLimitNeeded(tx.fulizaAvailableLimitKes, "repayment")
-                        }
-                    }
-
-                    // 4-tier deduplication
-                    val dupReason = SmsDedupeEngine.check(dedupeCtx, tx, db)
-                    if (dupReason != SmsDedupeEngine.Result.NEW) {
-                        Log.d(TAG, "Duplicate detected: ${dupReason.name.lowercase()} code=${tx.mpesaCode}")
-                        db.insertAudit(tx.mpesaCode, body, tx.amount, tx.counterparty, "duplicate_detected:${dupReason.name.lowercase()}")
-                        duplicates++; SmsDedupeEngine.markSeen(dedupeCtx, tx)
-                        continue
-                    }
-
-                    if (tx.parseRoute == SmsParser.ParseRoute.QUARANTINE) {
-                        db.insertAudit(tx.mpesaCode, body, tx.amount, tx.counterparty, "quarantined", "Low confidence")
-                        quarantined++; SmsDedupeEngine.markSeen(dedupeCtx, tx)
-                        continue
-                    }
-
-                    val rowId = db.insertTransaction(tx)
-                    if (rowId >= 0) {
-                        val label = if (tx.parseRoute == SmsParser.ParseRoute.REVIEW) "imported_review" else "imported_batch"
-                        db.insertAudit(tx.mpesaCode, body, tx.amount, tx.counterparty, label, null, tx.confidence.name.lowercase())
-                        imported++; SmsDedupeEngine.markSeen(dedupeCtx, tx)
-                    } else {
-                        db.insertAudit(tx.mpesaCode, body, tx.amount, tx.counterparty, "import_failed", "DB insert failed")
-                        failed++
-                    }
-
-                    // Update notification every 25 records (best effort)
-                    if (total % 25 == 0) {
-                        try {
-                            setForeground(buildForegroundInfo("Imported $imported of ~$total M-Pesa messages…"))
-                        } catch (_: Exception) {}
+                        db.setTransactionSuccessful()
+                    } finally {
+                        db.endTransaction()
                     }
                 }
 
-                db.setTransactionSuccessful()
-            } finally {
-                db.endTransaction()
+                // Update progress notification after each chunk (best effort)
+                try {
+                    setForeground(buildForegroundInfo("Imported $imported of ~$total M-Pesa messages…"))
+                } catch (_: Exception) {}
             }
 
             // Flush WAL so expo-sqlite's separate connection sees the new rows immediately.
@@ -357,5 +361,10 @@ class SmsImportWorker(
         const val KEY_TO_MS    = "to_ms"
         const val NOTIF_ID_IMPORT = 9002
         const val TAG = "LifeOS/SmsImportWorker"
+
+        // Parse + insert in batches of this size so memory footprint scales with
+        // CHUNK_SIZE rather than total candidate count (avoids ~20 MB heap spike
+        // when importing 10k messages with the old single-awaitAll approach).
+        private const val CHUNK_SIZE = 200
     }
 }

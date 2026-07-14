@@ -308,4 +308,28 @@ CREATE TABLE IF NOT EXISTS sms_ingest_queue (
 );
 
 CREATE INDEX IF NOT EXISTS idx_ingest_pending ON sms_ingest_queue (status, next_retry_at);
+CREATE INDEX IF NOT EXISTS idx_ingest_processing ON sms_ingest_queue (status, claimed_at);
+
+-- User-supplied display names for counterparties identified by phone hash.
+-- phone_hash is SHA-256(normalized_phone) so raw phone numbers never hit the DB.
+CREATE TABLE IF NOT EXISTS counterparty_overrides (
+  id           TEXT PRIMARY KEY NOT NULL,
+  phone_hash   TEXT NOT NULL UNIQUE,
+  display_name TEXT NOT NULL,
+  created_at   TEXT NOT NULL,
+  updated_at   TEXT NOT NULL,
+  user_id      TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_counterparty_overrides_hash ON counterparty_overrides(phone_hash);
+
+-- On-device ML classifier training samples (S6).
+-- Each row is one user correction: a JSON feature vector + the confirmed category.
+-- The classifier activates once 50 samples exist; training reads up to 2000 rows.
+CREATE TABLE IF NOT EXISTS ml_training_samples (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  features    TEXT NOT NULL,
+  label       TEXT NOT NULL,
+  recorded_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
 `;

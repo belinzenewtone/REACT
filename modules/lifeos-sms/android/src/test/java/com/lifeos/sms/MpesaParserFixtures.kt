@@ -18,6 +18,8 @@ data class ParserFixture(
     val expectedRoute: String? = null,
     val expectedCounterpartyContains: String? = null,
     val shouldIgnore: Boolean = false,
+    /** When set, asserts parse returns Error with this reason instead of Success. */
+    val expectedError: String? = null,
 )
 
 val legacyFixtures: List<ParserFixture> = listOf(
@@ -947,21 +949,16 @@ val realWorldFixtures: List<ParserFixture> = listOf(
     ),
 
     // --- CODELESS OFFICIAL-MPESA STYLE -------------------------------------------
-    // These bodies intentionally omit the 10-character transaction code; they rely
-    // on the trusted codeless path when sender == "MPESA".
+    // These bodies intentionally omit the 10-character transaction code. After the
+    // CODE_RE lookahead fix (H3) that requires ≥1 alpha AND ≥1 digit, these messages
+    // correctly return Error("no_code") instead of parsing a phone number as a code.
     ParserFixture(
         body = "You have received Ksh500.00 from JAMES KAMAU 0712345678 on 12/4/26 at 9:00 AM. New M-PESA balance is Ksh1,500.00.",
-        expectedKind = "received",
-        expectedAmount = 500.0,
-        expectedBalance = 1500.0,
-        expectedCounterpartyContains = "JAMES KAMAU",
+        expectedError = "no_code",
     ),
     ParserFixture(
         body = "Ksh1,200.00 sent to MARY WANJIRU 0723456789 on 13/4/26 at 10:30 AM. New M-PESA balance is Ksh2,800.00.",
-        expectedKind = "sent",
-        expectedAmount = 1200.0,
-        expectedBalance = 2800.0,
-        expectedCounterpartyContains = "MARY WANJIRU",
+        expectedError = "no_code",
     ),
     ParserFixture(
         body = "LOC1CAFE23 Confirmed. Ksh800.00 paid to LOCAL CAFE on 14/4/26 at 11:45 AM. New M-PESA balance is Ksh4,200.00.",
@@ -987,6 +984,22 @@ val realWorldFixtures: List<ParserFixture> = listOf(
         expectedKind = "withdraw",
         expectedAmount = 2000.0,
         expectedBalance = 1000.0,
+    ),
+
+    // --- ATM WITHDRAWALS ---------------------------------------------------------
+    ParserFixture(
+        body = "QRS1TUV234 Confirmed. Ksh5,000.00 withdrawn from ATM on 12/4/26 at 2:00 PM. New M-PESA balance is Ksh2,000.00.",
+        expectedKind = "withdraw",
+        expectedAmount = 5000.0,
+        expectedBalance = 2000.0,
+        expectedCounterpartyContains = "ATM",
+    ),
+    ParserFixture(
+        body = "ATM1WDW234 Confirmed. Ksh2,500.00 withdrawn at EQUITY ATM WESTLANDS on 15/4/26 at 11:00 AM. New M-PESA balance is Ksh7,500.00.",
+        expectedKind = "withdraw",
+        expectedAmount = 2500.0,
+        expectedBalance = 7500.0,
+        expectedCounterpartyContains = "EQUITY",
     ),
 
     // --- IGNORED NOISE VARIANTS --------------------------------------------------
