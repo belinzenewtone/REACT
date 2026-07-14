@@ -1,6 +1,5 @@
 import React, { useMemo, useRef, useState } from 'react';
-import { View, StyleSheet, Animated, type LayoutChangeEvent } from 'react-native';
-import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import { View, StyleSheet, Animated, PanResponder, type LayoutChangeEvent } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Card, Text, IconButton, Button, TouchableRipple, useTheme } from 'react-native-paper';
 import { spacing, borderRadius } from '../../theme';
@@ -72,29 +71,30 @@ export function CalendarMonthView({
     }).start();
   };
 
-  // Memoize gesture so RNGH doesn't detach/reattach the native handler on layout re-renders.
-  // liveRef keeps callbacks fresh without the gesture needing to re-create.
-  const swipeGesture = useMemo(
-    () =>
-      Gesture.Pan()
-        .enabled(swipeEnabled)
-        .activeOffsetX([-20, 20])
-        .failOffsetY([-15, 15])
-        .runOnJS(true)
-        .onEnd((e) => {
-          const dx = e.translationX;
-          const adx = Math.abs(dx);
-          if (adx <= Math.abs(e.translationY)) return;
-          const deliberate =
-            adx >= SWIPE_DISTANCE ||
-            (adx >= SWIPE_FLICK_DISTANCE && Math.abs(e.velocityX) >= SWIPE_FLICK_VELOCITY);
-          if (!deliberate) return;
-          if (dx < 0) runTransition(liveRef.current.onNextMonth, -1);
-          else runTransition(liveRef.current.onPrevMonth, 1);
-        }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [swipeEnabled],
-  );
+  // PanResponder for swipe — avoids RNGH native handler management entirely,
+  // so there is no risk of RNGH crashing on tap or layout re-renders.
+  // liveRef keeps callbacks/enabled flag fresh inside the stable responder.
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => false,
+      onMoveShouldSetPanResponder: (_, g) =>
+        liveRef.current.swipeEnabled &&
+        Math.abs(g.dx) > 20 &&
+        Math.abs(g.dx) > Math.abs(g.dy) * 2,
+      onPanResponderRelease: (_, g) => {
+        if (!liveRef.current.swipeEnabled) return;
+        const dx = g.dx;
+        const adx = Math.abs(dx);
+        if (adx <= Math.abs(g.dy)) return;
+        const deliberate =
+          adx >= SWIPE_DISTANCE ||
+          (adx >= SWIPE_FLICK_DISTANCE && Math.abs(g.vx) >= SWIPE_FLICK_VELOCITY / 1000);
+        if (!deliberate) return;
+        if (dx < 0) runTransition(liveRef.current.onNextMonth, -1);
+        else runTransition(liveRef.current.onPrevMonth, 1);
+      },
+    })
+  ).current;
 
   const days = React.useMemo(() => {
     const firstDayOfMonth = new Date(Date.UTC(year, month - 1, 1));
@@ -178,10 +178,10 @@ export function CalendarMonthView({
           ))}
         </View>
 
-        <GestureDetector gesture={swipeGesture}>
           <Animated.View
             onLayout={onGridLayout}
             style={{ transform: [{ translateX: slide }] }}
+            {...panResponder.panHandlers}
           >
             {cellSize > 0 && weeks.map((week, wIndex) => (
               <View key={wIndex} style={[styles.weekRow, { height: cellSize }]}>
@@ -232,7 +232,6 @@ export function CalendarMonthView({
               </View>
             ))}
           </Animated.View>
-        </GestureDetector>
       </Card.Content>
     </Card>
   );
