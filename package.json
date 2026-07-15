@@ -1,6 +1,6 @@
 {
   "name": "rfinal",
-  "version": "1.0.79",
+  "version": "1.0.81",
   "main": "index.ts",
   "dependencies": {
     "@expo/vector-icons": "^15.1.1",

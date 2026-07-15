@@ -948,10 +948,26 @@ val realWorldFixtures: List<ParserFixture> = listOf(
         expectedCounterpartyContains = "ANN",
     ),
 
+    // --- ALL-ALPHA CODE REGRESSION ---------------------------------------------------
+    // Real M-Pesa codes can be all uppercase letters with no digits (e.g. UGFDLBONAZ).
+    // The previous CODE_RE required ≥1 digit and wrongly rejected these — now fixed.
+    ParserFixture(
+        body = "UGFDLBONAZ Confirmed. You have received Ksh5.00 from TEST USER 0724000586 on 15/7/26 at 10:08 AM. New M-PESA balance is Ksh145.67.",
+        expectedKind = "received",
+        expectedAmount = 5.0,
+        expectedBalance = 145.67,
+        expectedCounterpartyContains = "TEST USER",
+    ),
+    ParserFixture(
+        body = "UGFDLBONAZ Confirmed. Ksh5.00 sent to Obed Nyakoni 0712087778 on 15/7/26 at 10:08 AM. New M-PESA balance is Ksh145.67.",
+        expectedKind = "sent",
+        expectedAmount = 5.0,
+        expectedCounterpartyContains = "Obed Nyakoni",
+    ),
+
     // --- CODELESS OFFICIAL-MPESA STYLE -------------------------------------------
-    // These bodies intentionally omit the 10-character transaction code. After the
-    // CODE_RE lookahead fix (H3) that requires ≥1 alpha AND ≥1 digit, these messages
-    // correctly return Error("no_code") instead of parsing a phone number as a code.
+    // These bodies intentionally omit the 10-character transaction code. The CODE_RE
+    // uppercase-only requirement rejects phone numbers (all digits, no [A-Z]).
     ParserFixture(
         body = "You have received Ksh500.00 from JAMES KAMAU 0712345678 on 12/4/26 at 9:00 AM. New M-PESA balance is Ksh1,500.00.",
         expectedError = "no_code",

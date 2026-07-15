@@ -23,13 +23,13 @@ internal object SmsParserConfig {
     // ─── Core extraction regexes ───────────────────────────────────────
 
     /**
-     * M-Pesa transaction confirmation code — 9-10 alphanum chars, case-insensitive,
-     * with AT LEAST ONE ALPHA AND ONE DIGIT required. Real M-Pesa codes always mix
-     * letters and digits (e.g. "QHL6ZKMF10"). The alpha requirement stops 10-digit
-     * phone numbers (0712345678) from satisfying the lookahead and being stored as
-     * the transaction code, which would poison Tier 1 deduplication for codeless SMS.
+     * M-Pesa transaction confirmation code — 9-10 uppercase alphanumeric chars with
+     * AT LEAST ONE LETTER required. Uppercase-only matching excludes mixed-case English
+     * words ("Confirmed", "received") while accepting both all-alpha codes (e.g.
+     * "UGFDLBONAZ") and mixed codes (e.g. "QHL6ZKMF10"). The letter requirement stops
+     * 10-digit phone numbers (0712345678) from matching as a code.
      */
-    val CODE_RE = Regex("""\b(?=[A-Za-z0-9]*[A-Za-z][A-Za-z0-9]*\d)([A-Za-z0-9]{9,10})\b""")
+    val CODE_RE = Regex("""\b(?=[A-Z0-9]*[A-Z])([A-Z0-9]{9,10})\b""")
 
     /** Primary amount — first Ksh/KES figure in the message. */
     val AMOUNT_RE = Regex("""(?:Ksh|KES)\s?([\d,]+(?:\.\d{1,2})?)""", RegexOption.IGNORE_CASE)
