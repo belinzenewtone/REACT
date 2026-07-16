@@ -73,31 +73,27 @@ class IngestSweepWorker(
             }
             val wm = WorkManager.getInstance(applicationContext)
             var enqueued = 0
-            for ((queueId, body) in candidates) {
-                if (body.isBlank()) {
-                    db.markIngestDone(queueId)
+            for (row in candidates) {
+                if (row.body.isBlank()) {
+                    db.markIngestDone(row.id)
                     continue
                 }
-                // Claim atomically before enqueuing. If the realtime worker already
-                // claimed it (or another sweep iteration did), skip this row.
-                if (!db.claimIngestRow(queueId)) {
-                    Log.d(TAG, "Skipping already-claimed row $queueId")
+                if (!db.claimIngestRow(row.id)) {
+                    Log.d(TAG, "Skipping already-claimed row ${row.id}")
                     continue
                 }
                 val request = OneTimeWorkRequestBuilder<SmsProcessWorker>()
                     .setInputData(
                         Data.Builder()
-                            .putString(SmsProcessWorker.KEY_SMS_BODY, body)
-                            .putLong(SmsProcessWorker.KEY_QUEUE_ID, queueId)
-                            // Anything the sweep recovers — whether a dropped
-                            // broadcast found by the inbox scan or an orphaned
-                            // queue row — shows as "scan" in Import Health.
+                            .putString(SmsProcessWorker.KEY_SMS_BODY, row.body)
+                            .putString(SmsProcessWorker.KEY_SMS_SENDER, row.sender)
+                            .putLong(SmsProcessWorker.KEY_QUEUE_ID, row.id)
                             .putString(SmsProcessWorker.KEY_ORIGIN, SmsProcessWorker.ORIGIN_SCAN)
                             .build()
                     )
                     .build()
                 wm.enqueueUniqueWork(
-                    "lifeos-ingest-retry-$queueId",
+                    "lifeos-ingest-retry-${row.id}",
                     ExistingWorkPolicy.KEEP, // idempotent — don't double-schedule
                     request,
                 )
@@ -160,7 +156,7 @@ class IngestSweepWorker(
                 val body = c.getString(bodyIdx) ?: continue
                 val address = if (addressIdx >= 0) c.getString(addressIdx) ?: "" else ""
                 // Cheap sender + body signal check before touching the DB.
-                if (!isMpesaSender(address) && !SmsParser.isMpesaSms(body)) continue
+                if (InstitutionDetector.detect(address, body) == null) continue
                 // Skip messages already imported (indexed source-hash lookup) —
                 // keeps the FIRST run from re-enqueueing weeks of history that
                 // arrived via batch import rather than the queue.
@@ -168,7 +164,7 @@ class IngestSweepWorker(
                 if (db.existsBySourceHash(sourceHash)) continue
                 // Idempotent: UNIQUE body-hash makes re-seen messages a no-op,
                 // and downstream 4-tier dedupe guards ledger duplicates.
-                if (db.enqueueIngestIfNew(body)) enqueued++
+                if (db.enqueueIngestIfNew(body, address)) enqueued++
             }
         }
 
@@ -176,16 +172,6 @@ class IngestSweepWorker(
         if (enqueued > 0) {
             Log.i(TAG, "Inbox reconciliation recovered $enqueued dropped message(s) (scanned $scanned)")
         }
-    }
-
-    /**
-     * True if [address] is from a known Safaricom M-Pesa sender ID.
-     * Mirrors the sender check in REACT's MpesaReconciliationWorker so the
-     * inbox scan catches messages from MPESA, M-PESA, or M_PESA sender IDs.
-     */
-    private fun isMpesaSender(address: String): Boolean {
-        val upper = address.trim().uppercase()
-        return upper.contains("MPESA") || upper.contains("M-PESA") || upper.contains("M_PESA")
     }
 
     companion object {

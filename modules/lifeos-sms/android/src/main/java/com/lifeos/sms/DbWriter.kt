@@ -73,6 +73,7 @@ internal class DbWriter private constructor(context: Context) {
         db.rawQuery("PRAGMA foreign_keys=ON", null).use { it.moveToFirst() }
         ensureImportAuditTable()
         ensureIngestQueueTable()
+        ensureMultiBankColumns()
     }
 
     /**
@@ -231,15 +232,17 @@ internal class DbWriter private constructor(context: Context) {
                 last_error    TEXT,
                 received_at   TEXT NOT NULL DEFAULT (datetime('now')),
                 next_retry_at TEXT NOT NULL DEFAULT (datetime('now')),
-                claimed_at    TEXT
+                claimed_at    TEXT,
+                sender_address TEXT DEFAULT ''
             )
             """.trimIndent()
         )
+        try {
+            db.execSQL("ALTER TABLE sms_ingest_queue ADD COLUMN sender_address TEXT DEFAULT ''")
+        } catch (_: Exception) { }
         db.execSQL(
             "CREATE INDEX IF NOT EXISTS idx_ingest_pending ON sms_ingest_queue (status, next_retry_at)"
         )
-        // Covers the stuck-worker recovery branch: `status='processing' AND claimed_at < now-5min`.
-        // Without this, that WHERE clause triggers a full table scan on every sweep run.
         db.execSQL(
             "CREATE INDEX IF NOT EXISTS idx_ingest_processing ON sms_ingest_queue (status, claimed_at)"
         )
@@ -257,23 +260,42 @@ internal class DbWriter private constructor(context: Context) {
         }
     }
 
+    private fun ensureMultiBankColumns() {
+        val cols = listOf(
+            "ALTER TABLE transactions ADD COLUMN institution_id TEXT DEFAULT 'mpesa'",
+            "ALTER TABLE transactions ADD COLUMN external_ref TEXT",
+            "ALTER TABLE transactions ADD COLUMN currency TEXT DEFAULT 'KES'",
+            "ALTER TABLE transactions ADD COLUMN raw_sender TEXT DEFAULT ''",
+        )
+        for (sql in cols) {
+            try { db.execSQL(sql) } catch (_: Exception) { }
+        }
+        try {
+            db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS idx_tx_inst_extref ON transactions(institution_id, external_ref) WHERE external_ref IS NOT NULL")
+            db.execSQL("CREATE INDEX IF NOT EXISTS idx_tx_inst_date ON transactions(institution_id, date)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS idx_tx_inst_cat ON transactions(institution_id, category)")
+        } catch (e: Exception) {
+            Log.w(TAG, "multi-bank index creation deferred: ${e.message}")
+        }
+    }
+
     /**
      * Persist an incoming SMS body. Returns the queue row id, or the existing
      * row id when this exact body was already enqueued (duplicate broadcast),
      * or -1 on failure. Idempotent on body hash.
      */
-    fun enqueueIngest(body: String): Long {
+    fun enqueueIngest(body: String, sender: String = ""): Long {
         val hash = sha256(body.trim())
         try {
             db.compileStatement(
-                "INSERT OR IGNORE INTO sms_ingest_queue (body, body_hash) VALUES (?, ?)"
+                "INSERT OR IGNORE INTO sms_ingest_queue (body, body_hash, sender_address) VALUES (?, ?, ?)"
             ).use { stmt ->
                 stmt.bindString(1, body)
                 stmt.bindString(2, hash)
+                stmt.bindString(3, sender)
                 val rowId = stmt.executeInsert()
                 if (rowId >= 0) return rowId
             }
-            // Already enqueued — return the existing id.
             return db.rawQuery(
                 "SELECT id FROM sms_ingest_queue WHERE body_hash = ? LIMIT 1",
                 arrayOf(hash)
@@ -289,13 +311,14 @@ internal class DbWriter private constructor(context: Context) {
      * never been seen by the queue. Returns true when a new row was inserted.
      * Single INSERT OR IGNORE — no follow-up SELECT on the hot no-op path.
      */
-    fun enqueueIngestIfNew(body: String): Boolean {
+    fun enqueueIngestIfNew(body: String, sender: String = ""): Boolean {
         return try {
             db.compileStatement(
-                "INSERT OR IGNORE INTO sms_ingest_queue (body, body_hash) VALUES (?, ?)"
+                "INSERT OR IGNORE INTO sms_ingest_queue (body, body_hash, sender_address) VALUES (?, ?, ?)"
             ).use { stmt ->
                 stmt.bindString(1, body)
                 stmt.bindString(2, sha256(body.trim()))
+                stmt.bindString(3, sender)
                 stmt.executeInsert() >= 0
             }
         } catch (e: Exception) {
@@ -363,14 +386,14 @@ internal class DbWriter private constructor(context: Context) {
         }
     }
 
-    /** Read the authoritative body for a queue row. */
-    fun getIngestBody(id: Long): String? {
+    /** Read the authoritative body and sender for a queue row. */
+    fun getIngestBodyAndSender(id: Long): Pair<String, String>? {
         if (id < 0) return null
         return try {
-            db.rawQuery("SELECT body FROM sms_ingest_queue WHERE id = ? LIMIT 1", arrayOf(id.toString()))
-                .use { c -> if (c.moveToFirst()) c.getString(0) else null }
+            db.rawQuery("SELECT body, sender_address FROM sms_ingest_queue WHERE id = ? LIMIT 1", arrayOf(id.toString()))
+                .use { c -> if (c.moveToFirst()) (c.getString(0) ?: return null) to (c.getString(1) ?: "") else null }
         } catch (e: Exception) {
-            Log.w(TAG, "getIngestBody failed: ${e.message}")
+            Log.w(TAG, "getIngestBodyAndSender failed: ${e.message}")
             null
         }
     }
@@ -380,11 +403,13 @@ internal class DbWriter private constructor(context: Context) {
      * for more than 5 minutes (e.g. a worker process was killed mid-flight).
      * Drained by the sweep worker.
      */
-    fun getPendingIngest(limit: Int = 50): List<Pair<Long, String>> {
-        val rows = mutableListOf<Pair<Long, String>>()
+    data class IngestRow(val id: Long, val body: String, val sender: String)
+
+    fun getPendingIngest(limit: Int = 50): List<IngestRow> {
+        val rows = mutableListOf<IngestRow>()
         try {
             db.rawQuery(
-                """SELECT id, body FROM sms_ingest_queue
+                """SELECT id, body, sender_address FROM sms_ingest_queue
                    WHERE (
                      status IN ('pending', 'failed') AND next_retry_at <= datetime('now')
                    ) OR (
@@ -393,7 +418,7 @@ internal class DbWriter private constructor(context: Context) {
                    ORDER BY id ASC LIMIT ?""",
                 arrayOf(limit.toString())
             ).use { c ->
-                while (c.moveToNext()) rows.add(c.getLong(0) to (c.getString(1) ?: ""))
+                while (c.moveToNext()) rows.add(IngestRow(c.getLong(0), c.getString(1) ?: "", c.getString(2) ?: ""))
             }
         } catch (e: Exception) {
             Log.w(TAG, "getPendingIngest failed: ${e.message}")
@@ -498,6 +523,13 @@ internal class DbWriter private constructor(context: Context) {
         ).use { it.moveToFirst() }
     }
 
+    fun existsByExternalRef(institutionId: String, ref: String): Boolean {
+        return db.rawQuery(
+            "SELECT 1 FROM transactions WHERE institution_id = ? AND external_ref = ? AND deleted_at IS NULL LIMIT 1",
+            arrayOf(institutionId, ref)
+        ).use { it.moveToFirst() }
+    }
+
     fun existsBySourceHash(hash: String): Boolean {
         return db.rawQuery(
             "SELECT 1 FROM transactions WHERE source_hash = ? AND deleted_at IS NULL LIMIT 1",
@@ -584,15 +616,16 @@ internal class DbWriter private constructor(context: Context) {
                    (id, amount, merchant, category, date, source, transaction_type,
                     mpesa_code, source_hash, raw_sms, description, balance_after, fee,
                     status, created_at, updated_at, sync_state, record_source,
-                    revision, inferred_category, inference_source, semantic_hash)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"""
+                    revision, inferred_category, inference_source, semantic_hash,
+                    institution_id, external_ref, currency, raw_sender)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"""
             ).use { stmt ->
                 stmt.bindString(1, id)
                 stmt.bindDouble(2, tx.amount)
-                stmt.bindString(3, tx.counterparty ?: (SmsParserConfig.CATEGORY_DISPLAY[tx.category] ?: "M-Pesa"))
+                stmt.bindString(3, tx.counterparty ?: (SmsParserConfig.CATEGORY_DISPLAY[tx.category] ?: tx.institutionId))
                 stmt.bindString(4, appCategory)
                 stmt.bindString(5, dateIso)
-                stmt.bindString(6, "mpesa")
+                stmt.bindString(6, tx.institutionId)
                 stmt.bindString(7, tx.transactionType)
                 stmt.bindString(8, tx.mpesaCode)
                 stmt.bindString(9, tx.sourceHash)
@@ -609,6 +642,10 @@ internal class DbWriter private constructor(context: Context) {
                 stmt.bindLong(20, 1)
                 stmt.bindString(21, "sms_parser")
                 stmt.bindString(22, tx.semanticHash)
+                stmt.bindString(23, tx.institutionId)
+                if (tx.externalRef.isNotBlank()) stmt.bindString(24, tx.externalRef) else stmt.bindNull(24)
+                stmt.bindString(25, tx.currency)
+                stmt.bindString(26, tx.rawSender)
                 stmt.executeInsert()
             }
         } catch (e: Exception) {

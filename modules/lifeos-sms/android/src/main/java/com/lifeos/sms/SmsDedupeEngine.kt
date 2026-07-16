@@ -38,9 +38,15 @@ internal object SmsDedupeEngine {
         tx: SmsParser.ParsedTransaction,
         db: DbWriter,
     ): Result {
-        // Tier 1: M-Pesa code
-        if (tx.mpesaCode in ctx.seenCodes || db.existsByMpesaCode(tx.mpesaCode)) {
-            return Result.DUPLICATE_CODE
+        // Tier 1: transaction code — institution-scoped
+        if (tx.institutionId == "mpesa") {
+            if (tx.mpesaCode.isNotBlank() && (tx.mpesaCode in ctx.seenCodes || db.existsByMpesaCode(tx.mpesaCode))) {
+                return Result.DUPLICATE_CODE
+            }
+        } else {
+            if (tx.externalRef.isNotBlank() && (tx.externalRef in ctx.seenCodes || db.existsByExternalRef(tx.institutionId, tx.externalRef))) {
+                return Result.DUPLICATE_CODE
+            }
         }
 
         // Tier 2: Source hash (exact raw SMS match)
@@ -67,7 +73,11 @@ internal object SmsDedupeEngine {
 
     /** Mark a transaction as seen in the current [Context]. */
     fun markSeen(ctx: Context, tx: SmsParser.ParsedTransaction) {
-        ctx.seenCodes.add(tx.mpesaCode)
+        if (tx.institutionId == "mpesa") {
+            if (tx.mpesaCode.isNotBlank()) ctx.seenCodes.add(tx.mpesaCode)
+        } else {
+            if (tx.externalRef.isNotBlank()) ctx.seenCodes.add(tx.externalRef)
+        }
         ctx.seenSourceHashes.add(tx.sourceHash)
         ctx.seenSemanticHashes.add(tx.semanticHash)
     }

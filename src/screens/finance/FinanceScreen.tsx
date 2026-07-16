@@ -34,8 +34,8 @@ import { SearchFilterBar } from '../../components/finance/SearchFilterBar';
 import { TransactionListItem } from '../../components/finance/TransactionListItem';
 import { Dropdown } from '../../components/common/Dropdown';
 import { ImportCsvSheet } from '../../components/finance/ImportCsvSheet';
-import { ImportSmsSheet, type SmsScanPeriod } from '../../components/finance/ImportSmsSheet';
-import { importHistoricalSms, checkPermissions, requestSmsPermissions } from '../../../modules/lifeos-sms';
+import { ImportSmsSheet, type SmsScanPeriod, type ImportMode, periodToMs } from '../../components/finance/ImportSmsSheet';
+import { importHistoricalSms, detectInstitutions, checkPermissions, requestSmsPermissions, type DetectedInstitution, type InstitutionFilter } from '../../../modules/lifeos-sms';
 import { checkAllBudgetThresholds } from '../../services/budgetAlertService';
 import { LinearGradient } from 'expo-linear-gradient';
 import { formatCurrency, formatRelativeDay, toLocalIso } from '../../utils/formatters';
@@ -90,6 +90,12 @@ function FinanceScreenContent() {
   const [smsImportBanner, setSmsImportBanner] = useState<string | null>(null);
   const [smsPermissionsGranted, setSmsPermissionsGranted] = useState(true);
   const [requestingSmsPerms, setRequestingSmsPerms] = useState(false);
+  const [smsDetecting, setSmsDetecting] = useState(false);
+  const [detectedInstitutions, setDetectedInstitutions] = useState<DetectedInstitution[] | undefined>();
+  const [showDetectionResult, setShowDetectionResult] = useState(false);
+  const [pendingImportFilter, setPendingImportFilter] = useState<InstitutionFilter>('all');
+  const [pendingImportFromMs, setPendingImportFromMs] = useState(0);
+  const [pendingImportToMs, setPendingImportToMs] = useState(0);
 
   useEffect(() => {
     loadTransactions(repo, true);
@@ -172,19 +178,12 @@ function FinanceScreenContent() {
     }
   }, [isLoading, hasMore, loadTransactions, repo]);
 
-  const handleSmsImport = useCallback(async (period: SmsScanPeriod) => {
-    setSmsSheetVisible(false);
-    const now = Date.now();
-    const periodMs: Record<SmsScanPeriod, number> = {
-      '24h': 24 * 60 * 60 * 1000,
-      '7d':  7  * 24 * 60 * 60 * 1000,
-      '30d': 30 * 24 * 60 * 60 * 1000,
-      '90d': 90 * 24 * 60 * 60 * 1000,
-    };
+  const runImport = useCallback(async (fromMs: number, toMs: number, filter: InstitutionFilter) => {
     setSmsImporting(true);
-    setSmsImportBanner('Scanning M-Pesa messages…');
+    const label = filter === 'mpesa_only' ? 'M-Pesa' : filter === 'banks_only' ? 'bank' : 'financial';
+    setSmsImportBanner(`Scanning ${label} messages…`);
     try {
-      const result = await importHistoricalSms(now - periodMs[period], now);
+      const result = await importHistoricalSms(fromMs, toMs, filter);
       useDataVersion.getState().bump();
       await loadTransactions(repo, true);
       await loadDashboard(db);
@@ -197,7 +196,7 @@ function FinanceScreenContent() {
       const total = result?.total ?? 0;
       setSmsImportBanner(
         total === 0
-          ? 'No M-Pesa messages found in this window'
+          ? `No ${label} messages found in this window`
           : imported === 0 && dupes > 0 && failed === 0
           ? `Everything up to date · ${dupes} already imported`
           : `Import complete · ${imported} new · ${dupes} dupes · ${failed} failed`
@@ -217,6 +216,52 @@ function FinanceScreenContent() {
       setSmsImporting(false);
     }
   }, [repo, loadTransactions, loadDashboard, loadBudgets, loadPlanner, db]);
+
+  const handleMpesaImport = useCallback((period: SmsScanPeriod) => {
+    setSmsSheetVisible(false);
+    const now = Date.now();
+    runImport(now - periodToMs(period), now, 'mpesa_only');
+  }, [runImport]);
+
+  const handleBankImport = useCallback(async (period: SmsScanPeriod, mode: ImportMode) => {
+    const now = Date.now();
+    const fromMs = now - periodToMs(period);
+    const filter: InstitutionFilter = mode === 'banks_only' ? 'banks_only' : 'all';
+    setPendingImportFilter(filter);
+    setPendingImportFromMs(fromMs);
+    setPendingImportToMs(now);
+    setSmsDetecting(true);
+    try {
+      const detected = await detectInstitutions(fromMs, now, filter);
+      if (detected.length === 0) {
+        setSmsDetecting(false);
+        setSmsSheetVisible(false);
+        setSmsImportBanner('No bank messages found in this window');
+        setTimeout(() => setSmsImportBanner(null), 5000);
+        return;
+      }
+      setDetectedInstitutions(detected);
+      setShowDetectionResult(true);
+    } catch (e: any) {
+      setSmsImportBanner(`Detection failed: ${e?.message ?? 'unknown error'}`);
+      setTimeout(() => setSmsImportBanner(null), 5000);
+      setSmsSheetVisible(false);
+    } finally {
+      setSmsDetecting(false);
+    }
+  }, []);
+
+  const handleConfirmBankImport = useCallback(() => {
+    setShowDetectionResult(false);
+    setDetectedInstitutions(undefined);
+    setSmsSheetVisible(false);
+    runImport(pendingImportFromMs, pendingImportToMs, pendingImportFilter);
+  }, [runImport, pendingImportFromMs, pendingImportToMs, pendingImportFilter]);
+
+  const handleCancelDetection = useCallback(() => {
+    setShowDetectionResult(false);
+    setDetectedInstitutions(undefined);
+  }, []);
 
   const activeBudgets = useMemo(() => budgets.filter((b) => b.isActive), [budgets]);
 
@@ -580,8 +625,14 @@ function FinanceScreenContent() {
       <ImportSmsSheet
         visible={smsSheetVisible}
         onClose={() => setSmsSheetVisible(false)}
-        onSelectPeriod={handleSmsImport}
+        onMpesaImport={handleMpesaImport}
+        onBankImport={handleBankImport}
         isImporting={smsImporting}
+        isDetecting={smsDetecting}
+        detectedInstitutions={detectedInstitutions}
+        onConfirmBankImport={handleConfirmBankImport}
+        onCancelDetection={handleCancelDetection}
+        showDetectionResult={showDetectionResult}
       />
     </SafeAreaView>
   );

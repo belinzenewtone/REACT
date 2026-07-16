@@ -35,21 +35,23 @@ class SmsProcessWorker(
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
         val queueId = inputData.getLong(KEY_QUEUE_ID, -1L)
         val fallbackBody = inputData.getString(KEY_SMS_BODY)
+        val fallbackSender = inputData.getString(KEY_SMS_SENDER) ?: ""
         origin = inputData.getString(KEY_ORIGIN) ?: ORIGIN_REALTIME
 
         val db = DbWriter.getInstance(applicationContext)
 
-        // Race-free claim: if another realtime or sweep worker already claimed
-        // this row, we exit successfully and let that worker do the processing.
-        val body = if (queueId >= 0) {
+        val bodyAndSender: Pair<String, String>? = if (queueId >= 0) {
             if (!db.claimIngestRow(queueId)) {
                 Log.d(TAG, "Queue row $queueId already claimed by another worker")
                 return@withContext Result.success()
             }
-            db.getIngestBody(queueId) ?: fallbackBody
+            db.getIngestBodyAndSender(queueId) ?: fallbackBody?.let { it to fallbackSender }
         } else {
-            fallbackBody
+            fallbackBody?.let { it to fallbackSender }
         }
+
+        val body = bodyAndSender?.first
+        val sender = bodyAndSender?.second ?: ""
 
         if (body.isNullOrBlank()) {
             if (queueId >= 0) db.markIngestDone(queueId)
@@ -59,7 +61,7 @@ class SmsProcessWorker(
         // Every exit marks the durable ingest-queue row (written by SmsReceiver
         // BEFORE this worker was scheduled): terminal outcomes → done; retry
         // outcomes → failed-with-backoff so the periodic sweep re-drains them.
-        val result = processSms(db, body)
+        val result = processSms(db, body, sender)
         if (queueId >= 0) {
             if (result is Result.Retry) {
                 db.markIngestFailed(queueId, "worker_retry")
@@ -70,17 +72,13 @@ class SmsProcessWorker(
         result
     }
 
-    private fun processSms(db: DbWriter, smsBody: String): Result {
+    private fun processSms(db: DbWriter, smsBody: String, sender: String): Result {
         try {
-            // Stage 0: Quick filter
-            if (!SmsParser.isMpesaSms(smsBody)) {
-                db.insertAudit(null, smsBody, null, null, "ignored_not_mpesa")
+            if (!InstitutionDetector.isFinancialSms(sender, smsBody)) {
+                db.insertAudit(null, smsBody, null, null, "ignored_not_financial")
                 return Result.success()
             }
 
-            // Stage 0a: Fuliza limit assignment SMS has no transaction code, but
-            // tells us the user's real limit. Capture it before the parser rejects
-            // the message for "no_code".
             SmsParser.extractFulizaLimit(smsBody)?.let { assignedLimit ->
                 if (getFulizaLimit() <= 0f && assignedLimit > 0.0) {
                     applicationContext.getSharedPreferences(SmsReceiver.PREFS_NAME, Context.MODE_PRIVATE)
@@ -91,7 +89,7 @@ class SmsProcessWorker(
                 }
             }
 
-            val parseResult = SmsParser.parse(smsBody)
+            val parseResult = ParserPipeline.process(smsBody, sender, System.currentTimeMillis())
 
             if (parseResult is SmsParser.SmsParseResult.Error) {
                 db.insertAudit(
@@ -220,7 +218,7 @@ class SmsProcessWorker(
     override suspend fun getForegroundInfo(): ForegroundInfo {
         ensureNotificationChannel()
         val notification = NotificationCompat.Builder(applicationContext, NOTIF_CHANNEL_ID)
-            .setContentTitle("Processing M-Pesa SMS")
+            .setContentTitle("Processing financial SMS")
             .setSmallIcon(android.R.drawable.ic_dialog_info)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setOngoing(false)
@@ -246,6 +244,7 @@ class SmsProcessWorker(
 
     companion object {
         const val KEY_SMS_BODY = "sms_body"
+        const val KEY_SMS_SENDER = "sms_sender"
         const val KEY_QUEUE_ID = "queue_id"
         const val KEY_ORIGIN = "origin"
         const val ORIGIN_REALTIME = "realtime"

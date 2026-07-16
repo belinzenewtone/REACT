@@ -157,6 +157,11 @@ export function ReviewQueueScreen() {
         `UPDATE transactions SET sync_state = 'pending', updated_at = ? WHERE mpesa_code = ? AND deleted_at IS NULL`,
         [now, entry.mpesaCode]
       );
+    } else if (entry.rawMessage) {
+      await db.runAsync(
+        `UPDATE transactions SET sync_state = 'pending', updated_at = ? WHERE raw_sms = ? AND deleted_at IS NULL`,
+        [now, entry.rawMessage]
+      );
     }
     await db.runAsync(`UPDATE import_audit SET outcome = 'imported_review_approved' WHERE id = ?`, [entry.id]);
   };
@@ -167,6 +172,11 @@ export function ReviewQueueScreen() {
       await db.runAsync(
         `UPDATE transactions SET deleted_at = ?, updated_at = ? WHERE mpesa_code = ? AND deleted_at IS NULL`,
         [now, now, entry.mpesaCode]
+      );
+    } else if (entry.rawMessage) {
+      await db.runAsync(
+        `UPDATE transactions SET deleted_at = ?, updated_at = ? WHERE raw_sms = ? AND deleted_at IS NULL`,
+        [now, now, entry.rawMessage]
       );
     }
     await db.runAsync(`UPDATE import_audit SET outcome = 'dismissed' WHERE id = ?`, [entry.id]);

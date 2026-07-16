@@ -71,6 +71,10 @@ internal object SmsParser {
          * outstanding = userFulizaLimit - fulizaAvailableLimitKes
          */
         val fulizaAvailableLimitKes: Double? = null,
+        val institutionId: String = "mpesa",
+        val externalRef: String = mpesaCode,
+        val currency: String = "KES",
+        val rawSender: String = "",
     ) {
         val isIncome: Boolean
             get() = !isReceivedReversal && (

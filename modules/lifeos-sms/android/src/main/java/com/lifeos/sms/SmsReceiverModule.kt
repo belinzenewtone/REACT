@@ -67,16 +67,50 @@ class SmsReceiverModule : Module() {
             )
         }
 
+        // ── detectInstitutions ────────────────────────────────────────────────
+
+        AsyncFunction("detectInstitutions") { fromMs: Double, toMs: Double, filter: String ->
+            val ctx = appContext.reactContext ?: throw CodedException("no_context")
+            if (ContextCompat.checkSelfPermission(ctx, Manifest.permission.READ_SMS)
+                != PackageManager.PERMISSION_GRANTED) {
+                throw CodedException("sms_permission_denied")
+            }
+            val counts = mutableMapOf<String, Int>()
+            val cursor = ctx.contentResolver.query(
+                android.net.Uri.parse("content://sms/inbox"),
+                arrayOf("body", "address"),
+                "date >= ? AND date <= ?",
+                arrayOf(fromMs.toLong().coerceAtLeast(0L).toString(), toMs.toLong().toString()),
+                null,
+            )
+            cursor?.use { c ->
+                val bodyIdx = c.getColumnIndex("body")
+                val addressIdx = c.getColumnIndex("address")
+                if (bodyIdx < 0) return@use
+                while (c.moveToNext()) {
+                    val body = c.getString(bodyIdx) ?: continue
+                    val address = if (addressIdx >= 0) c.getString(addressIdx) ?: "" else ""
+                    val detection = InstitutionDetector.detect(address, body) ?: continue
+                    val id = detection.institutionId
+                    val includeMpesa = filter != "banks_only"
+                    val includeBanks = filter != "mpesa_only"
+                    if (id == "mpesa" && !includeMpesa) continue
+                    if (id != "mpesa" && !includeBanks) continue
+                    counts[id] = (counts[id] ?: 0) + 1
+                }
+            }
+            counts.map { (id, count) -> mapOf("institutionId" to id, "count" to count) }
+        }
+
         // ── importHistoricalSms ───────────────────────────────────────────────
 
-        AsyncFunction("importHistoricalSms") { fromMs: Double, toMs: Double ->
-            // CodedException (not java.lang.Error) so JS receives the actual
-            // reason instead of a generic "has been rejected".
+        AsyncFunction("importHistoricalSms") { fromMs: Double, toMs: Double, filter: String ->
             val ctx = appContext.reactContext ?: throw CodedException("no_context")
 
             val workData = Data.Builder()
                 .putLong(SmsImportWorker.KEY_FROM_MS, fromMs.toLong())
                 .putLong(SmsImportWorker.KEY_TO_MS, toMs.toLong())
+                .putString(SmsImportWorker.KEY_FILTER, filter)
                 .build()
 
             val request = OneTimeWorkRequestBuilder<SmsImportWorker>()

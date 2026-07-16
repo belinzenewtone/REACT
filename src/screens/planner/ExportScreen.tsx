@@ -250,7 +250,7 @@ export function ExportScreen() {
       startDate: start,
       endDate: end,
     });
-    const header = ['date', 'merchant', 'category', 'amount', 'type', 'status', 'description', 'mpesa_code'].join(',');
+    const header = ['date', 'merchant', 'category', 'amount', 'type', 'status', 'description', 'mpesa_code', 'institution_id'].join(',');
     const lines = rows.map((r) =>
       [
         r.date,
@@ -261,6 +261,7 @@ export function ExportScreen() {
         r.status,
         r.description ? `"${r.description.replace(/"/g, '""')}"` : '',
         r.mpesa_code || '',
+        r.institution_id || 'mpesa',
       ].join(',')
     );
     return { content: [header, ...lines].join('\n'), count: lines.length };

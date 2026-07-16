@@ -37,14 +37,17 @@ class SmsImportWorker(
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
         val fromMs = inputData.getLong(KEY_FROM_MS, 0L)
         val toMs   = inputData.getLong(KEY_TO_MS,   System.currentTimeMillis())
+        val filter = inputData.getString(KEY_FILTER) ?: "all"
+        val includeMpesa = filter != "banks_only"
+        val includeBanks = filter != "mpesa_only"
 
         if (fromMs >= toMs) return@withContext Result.failure(
             Data.Builder().putString("error", "invalid_date_range").build()
         )
 
         val db = DbWriter.getInstance(applicationContext)
-        var scanned = 0     // all rows examined
-            var total = 0       // M-Pesa candidate bodies (matches reference semantics)
+        var scanned = 0
+            var total = 0
             var imported = 0; var duplicates = 0; var quarantined = 0; var failed = 0
 
         // Try to promote to a foreground service so long imports survive OS
@@ -52,7 +55,7 @@ class SmsImportWorker(
         // restrictions, missing FGS type) this throws — the import must still
         // run as a regular worker instead of rejecting the whole call.
         try {
-            setForeground(buildForegroundInfo("Scanning M-Pesa messages…"))
+            setForeground(buildForegroundInfo("Scanning financial messages…"))
         } catch (e: Exception) {
             Log.w(TAG, "setForeground unavailable, continuing as background worker: ${e.message}")
         }
@@ -70,7 +73,7 @@ class SmsImportWorker(
                 )
             }
 
-            data class SmsCandidate(val body: String, val receivedAtMs: Long)
+            data class SmsCandidate(val body: String, val sender: String, val receivedAtMs: Long)
             val candidates = mutableListOf<SmsCandidate>()
             val seenBodyHashes = mutableSetOf<String>()
             val dedupeCtx = SmsDedupeEngine.Context()
@@ -82,14 +85,10 @@ class SmsImportWorker(
                 dedupeCtx.seenSemanticHashes,
             )
 
-            // Phase 1: use the same query the reference Kotlin app uses —
-            // address LIKE "%MPESA%" plus a date lower bound ONLY. The reference
-            // does not use an upper bound; adding one can exclude valid messages
-            // if the device's SMS clock differs from System.currentTimeMillis().
-            val selection = "address LIKE ? AND date >= ?"
-            val selArgs = arrayOf("%MPESA%", fromMs.coerceAtLeast(0L).toString())
+            val selection = "date >= ?"
+            val selArgs = arrayOf(fromMs.coerceAtLeast(0L).toString())
 
-            val phase1Cursor = applicationContext.contentResolver.query(
+            val smsCursor = applicationContext.contentResolver.query(
                 "content://sms/inbox".toUri(),
                 arrayOf("_id", "body", "date", "address"),
                 selection,
@@ -97,69 +96,30 @@ class SmsImportWorker(
                 "date DESC",
             )
 
-            if (phase1Cursor == null) {
-                Log.w(TAG, "SMS content resolver returned null for address-filtered query (permission likely denied silently)")
+            if (smsCursor == null) {
+                Log.w(TAG, "SMS content resolver returned null (permission likely denied silently)")
             } else {
-                phase1Cursor.use { cursor ->
+                smsCursor.use { cursor ->
                     val bodyIdx = cursor.getColumnIndexOrThrow("body")
                     val dateIdx = cursor.getColumnIndexOrThrow("date")
+                    val addressIdx = cursor.getColumnIndex("address")
                     while (cursor.moveToNext()) {
                         val body = cursor.getString(bodyIdx) ?: continue
+                        val address = if (addressIdx >= 0) cursor.getString(addressIdx) ?: "" else ""
                         val receivedAtMs = cursor.getLong(dateIdx)
                         scanned++
 
-                        if (!SmsParser.isMpesaSms(body)) continue
+                        val detection = InstitutionDetector.detect(address, body) ?: continue
+                        if (detection.institutionId == "mpesa" && !includeMpesa) continue
+                        if (detection.institutionId != "mpesa" && !includeBanks) continue
 
-                        // Fast within-batch source-hash check before expensive parse.
-                        // Use a separate set from the dedupe engine context; the engine
-                        // must only see hashes of transactions that were actually inserted.
                         val preHash = SmsParser.sha256(SmsParser.normalizeForHash(body))
                         if (preHash in seenBodyHashes) {
                             duplicates++; continue
                         }
                         seenBodyHashes.add(preHash)
-                        candidates.add(SmsCandidate(body, receivedAtMs))
+                        candidates.add(SmsCandidate(body, address, receivedAtMs))
                         total++
-                    }
-                }
-            }
-
-            // Phase 2 fallback: if the address-filtered scan found no M-Pesa bodies,
-            // some devices/OEMs store M-Pesa under a short code or capitalisation that
-            // doesn't match the address filter. Scan the whole inbox by body signal,
-            // but pre-filter by known M-Pesa sender address patterns first so I/O
-            // scales with M-Pesa senders rather than total inbox size.
-            if (total == 0) {
-                Log.d(TAG, "Address-filtered SMS scan found 0 M-Pesa bodies; falling back to body-signal scan")
-                val phase2Cursor = applicationContext.contentResolver.query(
-                    "content://sms/inbox".toUri(),
-                    arrayOf("_id", "body", "date", "address"),
-                    "(address LIKE ? OR address LIKE ? OR address LIKE ?) AND date >= ?",
-                    arrayOf("%254%", "%MPESA%", "%M-PESA%", fromMs.coerceAtLeast(0L).toString()),
-                    "date DESC",
-                )
-
-                if (phase2Cursor == null) {
-                    Log.w(TAG, "SMS content resolver returned null for body-signal fallback query")
-                } else {
-                    phase2Cursor.use { cursor ->
-                        val bodyIdx = cursor.getColumnIndexOrThrow("body")
-                        val dateIdx = cursor.getColumnIndexOrThrow("date")
-                        while (cursor.moveToNext()) {
-                            val body = cursor.getString(bodyIdx) ?: continue
-                            val receivedAtMs = cursor.getLong(dateIdx)
-                            scanned++
-
-                            if (!SmsParser.isMpesaSms(body)) continue
-
-                            val preHash = SmsParser.sha256(SmsParser.normalizeForHash(body))
-                            if (preHash in seenBodyHashes) {
-                                duplicates++; continue
-                            }
-                            seenBodyHashes.add(preHash)
-                            candidates.add(SmsCandidate(body, receivedAtMs))
-                            total++
-                        }
                     }
                 }
             }
@@ -188,7 +148,7 @@ class SmsImportWorker(
             for (chunk in candidates.chunked(CHUNK_SIZE)) {
                 val parsed = chunk.map { candidate ->
                     async(Dispatchers.Default) {
-                        candidate to SmsParser.parse(candidate.body, candidate.receivedAtMs)
+                        candidate to ParserPipeline.process(candidate.body, candidate.sender, candidate.receivedAtMs)
                     }
                 }.awaitAll()
 
@@ -282,7 +242,7 @@ class SmsImportWorker(
 
                 // Update progress notification after each chunk (best effort)
                 try {
-                    setForeground(buildForegroundInfo("Imported $imported of ~$total M-Pesa messages…"))
+                    setForeground(buildForegroundInfo("Imported $imported of ~$total financial messages…"))
                 } catch (_: Exception) {}
             }
 
@@ -318,7 +278,7 @@ class SmsImportWorker(
         }
     }
 
-    override suspend fun getForegroundInfo() = buildForegroundInfo("Importing M-Pesa history…")
+    override suspend fun getForegroundInfo() = buildForegroundInfo("Importing financial history…")
 
     private fun buildForegroundInfo(text: String): ForegroundInfo {
         ensureNotificationChannel()
@@ -359,6 +319,7 @@ class SmsImportWorker(
     companion object {
         const val KEY_FROM_MS  = "from_ms"
         const val KEY_TO_MS    = "to_ms"
+        const val KEY_FILTER   = "institution_filter"
         const val NOTIF_ID_IMPORT = 9002
         const val TAG = "LifeOS/SmsImportWorker"
 

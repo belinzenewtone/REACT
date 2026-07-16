@@ -36,9 +36,8 @@ class SmsReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action != Telephony.Sms.Intents.SMS_RECEIVED_ACTION) return
 
-        val fullMessage = buildFullMessage(intent) ?: return
-        // Pre-filter — avoid queue/WorkManager overhead for non-M-Pesa SMS.
-        if (!SmsParser.isMpesaSms(fullMessage)) return
+        val (fullMessage, sender) = buildFullMessageAndSender(intent) ?: return
+        if (!InstitutionDetector.isFinancialSms(sender, fullMessage)) return
 
         // Respect the user's background receiver toggle
         if (!isBackgroundReceiverEnabled(context)) {
@@ -50,21 +49,18 @@ class SmsReceiver : BroadcastReceiver() {
         val pendingResult = goAsync()
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                processRealtimeSms(context, fullMessage)
+                processRealtimeSms(context, fullMessage, sender)
             } finally {
                 pendingResult.finish()
             }
         }
     }
 
-    private suspend fun processRealtimeSms(context: Context, fullMessage: String) {
+    private suspend fun processRealtimeSms(context: Context, fullMessage: String, sender: String) {
         val db = DbWriter.getInstance(context)
 
-        // DURABILITY: persist the raw body BEFORE any parsing/worker scheduling.
-        // If the process dies at any later point, the periodic sweep worker
-        // re-drains this row — no message can be lost between receive & insert.
         val queueId = try {
-            db.enqueueIngest(fullMessage)
+            db.enqueueIngest(fullMessage, sender)
         } catch (e: Exception) {
             Log.w(TAG, "enqueueIngest failed (processing continues in-flight): ${e.message}")
             -1L
@@ -74,14 +70,9 @@ class SmsReceiver : BroadcastReceiver() {
         IngestSweepWorker.ensureScheduled(context)
 
         if (queueId >= 0) {
-            // Key by queue row id so realtime and sweep workers are idempotent
-            // and race-free (the worker atomically claims the row).
-            enqueueProcessWorker(context, queueId)
+            enqueueProcessWorker(context, queueId, sender = sender)
         } else {
-            // Queue write failed — best-effort in-flight processing.
-            // This should be extremely rare; if it happens repeatedly the user
-            // will see import failures in Import Health.
-            enqueueProcessWorker(context, -1L, fullMessage)
+            enqueueProcessWorker(context, -1L, fullMessage, sender)
         }
 
         // Record the last time this receiver fired so the UI can show accurate status
@@ -93,10 +84,11 @@ class SmsReceiver : BroadcastReceiver() {
         Log.d(TAG, "Enqueued realtime worker for queue row: $queueId")
     }
 
-    private fun enqueueProcessWorker(context: Context, queueId: Long, body: String? = null) {
+    private fun enqueueProcessWorker(context: Context, queueId: Long, body: String? = null, sender: String = "") {
         val workData = Data.Builder()
             .putLong(SmsProcessWorker.KEY_QUEUE_ID, queueId)
             .putString(SmsProcessWorker.KEY_ORIGIN, SmsProcessWorker.ORIGIN_REALTIME)
+            .putString(SmsProcessWorker.KEY_SMS_SENDER, sender)
             .apply { body?.let { putString(SmsProcessWorker.KEY_SMS_BODY, it) } }
             .build()
 
@@ -117,12 +109,12 @@ class SmsReceiver : BroadcastReceiver() {
         )
     }
 
-    private fun buildFullMessage(intent: Intent): String? {
+    private fun buildFullMessageAndSender(intent: Intent): Pair<String, String>? {
         return try {
-            Telephony.Sms.Intents.getMessagesFromIntent(intent)
-                ?.mapNotNull { it?.messageBody }
-                ?.joinToString("")
-                ?.takeIf { it.isNotBlank() }
+            val messages = Telephony.Sms.Intents.getMessagesFromIntent(intent) ?: return null
+            val body = messages.mapNotNull { it?.messageBody }.joinToString("").takeIf { it.isNotBlank() } ?: return null
+            val sender = messages.firstNotNullOfOrNull { it?.originatingAddress }?.trim() ?: ""
+            body to sender
         } catch (e: Exception) {
             Log.e(TAG, "Failed to extract SMS PDU: ${e.message}")
             null

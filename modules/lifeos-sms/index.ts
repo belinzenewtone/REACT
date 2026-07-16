@@ -135,11 +135,28 @@ export async function checkPermissions(): Promise<{ receive: boolean; read: bool
  * Runs as a foreground WorkManager job — survives app kill.
  * Returns stats when complete (blocks until done, up to 5 min).
  */
-export async function importHistoricalSms(fromMs: number, toMs: number): Promise<SmsImportResult> {
-  // Throws (module_unavailable / sms_permission_denied / worker errors) rather
-  // than masking failures as `total: 0`, so the UI can distinguish "genuinely
-  // no messages" from "the pipeline never ran".
-  const result = await requireModule().importHistoricalSms(fromMs, toMs);
+export type InstitutionFilter = 'mpesa_only' | 'banks_only' | 'all';
+
+export interface DetectedInstitution {
+  institutionId: string;
+  count: number;
+}
+
+export async function detectInstitutions(
+  fromMs: number,
+  toMs: number,
+  filter: InstitutionFilter = 'all',
+): Promise<DetectedInstitution[]> {
+  const result = await requireModule().detectInstitutions(fromMs, toMs, filter);
+  return (result ?? []) as DetectedInstitution[];
+}
+
+export async function importHistoricalSms(
+  fromMs: number,
+  toMs: number,
+  filter: InstitutionFilter = 'all',
+): Promise<SmsImportResult> {
+  const result = await requireModule().importHistoricalSms(fromMs, toMs, filter);
   if (!result) throw new Error('import_returned_no_result');
   return result as SmsImportResult;
 }

@@ -129,7 +129,8 @@ export function TransactionDetailScreen() {
         <Card.Content>
           <DetailRow label="Date" value={formatDateTime(transaction.date)} />
           <DetailRow label="Status" value={transaction.status} />
-          {transaction.mpesa_code ? <DetailRow label="MPESA Code" value={transaction.mpesa_code} /> : null}
+          {transaction.mpesa_code ? <DetailRow label="M-Pesa Code" value={transaction.mpesa_code} /> : null}
+          {!transaction.mpesa_code && transaction.external_ref ? <DetailRow label="Reference" value={transaction.external_ref} /> : null}
           {transaction.description ? <DetailRow label="Description" value={transaction.description} /> : null}
           {transaction.notes ? <DetailRow label="Notes" value={transaction.notes} /> : null}
           {transaction.balance_after !== null && transaction.balance_after !== undefined ? (

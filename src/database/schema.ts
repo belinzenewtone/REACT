@@ -32,7 +32,11 @@ CREATE TABLE IF NOT EXISTS transactions (
   user_id TEXT,
   inferred_category INTEGER NOT NULL DEFAULT 0,
   inference_source TEXT,
-  semantic_hash TEXT
+  semantic_hash TEXT,
+  institution_id TEXT DEFAULT 'mpesa',
+  external_ref TEXT,
+  currency TEXT DEFAULT 'KES',
+  raw_sender TEXT DEFAULT ''
 );
 
 CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(date);
@@ -43,6 +47,9 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_transactions_mpesa_code_unique ON transact
 CREATE INDEX IF NOT EXISTS idx_transactions_source_hash ON transactions(source_hash);
 CREATE INDEX IF NOT EXISTS idx_transactions_semantic_hash ON transactions(semantic_hash);
 CREATE INDEX IF NOT EXISTS idx_transactions_deleted_at ON transactions(deleted_at);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_tx_inst_extref ON transactions(institution_id, external_ref) WHERE external_ref IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_tx_inst_date ON transactions(institution_id, date);
+CREATE INDEX IF NOT EXISTS idx_tx_inst_cat ON transactions(institution_id, category);
 
 CREATE TABLE IF NOT EXISTS tasks (
   id TEXT PRIMARY KEY NOT NULL,
@@ -304,7 +311,8 @@ CREATE TABLE IF NOT EXISTS sms_ingest_queue (
   last_error    TEXT,
   received_at   TEXT NOT NULL DEFAULT (datetime('now')),
   next_retry_at TEXT NOT NULL DEFAULT (datetime('now')),
-  claimed_at    TEXT
+  claimed_at    TEXT,
+  sender_address TEXT DEFAULT ''
 );
 
 CREATE INDEX IF NOT EXISTS idx_ingest_pending ON sms_ingest_queue (status, next_retry_at);

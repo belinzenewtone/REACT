@@ -21,6 +21,10 @@ export interface TransactionRecord extends SyncableRecord {
   inferred_category: number;
   inference_source: string | null;
   semantic_hash: string | null;
+  institution_id: string | null;
+  external_ref: string | null;
+  currency: string | null;
+  raw_sender: string | null;
 }
 
 export class TransactionRepository extends BaseRepository<TransactionRecord> {
