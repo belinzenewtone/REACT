@@ -31,8 +31,9 @@ object InstitutionDetector {
         ),
         Institution(
             // Equity Bank + Equity Mobile (formerly EazzyBanking, migrated 2024).
+            // Real sender seen in wild: "EquityBank" → uppercased "EQUITYBANK".
             id           = "equity",
-            senderIds    = setOf("EQUITYBNK", "EQUITY", "EQUITYBK", "EAZZYBK"),
+            senderIds    = setOf("EQUITYBNK", "EQUITY", "EQUITYBANK", "EQUITYBK", "EAZZYBK"),
             bodyKeywords = listOf("Equity Bank", "EquityBank", "Equity Mobile", "EazzyBanking"),
         ),
         Institution(
@@ -44,8 +45,10 @@ object InstitutionDetector {
         Institution(
             // NCBA + Loop (NCBA's digital banking subsidiary).
             // Confirmed sender IDs: "NCBALOOP" and "NCBA_LOOP" (source: loop.co.ke/company FAQ).
+            // Real sender seen in wild: "NCBA_BANK" — Loop migrated transaction SMS
+            // to this sender from August 2025 per in-app notification.
             id           = "ncba",
-            senderIds    = setOf("NCBA", "NCBABANK", "LOOP", "NCBALOOP", "NCBA_LOOP"),
+            senderIds    = setOf("NCBA", "NCBABANK", "NCBA_BANK", "LOOP", "NCBALOOP", "NCBA_LOOP"),
             bodyKeywords = listOf("NCBA Bank", "NCBABank", "Loop by NCBA", "NCBA Loop", "LOOP Bank"),
         ),
         Institution(
