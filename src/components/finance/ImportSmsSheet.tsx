@@ -26,15 +26,21 @@ const INSTITUTION_DISPLAY: Record<string, string> = {
   kcb: 'KCB Bank',
   equity: 'Equity Bank',
   coopbank: 'Co-op Bank',
-  ncba: 'NCBA Bank',
+  ncba: 'NCBA / Loop',
   absa: 'Absa Bank',
   stanchart: 'Standard Chartered',
   dtb: 'DTB Bank',
   family: 'Family Bank',
   im: 'I&M Bank',
   stanbic: 'Stanbic Bank',
+  pesalink: 'PesaLink',
   airtel: 'Airtel Money',
   tkash: 'T-Kash',
+  sbm: 'SBM Bank',
+  hfgroup: 'HF Group',
+  gulf: 'Gulf African Bank',
+  boa: 'Bank of Africa',
+  primebank: 'Prime Bank',
 };
 
 function institutionLabel(id: string): string {

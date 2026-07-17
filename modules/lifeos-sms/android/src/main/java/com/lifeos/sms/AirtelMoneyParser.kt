@@ -40,6 +40,8 @@ internal object AirtelMoneyParser : FinancialSmsParser {
     private val DEBIT_RE   = Regex("""(?i)\b(?:sent|paid|payment|withdraw[an]l?)\b""")
     private val WITHDRAW_RE= Regex("""(?i)\b(?:withdraw[an]l?|cash\s*out|atm)\b""")
     private val PAYBILL_RE = Regex("""(?i)\b(?:paid\s+to|merchant|paybill|buy\s+goods)\b""")
+    // Airtime: "bought KES X of airtime", "sent KES X for airtime", "airtime purchase", "airtime for 07XX"
+    private val AIRTIME_RE = Regex("""(?i)\b(?:airtime|data\s+bundle)\b""")
 
     override fun canParse(body: String, sender: String): Boolean {
         val sUp = sender.trim().uppercase()
@@ -69,10 +71,12 @@ internal object AirtelMoneyParser : FinancialSmsParser {
         val isDebit    = DEBIT_RE.containsMatchIn(body)
         val isWithdraw = WITHDRAW_RE.containsMatchIn(body)
         val isPaybill  = PAYBILL_RE.containsMatchIn(body)
+        val isAirtime  = AIRTIME_RE.containsMatchIn(body)
 
         val category = when {
             isCredit && !isDebit -> SmsParserConfig.SmsCategory.RECEIVED
             isWithdraw           -> SmsParserConfig.SmsCategory.WITHDRAW
+            isAirtime            -> SmsParserConfig.SmsCategory.AIRTIME
             isPaybill            -> SmsParserConfig.SmsCategory.PAYBILL
             isDebit              -> SmsParserConfig.SmsCategory.SENT
             else                 -> SmsParserConfig.SmsCategory.UNKNOWN
@@ -139,6 +143,7 @@ internal object AirtelMoneyParser : FinancialSmsParser {
             SmsParserConfig.SmsCategory.RECEIVED -> "Airtel Money Received $amtStr$party"
             SmsParserConfig.SmsCategory.SENT     -> "Airtel Money Sent $amtStr$party"
             SmsParserConfig.SmsCategory.WITHDRAW -> "Airtel Money Withdrawal $amtStr"
+            SmsParserConfig.SmsCategory.AIRTIME  -> "Airtel Airtime $amtStr"
             SmsParserConfig.SmsCategory.PAYBILL  -> "Airtel Money Payment $amtStr$party"
             else                                 -> "Airtel Money $amtStr"
         }

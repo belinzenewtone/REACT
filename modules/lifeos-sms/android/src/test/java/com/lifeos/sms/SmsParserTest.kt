@@ -735,4 +735,58 @@ class SmsParserTest {
         assertEquals(SmsParserConfig.SmsCategory.RECEIVED, tx.category)
         assertEquals(3, tx.matchedRulePhase)
     }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // Airtel Money airtime
+    // ═══════════════════════════════════════════════════════════════════════
+
+    private fun parseAirtelSuccess(sms: String, sender: String = "AIRTEL"): SmsParser.ParsedTransaction {
+        val result = AirtelMoneyParser.parse(sms, sender, 1_700_000_000_000L)
+        assertIs<SmsParser.SmsParseResult.Success>(result)
+        return result.transaction
+    }
+
+    @Test
+    fun `Airtel airtime purchase classified as AIRTIME`() {
+        val tx = parseAirtelSuccess(
+            "Airtel Money: You have bought KES 50.00 of airtime on 15/07/2026 at 10:00 AM. Your new balance is KES 950.00. Transaction ID: AIR123456789."
+        )
+        assertEquals(SmsParserConfig.SmsCategory.AIRTIME, tx.category)
+        assertEquals(50.0, tx.amount)
+        assertEquals("airtel", tx.institutionId)
+    }
+
+    @Test
+    fun `Airtel airtime for another number classified as AIRTIME`() {
+        val tx = parseAirtelSuccess(
+            "Airtel Money: KES 100.00 airtime for 0712345678 sent on 15/07/2026 at 11:30 AM. Your new balance is KES 400.00. Transaction ID: AIR987654321."
+        )
+        assertEquals(SmsParserConfig.SmsCategory.AIRTIME, tx.category)
+        assertEquals(100.0, tx.amount)
+    }
+
+    @Test
+    fun `Airtel data bundle classified as AIRTIME`() {
+        val tx = parseAirtelSuccess(
+            "Airtel Money: You have bought a data bundle of KES 200.00 on 15/07/2026 at 9:00 AM. Your new balance is KES 800.00. Transaction ID: AIR112233445."
+        )
+        assertEquals(SmsParserConfig.SmsCategory.AIRTIME, tx.category)
+        assertEquals(200.0, tx.amount)
+    }
+
+    @Test
+    fun `Airtel airtime description is correct`() {
+        val tx = parseAirtelSuccess(
+            "Airtel Money: You have bought KES 50.00 of airtime on 15/07/2026 at 10:00 AM. Your new balance is KES 950.00. Transaction ID: AIR123456789."
+        )
+        assertEquals("Airtel Airtime KES 50.00", tx.description)
+    }
+
+    @Test
+    fun `Airtel regular send is still classified as SENT not AIRTIME`() {
+        val tx = parseAirtelSuccess(
+            "Airtel Money: You sent KES 500.00 to JANE DOE (0723456789) on 15/07/2026 at 2:00 PM. Your new balance is KES 1,500.00. Transaction ID: AIR556677889. Charges: KES 10.00."
+        )
+        assertEquals(SmsParserConfig.SmsCategory.SENT, tx.category)
+    }
 }
