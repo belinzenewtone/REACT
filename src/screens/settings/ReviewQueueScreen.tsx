@@ -37,7 +37,7 @@ function isPending(outcome: string): boolean {
   return false;
 }
 
-function OutcomeChip({ outcome }: { outcome: string }) {
+const OutcomeChip = React.memo(function OutcomeChip({ outcome }: { outcome: string }) {
   const theme = useTheme();
   let label = outcome;
   let color = theme.colors.onSurfaceVariant;
@@ -47,9 +47,9 @@ function OutcomeChip({ outcome }: { outcome: string }) {
   else if (outcome.includes('batch') || outcome.includes('pending')) { label = 'Pending'; color = theme.colors.primary; }
 
   return <Chip style={{ backgroundColor: `${color}20` }} textStyle={{ color }}>{label}</Chip>;
-}
+});
 
-function EntryCard({
+const EntryCard = React.memo(function EntryCard({
   entry,
   isProcessing,
   onRecover,
@@ -57,9 +57,11 @@ function EntryCard({
 }: {
   entry: AuditEntry;
   isProcessing: boolean;
-  onRecover: () => void;
-  onDismiss: () => void;
+  onRecover: (entry: AuditEntry) => void;
+  onDismiss: (entry: AuditEntry) => void;
 }) {
+  const handleRecover = useCallback(() => onRecover(entry), [onRecover, entry]);
+  const handleDismiss = useCallback(() => onDismiss(entry), [onDismiss, entry]);
   const theme = useTheme();
   const isReview = entry.outcome.includes('review');
   return (
@@ -99,7 +101,7 @@ function EntryCard({
       <View style={styles.entryActions}>
         <Button
           mode="contained"
-          onPress={onRecover}
+          onPress={handleRecover}
           disabled={isProcessing}
           loading={isProcessing}
           style={{ flex: 1 }}
@@ -108,7 +110,7 @@ function EntryCard({
         </Button>
         <Button
           mode="outlined"
-          onPress={onDismiss}
+          onPress={handleDismiss}
           disabled={isProcessing}
           textColor={theme.colors.error}
           style={{ flex: 1 }}
@@ -118,7 +120,9 @@ function EntryCard({
       </View>
     </GlassCard>
   );
-}
+});
+
+const ItemSeparator = () => <View style={{ height: spacing.sm }} />;
 
 export function ReviewQueueScreen() {
   const theme = useTheme();
@@ -189,7 +193,7 @@ export function ReviewQueueScreen() {
         const result = await retrySingle(entry.id);
         if (result.ok || result.note?.startsWith('already_exists')) {
           setEntries((prev) => prev.filter((e) => e.id !== entry.id));
-          useDataVersion.getState().bump();
+          useDataVersion.getState().bumpTransactions();
           setMessage({ text: result.note?.startsWith('already_exists') ? 'Already in ledger — marked complete.' : 'Transaction recovered.', ok: true });
         } else {
           setMessage({ text: `Could not recover: ${result.error ?? 'still quarantined'}`, ok: false });
@@ -197,7 +201,7 @@ export function ReviewQueueScreen() {
       } else if (entry.outcome.includes('review')) {
         await approveReviewEntry(entry);
         setEntries((prev) => prev.filter((e) => e.id !== entry.id));
-        useDataVersion.getState().bump();
+        useDataVersion.getState().bumpTransactions();
         setMessage({ text: 'Transaction approved — already in your ledger.', ok: true });
       } else {
         await dismissEntry(entry);
@@ -216,7 +220,7 @@ export function ReviewQueueScreen() {
     try {
       await dismissEntry(entry);
       setEntries((prev) => prev.filter((e) => e.id !== entry.id));
-      useDataVersion.getState().bump();
+      useDataVersion.getState().bumpTransactions();
       setMessage({ text: 'Dismissed.', ok: true });
     } catch (e: any) {
       setMessage({ text: e?.message ?? 'Dismiss failed.', ok: false });
@@ -246,7 +250,7 @@ export function ReviewQueueScreen() {
                 recovered++;
               }
             }
-            useDataVersion.getState().bump();
+            useDataVersion.getState().bumpTransactions();
             await load();
             setMessage({ text: `${recovered} entries approved/recovered`, ok: true });
           } catch (e: any) {
@@ -272,7 +276,7 @@ export function ReviewQueueScreen() {
               await dismissEntry(entry);
             }
             setEntries([]);
-            useDataVersion.getState().bump();
+            useDataVersion.getState().bumpTransactions();
             setMessage({ text: 'All entries dismissed.', ok: true });
           } catch (e: any) {
             setMessage({ text: e?.message ?? 'Bulk dismiss failed.', ok: false });
@@ -283,6 +287,15 @@ export function ReviewQueueScreen() {
       },
     ]);
   };
+
+  const renderEntryItem = useCallback(({ item }: { item: AuditEntry }) => (
+    <EntryCard
+      entry={item}
+      isProcessing={processingId === item.id}
+      onRecover={handleRecover}
+      onDismiss={handleDismiss}
+    />
+  ), [processingId, handleRecover, handleDismiss]);
 
   const isAnyProcessing = processingId !== null || bulkProcessing;
 
@@ -350,15 +363,9 @@ export function ReviewQueueScreen() {
               </GlassCard>
             </>
           }
-          renderItem={({ item }) => (
-            <EntryCard
-              entry={item}
-              isProcessing={processingId === item.id}
-              onRecover={() => handleRecover(item)}
-              onDismiss={() => handleDismiss(item)}
-            />
-          )}
-          ItemSeparatorComponent={() => <View style={{ height: spacing.sm }} />}
+          renderItem={renderEntryItem}
+          estimatedItemSize={160}
+          ItemSeparatorComponent={ItemSeparator}
         />
       )}
     </SafeAreaView>

@@ -231,10 +231,14 @@ export const useCalendarStore = create<CalendarState>((set, get) => {
           }
         }
 
-        const selectedTasks = await taskRepo.findAll({
-          dueBefore: selectedEnd.toISOString(),
-          dueAfter: selectedStart.toISOString(),
-          limit: 100,
+        // Filter selected-day tasks from the already-fetched monthTasks
+        // instead of issuing a separate DB query.
+        const selectedStartMs = selectedStart.getTime();
+        const selectedEndMs = selectedEnd.getTime();
+        const selectedTasks = monthTasks.filter((t) => {
+          if (!t.deadline) return false;
+          const deadlineMs = new Date(t.deadline).getTime();
+          return deadlineMs >= selectedStartMs && deadlineMs < selectedEndMs;
         });
 
         const dayItems: DayEvent[] = [
@@ -249,13 +253,8 @@ export const useCalendarStore = create<CalendarState>((set, get) => {
           })),
         ].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
-        // Snapshot lists for other screens that read the store.
-        const [allTasks, allEvents] = await Promise.all([
-          taskRepo.findAll({ limit: 500 }),
-          eventRepo.findAll(),
-        ]);
-
-        set({ eventsByDate, dayItems, allTasks, allEvents, isLoading: false });
+        // Reuse already-fetched data for snapshot lists consumed by other screens.
+        set({ eventsByDate, dayItems, allTasks: monthTasks, allEvents: allEventsForWindow, isLoading: false });
       } catch (error) {
         console.error('Failed to load calendar:', error);
         set({ isLoading: false });

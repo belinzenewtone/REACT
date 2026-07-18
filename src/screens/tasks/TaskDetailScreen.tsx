@@ -40,7 +40,7 @@ export function TaskDetailScreen() {
     await syncTaskReminders(db, taskId);
     const updated = await repo.findById(taskId);
     setTask(updated);
-    useDataVersion.getState().bump();
+    useDataVersion.getState().bumpPlanner();
     await loadCalendar(db);
     haptic(updated?.status === 'completed' ? 'success' : 'light');
   };
@@ -55,7 +55,7 @@ export function TaskDetailScreen() {
           const repo = new TaskRepository(db);
           await repo.softDelete(taskId);
           await cancelTaskReminders(taskId);
-          useDataVersion.getState().bump();
+          useDataVersion.getState().bumpPlanner();
           await loadCalendar(db);
           haptic('warning');
           navigation.goBack();

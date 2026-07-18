@@ -4,8 +4,11 @@ object MpesaParser : FinancialSmsParser {
     override val institutionId = "mpesa"
     override val senderIds = setOf("MPESA", "M-PESA", "M_PESA")
 
-    override fun canParse(body: String, sender: String): Boolean =
-        SmsParser.isMpesaSms(body) || senderIds.any { sender.uppercase().contains(it) }
+    override fun canParse(body: String, sender: String): Boolean {
+        if (SmsParser.isMpesaSms(body)) return true
+        val sUp = sender.uppercase()
+        return senderIds.any { sUp.contains(it) }
+    }
 
     override fun parse(body: String, sender: String, receivedAtMs: Long): SmsParser.SmsParseResult {
         val result = SmsParser.parse(body, receivedAtMs)

@@ -79,7 +79,7 @@ export function FloatingTabBar({ state, descriptors, navigation }: BottomTabBarP
   );
 }
 
-function TabButton({
+const TabButton = React.memo(function TabButton({
   isFocused,
   label,
   icons,
@@ -150,7 +150,7 @@ function TabButton({
       </View>
     </Pressable>
   );
-}
+});
 
 const styles = StyleSheet.create({
   container: {

@@ -22,7 +22,7 @@ interface TransactionListItemProps {
   onPress?: (id: string) => void;
 }
 
-export function TransactionListItem({ item, onPress }: TransactionListItemProps) {
+export const TransactionListItem = React.memo(function TransactionListItem({ item, onPress }: TransactionListItemProps) {
   const theme = useTheme();
 
   const categoryColor = CATEGORY_COLORS[item.category] ?? theme.colors.onSurfaceVariant;
@@ -82,7 +82,7 @@ export function TransactionListItem({ item, onPress }: TransactionListItemProps)
       </View>
     </TouchableRipple>
   );
-}
+});
 
 function StatusBadge({ status }: { status: TransactionListItemData['status'] }) {
   const theme = useTheme();

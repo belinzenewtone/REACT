@@ -1,6 +1,6 @@
 package com.lifeos.sms
 
-import java.security.MessageDigest
+
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.ZoneId
@@ -21,7 +21,7 @@ import java.util.Locale
  *
  * Thread-safety: all operations are purely in-memory regex. No I/O.
  */
-internal object SmsParser {
+object SmsParser {
 
     // ── Public types ──────────────────────────────────────────────────────────
 
@@ -122,51 +122,105 @@ internal object SmsParser {
     }
 
     // ── Date formatting ───────────────────────────────────────────────────────
+    // Formatters are pre-bucketed by separator/structure so parseDateMatch only
+    // tries the 4-6 candidates that match the observed date string shape, down
+    // from trying all 36 blindly on every SMS.
 
-    private val DATE_TIME_FORMATTERS = listOf(
-        // Numeric day/month/year
+    private enum class DateShape { SLASH, DASH_NUMERIC, DASH_MONTHNAME, ISO, SPACE_MONTHNAME_COMMA, SPACE_MONTHNAME }
+
+    private fun dateShape(datePart: String): DateShape {
+        val hasLetters = datePart.any { it.isLetter() }
+        return when {
+            '/' in datePart -> DateShape.SLASH
+            datePart.length >= 5 && datePart[4] == '-' && !hasLetters -> DateShape.ISO
+            '-' in datePart && hasLetters -> DateShape.DASH_MONTHNAME
+            '-' in datePart -> DateShape.DASH_NUMERIC
+            hasLetters && ',' in datePart -> DateShape.SPACE_MONTHNAME_COMMA
+            hasLetters -> DateShape.SPACE_MONTHNAME
+            else -> DateShape.SLASH  // safe fallback
+        }
+    }
+
+    private val DT_SLASH = listOf(
         DateTimeFormatter.ofPattern("d/M/yy h:mm a", Locale.ENGLISH),
         DateTimeFormatter.ofPattern("d/M/yyyy h:mm a", Locale.ENGLISH),
         DateTimeFormatter.ofPattern("d/M/yy hh:mm a", Locale.ENGLISH),
         DateTimeFormatter.ofPattern("d/M/yyyy hh:mm a", Locale.ENGLISH),
+        DateTimeFormatter.ofPattern("d/M/yy HH:mm:ss", Locale.ENGLISH),
+        DateTimeFormatter.ofPattern("d/M/yyyy HH:mm:ss", Locale.ENGLISH),
+    )
+    private val DT_DASH_NUMERIC = listOf(
         DateTimeFormatter.ofPattern("d-M-yy h:mm a", Locale.ENGLISH),
         DateTimeFormatter.ofPattern("d-M-yyyy h:mm a", Locale.ENGLISH),
         DateTimeFormatter.ofPattern("d-M-yy hh:mm a", Locale.ENGLISH),
         DateTimeFormatter.ofPattern("d-M-yyyy hh:mm a", Locale.ENGLISH),
-        DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm", Locale.ENGLISH),
-        DateTimeFormatter.ofPattern("yyyy-MM-dd H:mm", Locale.ENGLISH),
-        // With seconds
-        DateTimeFormatter.ofPattern("d/M/yy HH:mm:ss", Locale.ENGLISH),
-        DateTimeFormatter.ofPattern("d/M/yyyy HH:mm:ss", Locale.ENGLISH),
         DateTimeFormatter.ofPattern("d-M-yy HH:mm:ss", Locale.ENGLISH),
         DateTimeFormatter.ofPattern("d-M-yyyy HH:mm:ss", Locale.ENGLISH),
-        // Month-name variants: "3-JUL-25", "Jul 3, 2025", "3 Jul 2025"
+    )
+    private val DT_ISO = listOf(
+        DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm", Locale.ENGLISH),
+        DateTimeFormatter.ofPattern("yyyy-MM-dd H:mm", Locale.ENGLISH),
+    )
+    private val DT_DASH_MONTHNAME = listOf(
         DateTimeFormatter.ofPattern("d-MMM-yy h:mm a", Locale.ENGLISH),
         DateTimeFormatter.ofPattern("d-MMM-yyyy h:mm a", Locale.ENGLISH),
         DateTimeFormatter.ofPattern("d-MMM-yy hh:mm a", Locale.ENGLISH),
         DateTimeFormatter.ofPattern("d-MMM-yyyy hh:mm a", Locale.ENGLISH),
+    )
+    private val DT_SPACE_MONTHNAME_COMMA = listOf(
         DateTimeFormatter.ofPattern("MMM d, yyyy h:mm a", Locale.ENGLISH),
         DateTimeFormatter.ofPattern("MMM d, yyyy hh:mm a", Locale.ENGLISH),
         DateTimeFormatter.ofPattern("MMM dd, yyyy h:mm a", Locale.ENGLISH),
         DateTimeFormatter.ofPattern("MMM dd, yyyy hh:mm a", Locale.ENGLISH),
+    )
+    private val DT_SPACE_MONTHNAME = listOf(
         DateTimeFormatter.ofPattern("d MMM yy h:mm a", Locale.ENGLISH),
         DateTimeFormatter.ofPattern("d MMM yyyy h:mm a", Locale.ENGLISH),
         DateTimeFormatter.ofPattern("d MMM yy hh:mm a", Locale.ENGLISH),
         DateTimeFormatter.ofPattern("d MMM yyyy hh:mm a", Locale.ENGLISH),
     )
-    private val DATE_ONLY_FORMATTERS = listOf(
+
+    private val DO_SLASH = listOf(
         DateTimeFormatter.ofPattern("d/M/yy", Locale.ENGLISH),
         DateTimeFormatter.ofPattern("d/M/yyyy", Locale.ENGLISH),
+    )
+    private val DO_DASH_NUMERIC = listOf(
         DateTimeFormatter.ofPattern("d-M-yy", Locale.ENGLISH),
         DateTimeFormatter.ofPattern("d-M-yyyy", Locale.ENGLISH),
+    )
+    private val DO_ISO = listOf(
         DateTimeFormatter.ofPattern("yyyy-MM-dd", Locale.ENGLISH),
+    )
+    private val DO_DASH_MONTHNAME = listOf(
         DateTimeFormatter.ofPattern("d-MMM-yy", Locale.ENGLISH),
         DateTimeFormatter.ofPattern("d-MMM-yyyy", Locale.ENGLISH),
+    )
+    private val DO_SPACE_MONTHNAME_COMMA = listOf(
         DateTimeFormatter.ofPattern("MMM d, yyyy", Locale.ENGLISH),
         DateTimeFormatter.ofPattern("MMM dd, yyyy", Locale.ENGLISH),
+    )
+    private val DO_SPACE_MONTHNAME = listOf(
         DateTimeFormatter.ofPattern("d MMM yy", Locale.ENGLISH),
         DateTimeFormatter.ofPattern("d MMM yyyy", Locale.ENGLISH),
     )
+
+    private fun dtFormatters(shape: DateShape) = when (shape) {
+        DateShape.SLASH -> DT_SLASH
+        DateShape.DASH_NUMERIC -> DT_DASH_NUMERIC
+        DateShape.ISO -> DT_ISO
+        DateShape.DASH_MONTHNAME -> DT_DASH_MONTHNAME
+        DateShape.SPACE_MONTHNAME_COMMA -> DT_SPACE_MONTHNAME_COMMA
+        DateShape.SPACE_MONTHNAME -> DT_SPACE_MONTHNAME
+    }
+
+    private fun doFormatters(shape: DateShape) = when (shape) {
+        DateShape.SLASH -> DO_SLASH
+        DateShape.DASH_NUMERIC -> DO_DASH_NUMERIC
+        DateShape.ISO -> DO_ISO
+        DateShape.DASH_MONTHNAME -> DO_DASH_MONTHNAME
+        DateShape.SPACE_MONTHNAME_COMMA -> DO_SPACE_MONTHNAME_COMMA
+        DateShape.SPACE_MONTHNAME -> DO_SPACE_MONTHNAME
+    }
 
     // ── Pre-compiled regex constants (never allocate Regex inside a parse call) ──
 
@@ -202,13 +256,7 @@ internal object SmsParser {
     internal fun normalizeForHash(input: String): String =
         input.replace(SmsParserConfig.WS_RE, " ").trim().uppercase()
 
-    internal fun sha256(input: String): String = try {
-        MessageDigest.getInstance("SHA-256")
-            .digest(input.toByteArray(Charsets.UTF_8))
-            .joinToString("") { "%02x".format(it) }
-    } catch (_: Exception) {
-        input.hashCode().toString()
-    }
+    internal fun sha256(input: String): String = HashUtils.sha256(input)
 
     // ── Stage 0: Fast M-Pesa signal filter ────────────────────────────────────
 
@@ -232,8 +280,7 @@ internal object SmsParser {
      * True if the SMS is a generic success receipt with no economic intent
      * (e.g. "Your transaction completed successfully." with no direction words).
      */
-    private fun isAmbiguousReceipt(body: String): Boolean {
-        val lower = body.lowercase()
+    private fun isAmbiguousReceipt(lower: String): Boolean {
         val hasSuccessSignal = lower.contains("completed successfully") ||
             lower.contains("transaction successful") ||
             lower.contains("confirmed successfully")
@@ -249,7 +296,7 @@ internal object SmsParser {
         val phase: Int,
     )
 
-    private fun detectRule(body: String): MatchResult? {
+    private fun detectRule(body: String, bodyLower: String): MatchResult? {
         // Phase 1 — primary structural patterns → HIGH
         for (rule in SmsParserConfig.DETECTION_RULES) {
             if (rule.patterns.any { it.containsMatchIn(body) }) {
@@ -265,7 +312,7 @@ internal object SmsParser {
         }
 
         // Phase 3 — last-resort keyword scan for very old / unusual formats → MEDIUM
-        val text = body.lowercase()
+        val text = bodyLower
         val ruleId: String? = when {
             text.contains("has been reversed")                                           -> "reversal"
             text.contains(" deposited") || text.contains("cash deposit")                -> "deposit"
@@ -453,16 +500,17 @@ internal object SmsParser {
     }
 
     private fun parseDateMatch(datePart: String, timePart: String?): Long? {
+        val shape = dateShape(datePart)
         if (timePart != null) {
             val combined = "$datePart $timePart"
-            DATE_TIME_FORMATTERS.firstNotNullOfOrNull { fmt ->
+            dtFormatters(shape).firstNotNullOfOrNull { fmt ->
                 runCatching {
                     LocalDateTime.parse(combined, fmt)
                         .atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
                 }.getOrNull()
             }?.let { return it }
         }
-        return DATE_ONLY_FORMATTERS.firstNotNullOfOrNull { fmt ->
+        return doFormatters(shape).firstNotNullOfOrNull { fmt ->
             runCatching {
                 LocalDate.parse(datePart, fmt)
                     .atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
@@ -489,13 +537,7 @@ internal object SmsParser {
     ): String {
         val utcDateTime = java.time.Instant.ofEpochMilli(dateMs)
             .atZone(java.time.ZoneId.of("UTC")).toLocalDateTime()
-        val normalizedCp = counterparty?.lowercase()
-            ?.replace(SmsParserConfig.WS_RE, " ")
-            ?.replace(COUNTERPARTY_TRAILING_PHONE, "")
-            ?.replace(COUNTERPARTY_TRAILING_CODE, "")
-            ?.replace(COUNTERPARTY_TRAILING_DATE, "")
-            ?.trim()
-            .orEmpty()
+        val normalizedCp = counterparty?.lowercase()?.trim().orEmpty()
         val key = "${category.name}|${"%.2f".format(amount)}|$utcDateTime|$normalizedCp"
         return "sem_${sha256(key).take(16)}"
     }
@@ -551,6 +593,7 @@ internal object SmsParser {
     fun parse(sms: String, receivedAtMs: Long = System.currentTimeMillis()): SmsParseResult {
         return try {
             val body = sms.replace(SmsParserConfig.WS_RE, " ").trim()
+            val bodyLower = body.lowercase()
 
             // Stage 0a: M-Pesa signal
             if (!isMpesaSms(body)) {
@@ -560,14 +603,14 @@ internal object SmsParser {
             }
 
             // Stage 0b: Fuliza service/fee notice filter
-            if (SmsParserConfig.isFulizaServiceNotice(body)) {
+            if (SmsParserConfig.isFulizaServiceNotice(bodyLower, preNormalized = true)) {
                 return SmsParseResult.Error(
                     SmsParseError("fuliza_notice", sms).also { RejectionLog.record(it) }
                 )
             }
 
             // Stage 0c: Ambiguous success receipt filter
-            if (isAmbiguousReceipt(body)) {
+            if (isAmbiguousReceipt(bodyLower)) {
                 return SmsParseResult.Error(
                     SmsParseError("ambiguous_receipt", sms).also { RejectionLog.record(it) }
                 )
@@ -588,7 +631,7 @@ internal object SmsParser {
             // Stage 3: Classify — unrecognised formats quarantine (no data loss)
             val normalizedBody = normalizeForHash(body)
             val sourceHash = sha256(normalizedBody)
-            val match = detectRule(body) ?: run {
+            val match = detectRule(body, bodyLower) ?: run {
                 val date = parseDate(body, receivedAtMs)
                 val balance = parseBalance(body)
                 val fee = parseFee(body)

@@ -64,7 +64,7 @@ export async function searchAll(
   const runIfQuery = <T>(fn: () => Promise<T[]>): Promise<T[]> =>
     trimmed ? fn() : Promise.resolve([] as T[]);
 
-  const [tasks, events, budgets, recurring, bills, goals, incomes, loans] = await Promise.all([
+  const [tasks, events, budgets, recurring, bills, goals, incomes, loans, rawTransactions] = await Promise.all([
     runIfQuery(() => taskRepo.search(trimmed, limit)),
     runIfQuery(() => eventRepo.search(trimmed, limit)),
     runIfQuery(() => budgetRepo.search(trimmed, limit)),
@@ -73,27 +73,26 @@ export async function searchAll(
     runIfQuery(() => goalRepo.search(trimmed, limit)),
     runIfQuery(() => incomeRepo.search(trimmed, limit)),
     runIfQuery(() => loanRepo.search(trimmed, limit)),
+    (trimmed || hasFilters)
+      ? txRepo.findAll({
+          search: trimmed || undefined,
+          startDate: filters.startDate,
+          endDate: filters.endDate,
+          category: filters.category,
+          type: filters.type,
+          limit,
+          orderBy: 'date_desc',
+        })
+      : Promise.resolve([] as TransactionRecord[]),
   ]);
 
-  let transactions: TransactionRecord[] = [];
-  if (trimmed || hasFilters) {
-    transactions = await txRepo.findAll({
-      search: trimmed || undefined,
-      startDate: filters.startDate,
-      endDate: filters.endDate,
-      category: filters.category,
-      type: filters.type,
-      limit,
-      orderBy: 'date_desc',
+  let transactions = rawTransactions;
+  if (filters.minAmount !== undefined || filters.maxAmount !== undefined) {
+    transactions = transactions.filter((tx) => {
+      if (filters.minAmount !== undefined && tx.amount < filters.minAmount) return false;
+      if (filters.maxAmount !== undefined && tx.amount > filters.maxAmount) return false;
+      return true;
     });
-
-    if (filters.minAmount !== undefined || filters.maxAmount !== undefined) {
-      transactions = transactions.filter((tx) => {
-        if (filters.minAmount !== undefined && tx.amount < filters.minAmount) return false;
-        if (filters.maxAmount !== undefined && tx.amount > filters.maxAmount) return false;
-        return true;
-      });
-    }
   }
 
   // Split events by type — the repo query already filtered by title/desc/location.

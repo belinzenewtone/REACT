@@ -190,7 +190,7 @@ export function SmsImportHealthScreen() {
   const [reconciling, setReconciling] = useState(false);
   const [retrying, setRetrying] = useState(false);
   const [lastClearedId, setLastClearedId] = useState(0);
-  const dataVersion = useDataVersion((s) => s.version);
+  const dataVersion = useDataVersion((s) => s.transactionVersion);
 
   useEffect(() => {
     AsyncStorage.getItem(LAST_CLEARED_ID_KEY)
@@ -270,7 +270,7 @@ export function SmsImportHealthScreen() {
     try {
       const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
       const result = await importHistoricalSms(sevenDaysAgo, Date.now());
-      useDataVersion.getState().bump();
+      useDataVersion.getState().bumpTransactions();
       await load();
       Alert.alert(
         'Reconcile complete',
@@ -287,7 +287,7 @@ export function SmsImportHealthScreen() {
     setRetrying(true);
     try {
       const result = await retryQuarantined();
-      useDataVersion.getState().bump();
+      useDataVersion.getState().bumpTransactions();
       await load();
       Alert.alert(
         'Retry complete',

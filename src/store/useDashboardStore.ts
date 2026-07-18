@@ -63,19 +63,39 @@ export const useDashboardStore = create<DashboardState>((set) => ({
       const lastMonth = thisMonth === 1 ? 12 : thisMonth - 1;
       const lastMonthYear = thisMonth === 1 ? thisYear - 1 : thisYear;
 
-      const thisMonthTotals = await txRepo.getMonthlyTotals(thisYear, thisMonth);
-      const lastMonthTotals = await txRepo.getMonthlyTotals(lastMonthYear, lastMonth);
-
       const todayStart = toLocalIso(startOfDay(now));
       const todayEnd = toLocalIso(endOfDay(now));
-      const todayTotals = await txRepo.getTotalsInRange(todayStart, todayEnd);
-
       const weekStart = toLocalIso(startOfWeek(now, { weekStartsOn: 1 }));
       const weekEnd = toLocalIso(endOfWeek(now, { weekStartsOn: 1 }));
-      const weekTotals = await txRepo.getTotalsInRange(weekStart, weekEnd);
 
-      const budgetRecords = await budgetRepo.findAll();
-      const spentByCategory = await budgetRepo.getSpentByCategory(thisYear, thisMonth);
+      const in7Days = new Date(now);
+      in7Days.setDate(in7Days.getDate() + 7);
+      in7Days.setHours(23, 59, 59, 999);
+
+      const [
+        thisMonthTotals,
+        lastMonthTotals,
+        todayTotals,
+        weekTotals,
+        budgetRecords,
+        spentByCategory,
+        recent,
+        agendaTasks,
+        pendingTaskCount,
+        upcomingEvent,
+      ] = await Promise.all([
+        txRepo.getMonthlyTotals(thisYear, thisMonth),
+        txRepo.getMonthlyTotals(lastMonthYear, lastMonth),
+        txRepo.getTotalsInRange(todayStart, todayEnd),
+        txRepo.getTotalsInRange(weekStart, weekEnd),
+        budgetRepo.findAll(),
+        budgetRepo.getSpentByCategory(thisYear, thisMonth),
+        txRepo.findAll({ limit: 5, orderBy: 'date_desc' }),
+        taskRepo.findAll({ status: 'active', dueBefore: in7Days.toISOString(), limit: 10 }),
+        taskRepo.countActive(),
+        eventRepo.findNextUpcoming(),
+      ]);
+
       const spentMap = new Map(spentByCategory.map((s) => [s.category, s.spent]));
 
       const budgets: BudgetProgressItem[] = budgetRecords.map((b) => ({
@@ -85,7 +105,6 @@ export const useDashboardStore = create<DashboardState>((set) => ({
         limit: b.limit_amount,
       }));
 
-      const recent = await txRepo.findAll({ limit: 5, orderBy: 'date_desc' });
       const recentTransactions: RecentTransactionItem[] = recent.map((t) => ({
         id: t.id,
         merchant: t.merchant,
@@ -95,17 +114,7 @@ export const useDashboardStore = create<DashboardState>((set) => ({
         type: t.transaction_type,
       }));
 
-      const in7Days = new Date();
-      in7Days.setDate(in7Days.getDate() + 7);
-      in7Days.setHours(23, 59, 59, 999);
-
-      const tasks = await taskRepo.findAll({
-        status: 'active',
-        dueBefore: in7Days.toISOString(),
-        limit: 10,
-      });
-
-      const agenda: AgendaItem[] = tasks.map((t) => ({
+      const agenda: AgendaItem[] = agendaTasks.map((t) => ({
         id: t.id,
         title: t.title,
         type: 'task',
@@ -114,9 +123,6 @@ export const useDashboardStore = create<DashboardState>((set) => ({
         priority: t.priority,
       }));
 
-      const pendingTasks = await taskRepo.findAll({ status: 'active', limit: 1000 });
-      const upcomingEvent = await eventRepo.findNextUpcoming();
-
       set({
         income: thisMonthTotals.income,
         expense: thisMonthTotals.expense,
@@ -124,7 +130,7 @@ export const useDashboardStore = create<DashboardState>((set) => ({
         lastMonthExpense: lastMonthTotals.expense,
         todaySpend: todayTotals.expense,
         weekSpend: weekTotals.expense,
-        pendingTaskCount: pendingTasks.length,
+        pendingTaskCount,
         nextEvent: upcomingEvent
           ? { id: upcomingEvent.id, title: upcomingEvent.title, date: upcomingEvent.date }
           : null,

@@ -126,7 +126,7 @@ export function TasksScreen() {
     const repo = new TaskRepository(db);
     await repo.toggleComplete(task.id);
     await syncTaskReminders(db, task.id);
-    useDataVersion.getState().bump();
+    useDataVersion.getState().bumpPlanner();
     animateLayout();
     await loadCalendar(db);
     await loadTasks();
@@ -143,7 +143,7 @@ export function TasksScreen() {
           const repo = new TaskRepository(db);
           await repo.softDelete(task.id);
           await cancelTaskReminders(task.id);
-          useDataVersion.getState().bump();
+          useDataVersion.getState().bumpPlanner();
           animateLayout();
           await loadCalendar(db);
           await loadTasks();

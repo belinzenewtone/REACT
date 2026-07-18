@@ -135,6 +135,11 @@ object InstitutionDetector {
     private val SENDER_INDEX: Map<String, String> =
         INSTITUTIONS.flatMap { inst -> inst.senderIds.map { it to inst.id } }.toMap()
 
+    // Pre-lowercased body keyword → institution-id list for a single-pass Tier 2 scan.
+    // Lowercasing happens once at class-load time, not per SMS.
+    private val BODY_KEYWORD_INDEX: List<Pair<String, String>> =
+        INSTITUTIONS.flatMap { inst -> inst.bodyKeywords.map { it.lowercase() to inst.id } }
+
     fun detect(sender: String, body: String): Detection? {
         val upper = sender.trim().uppercase()
 
@@ -148,10 +153,10 @@ object InstitutionDetector {
                 return Detection(inst.id, tier = 1)
         }
 
-        // Tier 2: body-text keyword fallback when sender is unknown or generic.
-        for (inst in INSTITUTIONS) {
-            if (inst.bodyKeywords.any { body.contains(it, ignoreCase = true) })
-                return Detection(inst.id, tier = 2)
+        // Tier 2: body-text keyword fallback — body lowercased once, keywords pre-lowercased.
+        val bodyLower = body.lowercase()
+        for ((keyword, id) in BODY_KEYWORD_INDEX) {
+            if (bodyLower.contains(keyword)) return Detection(id, tier = 2)
         }
 
         return null

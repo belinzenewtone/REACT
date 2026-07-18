@@ -68,8 +68,16 @@ internal object GenericBankParser : FinancialSmsParser {
         return detection.institutionId != "mpesa" && detection.institutionId != "airtel"
     }
 
-    override fun parse(body: String, sender: String, receivedAtMs: Long): SmsParser.SmsParseResult {
-        val instId = InstitutionDetector.detect(sender, body)?.institutionId ?: "bank"
+    fun canParse(detection: InstitutionDetector.Detection?): Boolean {
+        if (detection == null) return false
+        return detection.institutionId != "mpesa" && detection.institutionId != "airtel"
+    }
+
+    override fun parse(body: String, sender: String, receivedAtMs: Long): SmsParser.SmsParseResult =
+        parseWithDetection(body, sender, receivedAtMs, InstitutionDetector.detect(sender, body))
+
+    fun parseWithDetection(body: String, sender: String, receivedAtMs: Long, detection: InstitutionDetector.Detection?): SmsParser.SmsParseResult {
+        val instId = detection?.institutionId ?: "bank"
 
         val amount = AMOUNT_RE.find(body)
             ?.groupValues?.get(1)?.replace(",", "")?.toDoubleOrNull()

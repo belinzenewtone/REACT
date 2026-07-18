@@ -118,7 +118,7 @@ export const useTransactionStore = create<TransactionState>((set, get) => ({
 
   addTransaction: async (repo, data) => {
     await repo.create(data);
-    useDataVersion.getState().bump();
+    useDataVersion.getState().bumpTransactions();
     await get().loadTransactions(repo, true);
     // Fire budget alerts for the transaction's category (no-op if the user
     // hasn't enabled budget alerts).
@@ -129,14 +129,32 @@ export const useTransactionStore = create<TransactionState>((set, get) => ({
   },
 
   updateTransaction: async (repo, id, data) => {
+    // Optimistic update: apply changes to local state immediately
+    set((state) => ({
+      transactions: state.transactions.map((t) =>
+        t.id === id
+          ? {
+              ...t,
+              ...(data.merchant !== undefined && { merchant: data.merchant }),
+              ...(data.category !== undefined && { category: data.category }),
+              ...(data.amount !== undefined && { amount: data.amount }),
+              ...(data.date !== undefined && { date: data.date }),
+              ...(data.transactionType !== undefined && { transaction_type: data.transactionType }),
+              ...(data.status !== undefined && { status: data.status }),
+              ...(data.description !== undefined && { description: data.description ?? null }),
+              ...(data.notes !== undefined && { notes: data.notes ?? null }),
+            }
+          : t
+      ),
+    }));
+    haptic('light');
     await repo.update(id, data);
-    useDataVersion.getState().bump();
-    await get().loadTransactions(repo, true);
+    useDataVersion.getState().bumpTransactions();
+    // Background reconcile — no need to block UI
+    get().loadTransactions(repo, true).catch(() => {});
     if (data.category && data.transactionType === 'expense') {
       checkBudgetThresholds(repo.database, data.category).catch(() => {});
     }
-    haptic('light');
-    // Capture category correction as ML training sample, then retrain in background.
     if (data.category) {
       repo.findById(id).then(tx => {
         if (!tx) return;
@@ -151,9 +169,14 @@ export const useTransactionStore = create<TransactionState>((set, get) => ({
   },
 
   deleteTransaction: async (repo, id) => {
-    await repo.softDelete(id);
-    useDataVersion.getState().bump();
-    await get().loadTransactions(repo, true);
+    // Optimistic removal: splice from local state immediately
+    set((state) => ({
+      transactions: state.transactions.filter((t) => t.id !== id),
+    }));
     haptic('warning');
+    await repo.softDelete(id);
+    useDataVersion.getState().bumpTransactions();
+    // Background reconcile
+    get().loadTransactions(repo, true).catch(() => {});
   },
 }));

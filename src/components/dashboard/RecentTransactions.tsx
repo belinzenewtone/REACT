@@ -1,6 +1,5 @@
 import React from 'react';
 import { View, StyleSheet } from 'react-native';
-import { FlashList } from '@shopify/flash-list';
 import { Ionicons } from '@expo/vector-icons';
 import { Text, TouchableRipple, useTheme } from 'react-native-paper';
 import { GlassCard } from '../common/GlassCard';
@@ -38,24 +37,22 @@ export function RecentTransactions({
             No transactions yet
           </Text>
         ) : (
-          <FlashList
-            data={transactions.slice(0, 5)}
-            keyExtractor={(item) => item.id}
-            renderItem={({ item }) => (
+          <View>
+            {transactions.slice(0, 5).map((item) => (
               <TransactionRow
+                key={item.id}
                 item={item}
                 onPress={() => onTransactionPress?.(item.id)}
               />
-            )}
-            scrollEnabled={false}
-          />
+            ))}
+          </View>
         )}
       </GlassCard>
     </View>
   );
 }
 
-function TransactionRow({
+const TransactionRow = React.memo(function TransactionRow({
   item,
   onPress,
 }: {
@@ -93,7 +90,7 @@ function TransactionRow({
       </View>
     </TouchableRipple>
   );
-}
+});
 
 const styles = StyleSheet.create({
   empty: {

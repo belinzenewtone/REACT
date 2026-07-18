@@ -273,6 +273,14 @@ export class TransactionRepository extends BaseRepository<TransactionRecord> {
     );
   }
 
+  async getUncategorizedSummary(): Promise<{ count: number; total: number }> {
+    const row = await this.db.getFirstAsync<{ count: number; total: number }>(
+      `SELECT COUNT(*) as count, COALESCE(SUM(amount), 0) as total
+       FROM transactions WHERE ${this.notDeletedClause()} AND category = 'uncategorized'`
+    );
+    return { count: row?.count ?? 0, total: row?.total ?? 0 };
+  }
+
   async updateCategoryForMerchant(merchant: string, category: string): Promise<void> {
     await this.db.runAsync(
       `UPDATE transactions SET category = ?, updated_at = ?, sync_state = 'pending', revision = revision + 1
@@ -299,5 +307,101 @@ export class TransactionRepository extends BaseRepository<TransactionRecord> {
       }
     }
     return { income, expense };
+  }
+
+  private readonly EXPENSE_TYPES = "('expense','transfer','fuliza')";
+
+  async getWeeklySpendTrend(startDate: string, endDate: string): Promise<{ week: string; amount: number }[]> {
+    return this.db.getAllAsync<{ week: string; amount: number }>(
+      `SELECT strftime('%Y-W%W', date) as week, SUM(amount) as amount
+       FROM transactions
+       WHERE ${this.notDeletedClause()} AND date >= ? AND date <= ?
+         AND transaction_type IN ${this.EXPENSE_TYPES} AND status = 'completed'
+       GROUP BY week ORDER BY week`,
+      [startDate, endDate]
+    );
+  }
+
+  async getCategorySpendInRange(startDate: string, endDate: string): Promise<{ category: string; amount: number }[]> {
+    return this.db.getAllAsync<{ category: string; amount: number }>(
+      `SELECT category, SUM(amount) as amount
+       FROM transactions
+       WHERE ${this.notDeletedClause()} AND date >= ? AND date <= ?
+         AND transaction_type IN ${this.EXPENSE_TYPES} AND status = 'completed'
+       GROUP BY category ORDER BY amount DESC`,
+      [startDate, endDate]
+    );
+  }
+
+  async getTopMerchantsInRange(startDate: string, endDate: string, limit = 10): Promise<{ merchant: string; amount: number }[]> {
+    return this.db.getAllAsync<{ merchant: string; amount: number }>(
+      `SELECT merchant, SUM(amount) as amount
+       FROM transactions
+       WHERE ${this.notDeletedClause()} AND date >= ? AND date <= ?
+         AND transaction_type IN ${this.EXPENSE_TYPES} AND status = 'completed'
+       GROUP BY merchant ORDER BY amount DESC LIMIT ?`,
+      [startDate, endDate, limit]
+    );
+  }
+
+  async getMonthlyTrendRange(startDate: string, endDate: string): Promise<{ month: string; expense: number; income: number }[]> {
+    const rows = await this.db.getAllAsync<{ ym: string; transaction_type: string; total: number }>(
+      `SELECT strftime('%Y-%m', date) as ym, transaction_type, SUM(amount) as total
+       FROM transactions
+       WHERE ${this.notDeletedClause()} AND date >= ? AND date <= ? AND status = 'completed'
+       GROUP BY ym, transaction_type ORDER BY ym`,
+      [startDate, endDate]
+    );
+    const map = new Map<string, { expense: number; income: number }>();
+    for (const r of rows) {
+      if (!map.has(r.ym)) map.set(r.ym, { expense: 0, income: 0 });
+      const entry = map.get(r.ym)!;
+      if (r.transaction_type === 'income') entry.income += r.total;
+      else if (r.transaction_type === 'expense' || r.transaction_type === 'transfer' || r.transaction_type === 'fuliza') entry.expense += r.total;
+    }
+    return Array.from(map.entries()).map(([ym, v]) => {
+      const d = new Date(ym + '-01');
+      return { month: d.toLocaleString('default', { month: 'short' }), ...v };
+    });
+  }
+
+  async getFeesSummaryInRange(startDate: string, endDate: string): Promise<{ total: number; topCategory: string | null; avgFee: number; txCount: number }> {
+    const row = await this.db.getFirstAsync<{ total: number; cnt: number }>(
+      `SELECT COALESCE(SUM(fee), 0) as total, COUNT(*) as cnt
+       FROM transactions
+       WHERE ${this.notDeletedClause()} AND date >= ? AND date <= ?
+         AND fee > 0 AND status = 'completed'`,
+      [startDate, endDate]
+    );
+    const total = row?.total ?? 0;
+    const cnt = row?.cnt ?? 0;
+    const topRow = await this.db.getFirstAsync<{ category: string }>(
+      `SELECT category FROM transactions
+       WHERE ${this.notDeletedClause()} AND date >= ? AND date <= ?
+         AND fee > 0 AND status = 'completed'
+       GROUP BY category ORDER BY SUM(fee) DESC LIMIT 1`,
+      [startDate, endDate]
+    );
+    return { total, topCategory: topRow?.category ?? null, avgFee: cnt > 0 ? total / cnt : 0, txCount: cnt };
+  }
+
+  async getAverageTransaction(startDate: string, endDate: string): Promise<number> {
+    const row = await this.db.getFirstAsync<{ avg: number }>(
+      `SELECT COALESCE(AVG(amount), 0) as avg FROM transactions
+       WHERE ${this.notDeletedClause()} AND date >= ? AND date <= ? AND status = 'completed'`,
+      [startDate, endDate]
+    );
+    return row?.avg ?? 0;
+  }
+
+  async getWeeklyCategorySpend(startDate: string, endDate: string): Promise<{ week: string; category: string; amount: number }[]> {
+    return this.db.getAllAsync<{ week: string; category: string; amount: number }>(
+      `SELECT strftime('%Y-W%W', date) as week, category, SUM(amount) as amount
+       FROM transactions
+       WHERE ${this.notDeletedClause()} AND date >= ? AND date <= ?
+         AND transaction_type IN ${this.EXPENSE_TYPES} AND status = 'completed'
+       GROUP BY week, category ORDER BY week, amount DESC`,
+      [startDate, endDate]
+    );
   }
 }

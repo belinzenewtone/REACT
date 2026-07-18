@@ -4,7 +4,7 @@ import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import android.util.Log
 import java.io.File
-import java.security.MessageDigest
+
 import java.time.format.DateTimeFormatter
 import java.util.UUID
 
@@ -311,21 +311,33 @@ internal class DbWriter private constructor(context: Context) {
      * never been seen by the queue. Returns true when a new row was inserted.
      * Single INSERT OR IGNORE — no follow-up SELECT on the hot no-op path.
      */
-    fun enqueueIngestIfNew(body: String, sender: String = ""): Boolean {
+    private val INGEST_INSERT_SQL =
+        "INSERT OR IGNORE INTO sms_ingest_queue (body, body_hash, sender_address) VALUES (?, ?, ?)"
+
+    fun compileIngestInsertStatement(): android.database.sqlite.SQLiteStatement =
+        db.compileStatement(INGEST_INSERT_SQL)
+
+    fun enqueueIngestReusing(
+        stmt: android.database.sqlite.SQLiteStatement,
+        body: String,
+        sender: String = "",
+    ): Boolean {
         return try {
-            db.compileStatement(
-                "INSERT OR IGNORE INTO sms_ingest_queue (body, body_hash, sender_address) VALUES (?, ?, ?)"
-            ).use { stmt ->
-                stmt.bindString(1, body)
-                stmt.bindString(2, sha256(body.trim()))
-                stmt.bindString(3, sender)
-                stmt.executeInsert() >= 0
-            }
+            stmt.clearBindings()
+            stmt.bindString(1, body)
+            stmt.bindString(2, sha256(body.trim()))
+            stmt.bindString(3, sender)
+            stmt.executeInsert() >= 0
         } catch (e: Exception) {
             Log.w(TAG, "enqueueIngestIfNew failed: ${e.message}")
             false
         }
     }
+
+    fun enqueueIngestIfNew(body: String, sender: String = ""): Boolean =
+        compileIngestInsertStatement().use { stmt ->
+            enqueueIngestReusing(stmt, body, sender)
+        }
 
     /** Terminal success — the message reached a final outcome (imported, duplicate, ignored, quarantined). */
     fun markIngestDone(id: Long) {
@@ -559,13 +571,7 @@ internal class DbWriter private constructor(context: Context) {
 
     // ─── Source hash ──────────────────────────────────────────────────────────
 
-    fun sha256(input: String): String = try {
-        MessageDigest.getInstance("SHA-256")
-            .digest(input.toByteArray(Charsets.UTF_8))
-            .joinToString("") { "%02x".format(it) }
-    } catch (_: Exception) {
-        input.hashCode().toString()
-    }
+    fun sha256(input: String): String = HashUtils.sha256(input)
 
     // ─── Merchant category learning ───────────────────────────────────────────
 
@@ -593,11 +599,21 @@ internal class DbWriter private constructor(context: Context) {
 
     // ─── Transaction insert ───────────────────────────────────────────────────
 
-    /**
-     * Inserts a parsed transaction into the transactions table.
-     * Returns the new row ID, or -1 if the insert failed.
-     */
-    fun insertTransaction(tx: SmsParser.ParsedTransaction): Long {
+    private val TX_INSERT_SQL = """INSERT INTO transactions
+        (id, amount, merchant, category, date, source, transaction_type,
+         mpesa_code, source_hash, raw_sms, description, balance_after, fee,
+         status, created_at, updated_at, sync_state, record_source,
+         revision, inferred_category, inference_source, semantic_hash,
+         institution_id, external_ref, currency, raw_sender)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"""
+
+    fun compileTransactionInsertStatement(): android.database.sqlite.SQLiteStatement =
+        db.compileStatement(TX_INSERT_SQL)
+
+    fun insertTransactionReusing(
+        stmt: android.database.sqlite.SQLiteStatement,
+        tx: SmsParser.ParsedTransaction,
+    ): Long {
         val id = UUID.randomUUID().toString()
         val now = isoNow()
         val appCategory = lookupMerchantCategory(tx.counterparty)
@@ -609,50 +625,49 @@ internal class DbWriter private constructor(context: Context) {
             SmsParser.ParseRoute.REVIEW    -> "pending_review"
             SmsParser.ParseRoute.QUARANTINE -> "quarantine"
         }
-
         return try {
-            db.compileStatement(
-                """INSERT INTO transactions
-                   (id, amount, merchant, category, date, source, transaction_type,
-                    mpesa_code, source_hash, raw_sms, description, balance_after, fee,
-                    status, created_at, updated_at, sync_state, record_source,
-                    revision, inferred_category, inference_source, semantic_hash,
-                    institution_id, external_ref, currency, raw_sender)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"""
-            ).use { stmt ->
-                stmt.bindString(1, id)
-                stmt.bindDouble(2, tx.amount)
-                stmt.bindString(3, tx.counterparty ?: (SmsParserConfig.CATEGORY_DISPLAY[tx.category] ?: tx.institutionId))
-                stmt.bindString(4, appCategory)
-                stmt.bindString(5, dateIso)
-                stmt.bindString(6, tx.institutionId)
-                stmt.bindString(7, tx.transactionType)
-                stmt.bindString(8, tx.mpesaCode)
-                stmt.bindString(9, tx.sourceHash)
-                stmt.bindString(10, tx.rawSms)
-                stmt.bindString(11, tx.description)
-                if (tx.balanceAfter != null) stmt.bindDouble(12, tx.balanceAfter) else stmt.bindNull(12)
-                if (tx.fee != null) stmt.bindDouble(13, tx.fee) else stmt.bindNull(13)
-                stmt.bindString(14, "completed")
-                stmt.bindString(15, now)
-                stmt.bindString(16, now)
-                stmt.bindString(17, syncState)
-                stmt.bindString(18, "sms_import")
-                stmt.bindLong(19, 0)
-                stmt.bindLong(20, 1)
-                stmt.bindString(21, "sms_parser")
-                stmt.bindString(22, tx.semanticHash)
-                stmt.bindString(23, tx.institutionId)
-                if (tx.externalRef.isNotBlank()) stmt.bindString(24, tx.externalRef) else stmt.bindNull(24)
-                stmt.bindString(25, tx.currency)
-                stmt.bindString(26, tx.rawSender)
-                stmt.executeInsert()
-            }
+            stmt.clearBindings()
+            stmt.bindString(1, id)
+            stmt.bindDouble(2, tx.amount)
+            stmt.bindString(3, tx.counterparty ?: (SmsParserConfig.CATEGORY_DISPLAY[tx.category] ?: tx.institutionId))
+            stmt.bindString(4, appCategory)
+            stmt.bindString(5, dateIso)
+            stmt.bindString(6, tx.institutionId)
+            stmt.bindString(7, tx.transactionType)
+            stmt.bindString(8, tx.mpesaCode)
+            stmt.bindString(9, tx.sourceHash)
+            stmt.bindString(10, tx.rawSms)
+            stmt.bindString(11, tx.description)
+            if (tx.balanceAfter != null) stmt.bindDouble(12, tx.balanceAfter) else stmt.bindNull(12)
+            if (tx.fee != null) stmt.bindDouble(13, tx.fee) else stmt.bindNull(13)
+            stmt.bindString(14, "completed")
+            stmt.bindString(15, now)
+            stmt.bindString(16, now)
+            stmt.bindString(17, syncState)
+            stmt.bindString(18, "sms_import")
+            stmt.bindLong(19, 0)
+            stmt.bindLong(20, 1)
+            stmt.bindString(21, "sms_parser")
+            stmt.bindString(22, tx.semanticHash)
+            stmt.bindString(23, tx.institutionId)
+            if (tx.externalRef.isNotBlank()) stmt.bindString(24, tx.externalRef) else stmt.bindNull(24)
+            stmt.bindString(25, tx.currency)
+            stmt.bindString(26, tx.rawSender)
+            stmt.executeInsert()
         } catch (e: Exception) {
-            Log.e(TAG, "insertTransaction failed: ${e.message}", e)
+            Log.e(TAG, "insertTransactionReusing failed: ${e.message}", e)
             -1L
         }
     }
+
+    /**
+     * Inserts a parsed transaction into the transactions table.
+     * Returns the new row ID, or -1 if the insert failed.
+     */
+    fun insertTransaction(tx: SmsParser.ParsedTransaction): Long =
+        compileTransactionInsertStatement().use { stmt ->
+            insertTransactionReusing(stmt, tx)
+        }
 
     // ─── Fuliza outstanding balance ───────────────────────────────────────────
 

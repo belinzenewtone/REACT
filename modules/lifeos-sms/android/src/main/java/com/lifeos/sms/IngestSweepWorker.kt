@@ -151,20 +151,16 @@ class IngestSweepWorker(
             val bodyIdx = c.getColumnIndex("body")
             val addressIdx = c.getColumnIndex("address")
             if (bodyIdx < 0) return@use
-            while (c.moveToNext() && scanned < MAX_ROWS_PER_SCAN) {
-                scanned++
-                val body = c.getString(bodyIdx) ?: continue
-                val address = if (addressIdx >= 0) c.getString(addressIdx) ?: "" else ""
-                // Cheap sender + body signal check before touching the DB.
-                if (InstitutionDetector.detect(address, body) == null) continue
-                // Skip messages already imported (indexed source-hash lookup) —
-                // keeps the FIRST run from re-enqueueing weeks of history that
-                // arrived via batch import rather than the queue.
-                val sourceHash = SmsParser.sha256(SmsParser.normalizeForHash(body))
-                if (db.existsBySourceHash(sourceHash)) continue
-                // Idempotent: UNIQUE body-hash makes re-seen messages a no-op,
-                // and downstream 4-tier dedupe guards ledger duplicates.
-                if (db.enqueueIngestIfNew(body, address)) enqueued++
+            db.compileIngestInsertStatement().use { ingestStmt ->
+                while (c.moveToNext() && scanned < MAX_ROWS_PER_SCAN) {
+                    scanned++
+                    val body = c.getString(bodyIdx) ?: continue
+                    val address = if (addressIdx >= 0) c.getString(addressIdx) ?: "" else ""
+                    if (InstitutionDetector.detect(address, body) == null) continue
+                    val sourceHash = SmsParser.sha256(SmsParser.normalizeForHash(body))
+                    if (db.existsBySourceHash(sourceHash)) continue
+                    if (db.enqueueIngestReusing(ingestStmt, body, address)) enqueued++
+                }
             }
         }
 

@@ -1,4 +1,4 @@
-import React, { useCallback, useRef } from 'react';
+import React, { useCallback, useMemo, useRef } from 'react';
 import {
   View,
   StyleSheet,
@@ -31,17 +31,15 @@ function HomeScreenContent() {
   const db = useSQLiteContext();
   const navigation = useNavigation<any>();
   const profile = useAppStore((state) => state.profile);
-  const {
-    isLoading,
-    hasLoadedOnce,
-    error,
-    expense,
-    todaySpend,
-    weekSpend,
-    pendingTaskCount,
-    nextEvent,
-    loadDashboard,
-  } = useDashboardStore();
+  const isLoading = useDashboardStore((s) => s.isLoading);
+  const hasLoadedOnce = useDashboardStore((s) => s.hasLoadedOnce);
+  const error = useDashboardStore((s) => s.error);
+  const expense = useDashboardStore((s) => s.expense);
+  const todaySpend = useDashboardStore((s) => s.todaySpend);
+  const weekSpend = useDashboardStore((s) => s.weekSpend);
+  const pendingTaskCount = useDashboardStore((s) => s.pendingTaskCount);
+  const nextEvent = useDashboardStore((s) => s.nextEvent);
+  const loadDashboard = useDashboardStore((s) => s.loadDashboard);
 
   const dataVersion = useDataVersion((s) => s.version);
   const loadedVersion = useRef(-1);
@@ -55,9 +53,9 @@ function HomeScreenContent() {
     }, [db, loadDashboard, dataVersion])
   );
 
-  const greeting = getGreeting();
+  const greeting = useMemo(() => getGreeting(), []);
   const name = profile?.username ?? profile?.name?.split(' ')[0] ?? 'there';
-  const todayLabel = format(new Date(), 'EEEE, MMM d');
+  const todayLabel = useMemo(() => format(new Date(), 'EEEE, MMM d'), []);
 
   const navigateToTab = (tabName: string) => {
     navigation.navigate(tabName);
@@ -153,7 +151,7 @@ export function HomeScreen() {
   return <HomeScreenContent />;
 }
 
-function MetricCard({ label, amount, glow }: { label: string; amount: number; glow?: 'blue' | 'teal' | 'none' }) {
+const MetricCard = React.memo(function MetricCard({ label, amount, glow }: { label: string; amount: number; glow?: 'blue' | 'teal' | 'none' }) {
   const theme = useTheme();
   return (
     <FrostCard style={styles.metricCard} glow={glow ?? 'blue'}>
@@ -165,7 +163,7 @@ function MetricCard({ label, amount, glow }: { label: string; amount: number; gl
       </Text>
     </FrostCard>
   );
-}
+});
 
 function getGreeting(): string {
   const hour = new Date().getHours();

@@ -18,7 +18,7 @@ interface ChatMessageProps {
   onActionPress?: (action: string) => void;
 }
 
-export function ChatMessage({ message, onActionPress }: ChatMessageProps) {
+export const ChatMessage = React.memo(function ChatMessage({ message, onActionPress }: ChatMessageProps) {
   const theme = useTheme();
   const isUser = message.role === 'user';
 
@@ -87,7 +87,7 @@ export function ChatMessage({ message, onActionPress }: ChatMessageProps) {
       </View>
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   container: {

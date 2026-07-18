@@ -144,6 +144,13 @@ export class TaskRepository extends BaseRepository<TaskRecord> {
     );
   }
 
+  async countActive(): Promise<number> {
+    const row = await this.db.getFirstAsync<{ n: number }>(
+      `SELECT COUNT(*) as n FROM tasks WHERE status = 'active' AND ${this.notDeletedClause()}`
+    );
+    return row?.n ?? 0;
+  }
+
   async search(query: string, limit: number = 50): Promise<TaskRecord[]> {
     const like = `%${query}%`;
     return await this.db.getAllAsync<TaskRecord>(
@@ -161,5 +168,17 @@ export class TaskRepository extends BaseRepository<TaskRecord> {
       status: nowCompleted ? 'completed' : 'active',
       completedAt: nowCompleted ? nowIso() : undefined,
     });
+  }
+
+  async countByStatus(): Promise<{ completed: number; pending: number }> {
+    const rows = await this.db.getAllAsync<{ status: string; n: number }>(
+      `SELECT status, COUNT(*) as n FROM tasks WHERE ${this.notDeletedClause()} GROUP BY status`
+    );
+    let completed = 0, pending = 0;
+    for (const r of rows) {
+      if (r.status === 'completed') completed = r.n;
+      else pending += r.n;
+    }
+    return { completed, pending };
   }
 }

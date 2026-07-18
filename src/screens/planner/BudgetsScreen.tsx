@@ -55,7 +55,7 @@ export function BudgetsScreen() {
     return { totalLimit, totalSpent, percent, overBudgetCount, count: activeBudgetItems.length, totalCount: budgets.length };
   }, [activeBudgetItems, budgets.length]);
 
-  const handleDelete = (id: string, category: string) => {
+  const handleDelete = useCallback((id: string, category: string) => {
     Alert.alert('Delete budget', `Remove ${category} budget?`, [
       { text: 'Cancel', style: 'cancel' },
       {
@@ -68,9 +68,9 @@ export function BudgetsScreen() {
         },
       },
     ]);
-  };
+  }, [db, loadBudgets]);
 
-  const handleToggleActive = async (id: string, active: boolean) => {
+  const handleToggleActive = useCallback(async (id: string, active: boolean) => {
     animateLayout();
     const item = budgets.find((b) => b.budget.id === id);
     await new BudgetRepository(db).update(id, { isActive: active });
@@ -78,7 +78,20 @@ export function BudgetsScreen() {
     if (active && item) {
       await checkBudgetThresholds(db, item.budget.category);
     }
-  };
+  }, [db, loadBudgets, budgets]);
+
+  const handleEdit = useCallback((id: string) => {
+    navigation.navigate('BudgetForm', { budgetId: id });
+  }, [navigation]);
+
+  const renderBudgetItem = useCallback(({ item }: { item: typeof budgets[number] }) => (
+    <BudgetCard
+      item={item}
+      onEdit={handleEdit}
+      onDelete={handleDelete}
+      onToggleActive={handleToggleActive}
+    />
+  ), [handleEdit, handleDelete, handleToggleActive]);
 
   const summaryStatus =
     summary.percent > 100 ? 'danger' : summary.percent > 80 ? 'warning' : 'success';
@@ -89,6 +102,7 @@ export function BudgetsScreen() {
       <FlashList
         data={budgets}
         keyExtractor={(item) => item.budget.id}
+        estimatedItemSize={180}
         contentContainerStyle={styles.listContent}
         refreshControl={
           <RefreshControl
@@ -171,14 +185,7 @@ export function BudgetsScreen() {
             )}
           </>
         }
-        renderItem={({ item }) => (
-          <BudgetCard
-            item={item}
-            onEdit={() => navigation.navigate('BudgetForm', { budgetId: item.budget.id })}
-            onDelete={() => handleDelete(item.budget.id, item.budget.category)}
-            onToggleActive={(active) => handleToggleActive(item.budget.id, active)}
-          />
-        )}
+        renderItem={renderBudgetItem}
         ListEmptyComponent={
           <View style={styles.empty}>
             <View style={[styles.emptyIcon, { backgroundColor: theme.colors.surfaceVariant }]}>
@@ -195,16 +202,16 @@ export function BudgetsScreen() {
   );
 }
 
-function BudgetCard({
+const BudgetCard = React.memo(function BudgetCard({
   item,
   onEdit,
   onDelete,
   onToggleActive,
 }: {
   item: { budget: { category: string; limit_amount: number; id: string; period: string }; spent: number; percent: number; isActive: boolean };
-  onEdit: () => void;
-  onDelete: () => void;
-  onToggleActive: (active: boolean) => void;
+  onEdit: (id: string) => void;
+  onDelete: (id: string, category: string) => void;
+  onToggleActive: (id: string, active: boolean) => void;
 }) {
   const theme = useTheme();
   const categoryColor = CATEGORY_COLORS[item.budget.category] ?? theme.colors.onSurfaceVariant;
@@ -214,6 +221,10 @@ function BudgetCard({
   const isWarning = !isOver && item.percent > 80;
   const statusColor = isOver ? SEMANTIC.danger : isWarning ? SEMANTIC.warning : SEMANTIC.success;
   const statusLabel = isOver ? 'Over' : isWarning ? 'Close' : 'On track';
+
+  const handleEdit = useCallback(() => onEdit(item.budget.id), [onEdit, item.budget.id]);
+  const handleDelete = useCallback(() => onDelete(item.budget.id, item.budget.category), [onDelete, item.budget.id, item.budget.category]);
+  const handleToggle = useCallback((active: boolean) => onToggleActive(item.budget.id, active), [onToggleActive, item.budget.id]);
 
   return (
     <GlassCard style={StyleSheet.flatten([styles.budgetCard, !item.isActive && { opacity: 0.7 }])}>
@@ -237,7 +248,7 @@ function BudgetCard({
           <View style={[styles.statusBadge, { backgroundColor: `${statusColor}20` }]}>
             <Text variant="labelSmall" style={{ color: statusColor }}>{statusLabel}</Text>
           </View>
-          <LifeOSSwitch value={item.isActive} onValueChange={onToggleActive} />
+          <LifeOSSwitch value={item.isActive} onValueChange={handleToggle} />
         </View>
       </View>
 
@@ -259,7 +270,7 @@ function BudgetCard({
           mode="text"
           compact
           icon={() => <Ionicons name="create-outline" size={16} color={theme.colors.primary} />}
-          onPress={onEdit}
+          onPress={handleEdit}
           textColor={theme.colors.primary}
           style={{ marginRight: spacing.sm }}
         >
@@ -269,7 +280,7 @@ function BudgetCard({
           mode="text"
           compact
           icon={() => <Ionicons name="trash-outline" size={16} color={theme.colors.error} />}
-          onPress={onDelete}
+          onPress={handleDelete}
           textColor={theme.colors.error}
         >
           Delete
@@ -277,7 +288,7 @@ function BudgetCard({
       </View>
     </GlassCard>
   );
-}
+});
 
 const styles = StyleSheet.create({
   container: {

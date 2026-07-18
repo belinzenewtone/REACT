@@ -379,7 +379,7 @@ export function TaskEventForm({ editTaskId, editEventId, defaultType = 'task' }:
           await syncEventReminders(db, created.id);
         }
       }
-      useDataVersion.getState().bump();
+      useDataVersion.getState().bumpPlanner();
       await loadCalendar(db);
       navigation.goBack();
     } catch (error) {
@@ -403,7 +403,7 @@ export function TaskEventForm({ editTaskId, editEventId, defaultType = 'task' }:
               await new EventRepository(db).softDelete(editEventId);
               await cancelEventReminders(editEventId);
             }
-            useDataVersion.getState().bump();
+            useDataVersion.getState().bumpPlanner();
             await loadCalendar(db);
             navigation.goBack();
           } catch (error) {

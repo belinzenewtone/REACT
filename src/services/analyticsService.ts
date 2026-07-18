@@ -80,6 +80,23 @@ export interface AnalyticsData {
   feesData: FeesData;
 }
 
+const categoryColors: Record<string, string> = {
+  food: '#F59E0B',
+  transport: '#3B82F6',
+  utilities: '#8B5CF6',
+  groceries: '#10B981',
+  rent: '#EF4444',
+  airtime: '#06B6D4',
+  entertainment: '#EC4899',
+  health: '#F97316',
+  education: '#6366F1',
+  shopping: '#D946EF',
+  savings: '#22C55E',
+  investment: '#14B8A6',
+  income: '#34D399',
+  uncategorized: '#6B7280',
+};
+
 export async function computeAnalytics(
   db: SQLiteDatabase,
   startDate: string,
@@ -88,78 +105,83 @@ export async function computeAnalytics(
 ): Promise<AnalyticsData> {
   const txRepo = new TransactionRepository(db);
   const budgetRepo = new BudgetRepository(db);
+  const taskRepo = new TaskRepository(db);
 
-  const transactions = await txRepo.findAll({
-    startDate,
-    endDate,
-    limit: 100000,
-    orderBy: 'date_desc',
+  const now = new Date();
+  const currMonthStart = toLocalIso(new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0));
+  const currMonthEnd = toLocalIso(new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999));
+  const prevMonthStart = toLocalIso(new Date(now.getFullYear(), now.getMonth() - 1, 1, 0, 0, 0));
+  const prevMonthEnd = toLocalIso(new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999));
+
+  const trendStart = toLocalIso(new Date(now.getFullYear(), now.getMonth() - 11, 1, 0, 0, 0));
+  const start = new Date(startDate);
+
+  const [
+    rangeTotals,
+    categorySpend,
+    topMerchants,
+    weeklyTrend,
+    weeklyCatRows,
+    monthlyTrend,
+    feesData,
+    averageTransaction,
+    currentMonthSpend,
+    prevMonthSpend,
+    budgets,
+    spentByCategory,
+    taskCounts,
+  ] = await Promise.all([
+    txRepo.getTotalsInRange(startDate, endDate),
+    txRepo.getCategorySpendInRange(startDate, endDate),
+    txRepo.getTopMerchantsInRange(startDate, endDate, 10),
+    txRepo.getWeeklySpendTrend(startDate, endDate),
+    txRepo.getWeeklyCategorySpend(startDate, endDate),
+    txRepo.getMonthlyTrendRange(trendStart, endDate),
+    txRepo.getFeesSummaryInRange(startDate, endDate),
+    txRepo.getAverageTransaction(startDate, endDate),
+    txRepo.getSpendTotal(currMonthStart, currMonthEnd),
+    txRepo.getSpendTotal(prevMonthStart, prevMonthEnd),
+    budgetRepo.findAll(),
+    budgetRepo.getSpentByCategory(start.getFullYear(), start.getMonth() + 1),
+    taskRepo.countByStatus(),
+  ]);
+
+  const totalSpend = rangeTotals.expense;
+  const totalIncome = rangeTotals.income;
+
+  const categorySpendSorted = categorySpend.map((c) => ({
+    ...c,
+    color: categoryColors[c.category] ?? '#6B7280',
+  }));
+
+  // Weekly trend — relabel
+  const weeklyTrendLabeled: WeeklyTrendItem[] = weeklyTrend.map((w, i) => ({
+    week: `W${i + 1}`,
+    amount: w.amount,
+  }));
+
+  // Weekly category spend — group by week
+  const weekMap = new Map<string, Map<string, number>>();
+  for (const r of weeklyCatRows) {
+    if (!weekMap.has(r.week)) weekMap.set(r.week, new Map());
+    weekMap.get(r.week)!.set(r.category, r.amount);
+  }
+  const weekLabels = ['W-4', 'W-3', 'W-2', 'Last wk', 'This wk'];
+  const weekKeys = Array.from(weekMap.keys()).sort();
+  const weeklyCategorySpend: WeeklyCategorySpendItem[] = weekKeys.slice(-5).map((wk, i) => {
+    const catMap = weekMap.get(wk)!;
+    let total = 0;
+    const categories = Array.from(catMap.entries())
+      .map(([category, amount]) => {
+        total += amount;
+        return { category, amount, color: categoryColors[category] ?? '#6B7280' };
+      })
+      .sort((a, b) => b.amount - a.amount);
+    return { week: `W${i + 1}`, label: weekLabels[i] ?? `W${i + 1}`, categories, total };
   });
 
-  let totalSpend = 0;
-  let totalIncome = 0;
-  const categoryMap = new Map<string, number>();
-  const merchantMap = new Map<string, number>();
-
-  for (const tx of transactions) {
-    if (tx.transaction_type === 'expense' || tx.transaction_type === 'transfer' || tx.transaction_type === 'fuliza') {
-      totalSpend += tx.amount;
-      categoryMap.set(tx.category, (categoryMap.get(tx.category) ?? 0) + tx.amount);
-      merchantMap.set(tx.merchant, (merchantMap.get(tx.merchant) ?? 0) + tx.amount);
-    } else if (tx.transaction_type === 'income') {
-      totalIncome += tx.amount;
-    }
-  }
-
-  const categoryColors: Record<string, string> = {
-    food: '#F59E0B',
-    transport: '#3B82F6',
-    utilities: '#8B5CF6',
-    groceries: '#10B981',
-    rent: '#EF4444',
-    airtime: '#06B6D4',
-    entertainment: '#EC4899',
-    health: '#F97316',
-    education: '#6366F1',
-    shopping: '#D946EF',
-    savings: '#22C55E',
-    investment: '#14B8A6',
-    income: '#34D399',
-    uncategorized: '#6B7280',
-  };
-
-  const categorySpendSorted = Array.from(categoryMap.entries())
-    .map(([category, amount]) => ({
-      category,
-      amount,
-      color: categoryColors[category] ?? '#6B7280',
-    }))
-    .sort((a, b) => b.amount - a.amount);
-
-  const topMerchants: MerchantSpendItem[] = Array.from(merchantMap.entries())
-    .map(([merchant, amount]) => ({ merchant, amount }))
-    .sort((a, b) => b.amount - a.amount)
-    .slice(0, 10);
-
-  // Weekly trend (last 12 weeks)
-  const weeklyTrend = computeWeeklyTrend(transactions);
-
-  // Weekly spend by category (last 5 weeks) for stacked bar chart
-  const weeklyCategorySpend = computeWeeklyCategorySpend(transactions, categoryColors);
-
-  // Monthly trend (last 12 months)
-  const monthlyTrend = computeMonthlyTrend(transactions);
-
   // Budget vs actual
-  const start = new Date(startDate);
-  const budgets = await budgetRepo.findAll();
-  // Use local wall-clock month to match SMS-imported transaction storage.
-  const spentByCategory = await budgetRepo.getSpentByCategory(
-    start.getFullYear(),
-    start.getMonth() + 1
-  );
   const spentMap = new Map(spentByCategory.map((s) => [s.category, s.spent]));
-
   const budgetVsActual: BudgetVsActualItem[] = budgets
     .map((b) => ({
       category: b.category,
@@ -170,43 +192,43 @@ export async function computeAnalytics(
     .slice(0, 5);
 
   // Task productivity
-  const taskRepo = new TaskRepository(db);
-  const allTasks = await taskRepo.findAll();
-  const tasksCompleted = allTasks.filter((t) => t.status === 'completed').length;
-  const tasksPending = allTasks.filter((t) => t.status !== 'completed').length;
+  const tasksCompleted = taskCounts.completed;
+  const tasksPending = taskCounts.pending;
   const totalTasks = tasksCompleted + tasksPending;
   const completionRate = totalTasks > 0 ? (tasksCompleted / totalTasks) * 100 : 0;
 
-  // Month-on-month spend (always calendar months, independent of selected range)
-  const now = new Date();
-  const currMonthStart = toLocalIso(new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0));
-  const currMonthEnd = toLocalIso(new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999));
-  const prevMonthStart = toLocalIso(new Date(now.getFullYear(), now.getMonth() - 1, 1, 0, 0, 0));
-  const prevMonthEnd = toLocalIso(new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999));
-  const [currentMonthSpend, prevMonthSpend] = await Promise.all([
-    txRepo.getSpendTotal(currMonthStart, currMonthEnd),
-    txRepo.getSpendTotal(prevMonthStart, prevMonthEnd),
-  ]);
-
-  // Category sparklines (from current range transactions)
-  const categorySparklines = computeCategorySparklines(transactions, totalSpend, categoryColors);
-
-  // Fees (from fee column on transactions in the current range)
-  const feeTxs = transactions.filter((tx) => tx.fee != null && tx.fee > 0 && tx.status === 'completed');
-  const feesTotal = feeTxs.reduce((sum, tx) => sum + (tx.fee ?? 0), 0);
-  const feeCatMap = new Map<string, number>();
-  for (const tx of feeTxs) {
-    feeCatMap.set(tx.category, (feeCatMap.get(tx.category) ?? 0) + (tx.fee ?? 0));
+  // Category sparklines — use weekly category data already fetched
+  const catTotals = new Map<string, { total: number; weeklyAmounts: number[]; topMerchant: string | null }>();
+  for (const c of categorySpendSorted) {
+    catTotals.set(c.category, { total: c.amount, weeklyAmounts: [0, 0, 0, 0], topMerchant: null });
   }
-  const topFeeCategory = Array.from(feeCatMap.entries()).sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
-  const feesData: FeesData = {
-    total: feesTotal,
-    topCategory: topFeeCategory,
-    avgFee: feeTxs.length > 0 ? feesTotal / feeTxs.length : 0,
-    txCount: feeTxs.length,
-  };
+  const recentWeekKeys = weekKeys.slice(-4);
+  for (let wi = 0; wi < recentWeekKeys.length; wi++) {
+    const catMap = weekMap.get(recentWeekKeys[wi]);
+    if (!catMap) continue;
+    for (const [cat, amt] of catMap) {
+      const entry = catTotals.get(cat);
+      if (entry) entry.weeklyAmounts[wi] = amt;
+    }
+  }
+  // Top merchant per category from the top merchants list (approximation)
+  for (const m of topMerchants) {
+    for (const [cat, entry] of catTotals) {
+      if (!entry.topMerchant) entry.topMerchant = m.merchant;
+    }
+  }
+  const categorySparklines: CategorySparklineItem[] = Array.from(catTotals.entries())
+    .map(([category, { total, weeklyAmounts, topMerchant }]) => ({
+      category,
+      color: categoryColors[category] ?? '#6B7280',
+      total,
+      pctOfTotal: totalSpend > 0 ? (total / totalSpend) * 100 : 0,
+      weeklyAmounts,
+      topMerchant,
+    }))
+    .sort((a, b) => b.total - a.total);
 
-  // Generate insights
+  // Insights
   const rangeTitle =
     rangeLabel === 'this_week' ? 'This week' :
     rangeLabel === 'this_month' ? 'This month' :
@@ -246,16 +268,12 @@ export async function computeAnalytics(
     });
   }
 
-  const averageTransaction = transactions.length > 0
-    ? transactions.reduce((sum, tx) => sum + tx.amount, 0) / transactions.length
-    : 0;
-
   return {
     totalSpend,
     totalIncome,
     net: totalIncome - totalSpend,
     averageTransaction,
-    weeklyTrend,
+    weeklyTrend: weeklyTrendLabeled,
     weeklyCategorySpend,
     monthlyTrend,
     budgetVsActual,
@@ -267,158 +285,4 @@ export async function computeAnalytics(
     categorySparklines,
     feesData,
   };
-}
-
-function computeWeeklyCategorySpend(
-  transactions: { date: string; transaction_type: string; amount: number; category: string }[],
-  categoryColors: Record<string, string>
-): WeeklyCategorySpendItem[] {
-  const now = new Date();
-  const weeks: WeeklyCategorySpendItem[] = [];
-  const labels = ['W-4', 'W-3', 'W-2', 'Last wk', 'This wk'];
-
-  for (let i = 4; i >= 0; i--) {
-    const weekEnd = new Date(now);
-    weekEnd.setDate(weekEnd.getDate() - i * 7);
-    weekEnd.setHours(23, 59, 59, 999);
-    const weekStart = new Date(weekEnd);
-    weekStart.setDate(weekStart.getDate() - 6);
-    weekStart.setHours(0, 0, 0, 0);
-
-    const categoryMap = new Map<string, number>();
-    let total = 0;
-
-    for (const tx of transactions) {
-      if (
-        (tx.transaction_type === 'expense' || tx.transaction_type === 'transfer' || tx.transaction_type === 'fuliza') &&
-        new Date(tx.date) >= weekStart &&
-        new Date(tx.date) <= weekEnd
-      ) {
-        categoryMap.set(tx.category, (categoryMap.get(tx.category) ?? 0) + tx.amount);
-        total += tx.amount;
-      }
-    }
-
-    const categories = Array.from(categoryMap.entries())
-      .map(([category, amount]) => ({
-        category,
-        amount,
-        color: categoryColors[category] ?? '#6B7280',
-      }))
-      .sort((a, b) => b.amount - a.amount);
-
-    weeks.push({
-      week: `W${5 - i}`,
-      label: labels[4 - i],
-      categories,
-      total,
-    });
-  }
-
-  return weeks;
-}
-
-function computeWeeklyTrend(transactions: { date: string; transaction_type: string; amount: number }[]): WeeklyTrendItem[] {
-  const now = new Date();
-  const weeks: WeeklyTrendItem[] = [];
-
-  for (let i = 11; i >= 0; i--) {
-    const weekEnd = new Date(now);
-    weekEnd.setDate(weekEnd.getDate() - i * 7);
-    weekEnd.setHours(23, 59, 59, 999);
-    const weekStart = new Date(weekEnd);
-    weekStart.setDate(weekStart.getDate() - 6);
-    weekStart.setHours(0, 0, 0, 0);
-
-    const amount = transactions
-      .filter(
-        (tx) =>
-          (tx.transaction_type === 'expense' || tx.transaction_type === 'transfer' || tx.transaction_type === 'fuliza') &&
-          new Date(tx.date) >= weekStart &&
-          new Date(tx.date) <= weekEnd
-      )
-      .reduce((sum, tx) => sum + tx.amount, 0);
-
-    weeks.push({
-      week: `W${12 - i}`,
-      amount,
-    });
-  }
-
-  return weeks;
-}
-
-function computeCategorySparklines(
-  transactions: { date: string; transaction_type: string; amount: number; category: string; merchant: string }[],
-  totalSpend: number,
-  categoryColors: Record<string, string>
-): CategorySparklineItem[] {
-  const now = new Date();
-  // 4 weekly buckets: W-3, W-2, W-1, this week
-  const weekBounds: { start: Date; end: Date }[] = [];
-  for (let i = 3; i >= 0; i--) {
-    const end = new Date(now);
-    end.setDate(end.getDate() - i * 7);
-    end.setHours(23, 59, 59, 999);
-    const start = new Date(end);
-    start.setDate(start.getDate() - 6);
-    start.setHours(0, 0, 0, 0);
-    weekBounds.push({ start, end });
-  }
-
-  const catMap = new Map<string, { total: number; weeklyAmounts: number[]; merchantMap: Map<string, number> }>();
-
-  for (const tx of transactions) {
-    if (tx.transaction_type !== 'expense' && tx.transaction_type !== 'transfer' && tx.transaction_type !== 'fuliza') continue;
-    const cat = tx.category;
-    if (!catMap.has(cat)) catMap.set(cat, { total: 0, weeklyAmounts: [0, 0, 0, 0], merchantMap: new Map() });
-    const entry = catMap.get(cat)!;
-    entry.total += tx.amount;
-    entry.merchantMap.set(tx.merchant, (entry.merchantMap.get(tx.merchant) ?? 0) + tx.amount);
-    const txDate = new Date(tx.date);
-    for (let i = 0; i < 4; i++) {
-      if (txDate >= weekBounds[i].start && txDate <= weekBounds[i].end) {
-        entry.weeklyAmounts[i] += tx.amount;
-        break;
-      }
-    }
-  }
-
-  return Array.from(catMap.entries())
-    .map(([category, { total, weeklyAmounts, merchantMap }]) => ({
-      category,
-      color: categoryColors[category] ?? '#6B7280',
-      total,
-      pctOfTotal: totalSpend > 0 ? (total / totalSpend) * 100 : 0,
-      weeklyAmounts,
-      topMerchant: Array.from(merchantMap.entries()).sort((a, b) => b[1] - a[1])[0]?.[0] ?? null,
-    }))
-    .sort((a, b) => b.total - a.total);
-}
-
-function computeMonthlyTrend(transactions: { date: string; transaction_type: string; amount: number }[]): MonthlyTrendItem[] {
-  const months: MonthlyTrendItem[] = [];
-  const now = new Date();
-
-  for (let i = 11; i >= 0; i--) {
-    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-    // Local YYYY-MM key so it matches the local datetime strings stored by
-    // the SMS parser.
-    const monthKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-    const monthName = d.toLocaleString('default', { month: 'short' });
-
-    let expense = 0;
-    let income = 0;
-
-    for (const tx of transactions) {
-      if (tx.date.startsWith(monthKey)) {
-        if (tx.transaction_type === 'expense' || tx.transaction_type === 'transfer' || tx.transaction_type === 'fuliza') expense += tx.amount;
-        else if (tx.transaction_type === 'income') income += tx.amount;
-      }
-    }
-
-    months.push({ month: monthName, expense, income });
-  }
-
-  return months;
 }

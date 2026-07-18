@@ -156,6 +156,7 @@ class SmsImportWorker(
                 // one SQLiteStatement compilation per row (~200 per chunk vs 200k total).
                 db.beginTransaction()
                 db.compileAuditInsertStatement().use { auditStmt ->
+                db.compileTransactionInsertStatement().use { txStmt ->
                     try {
                         for ((candidate, result) in parsed) {
                             val body = candidate.body
@@ -179,7 +180,7 @@ class SmsImportWorker(
                                 if (fee != null && fee > 0.0) {
                                     val dupReason = SmsDedupeEngine.check(dedupeCtx, tx, db)
                                     if (dupReason == SmsDedupeEngine.Result.NEW) {
-                                        val rowId = db.insertTransaction(tx)
+                                        val rowId = db.insertTransactionReusing(txStmt, tx)
                                         if (rowId >= 0) {
                                             val label = if (tx.parseRoute == SmsParser.ParseRoute.REVIEW) "imported_review" else "imported_batch"
                                             db.insertAuditReusing(auditStmt, tx.mpesaCode, body, tx.amount, tx.counterparty, label, null, tx.confidence.name.lowercase())
@@ -223,7 +224,7 @@ class SmsImportWorker(
                                 continue
                             }
 
-                            val rowId = db.insertTransaction(tx)
+                            val rowId = db.insertTransactionReusing(txStmt, tx)
                             if (rowId >= 0) {
                                 val label = if (tx.parseRoute == SmsParser.ParseRoute.REVIEW) "imported_review" else "imported_batch"
                                 db.insertAuditReusing(auditStmt, tx.mpesaCode, body, tx.amount, tx.counterparty, label, null, tx.confidence.name.lowercase())
@@ -238,7 +239,7 @@ class SmsImportWorker(
                     } finally {
                         db.endTransaction()
                     }
-                }
+                } }
 
                 // Update progress notification after each chunk (best effort)
                 try {

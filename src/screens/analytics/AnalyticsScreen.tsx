@@ -54,9 +54,9 @@ export function AnalyticsScreen() {
 
   useEffect(() => {
     const repo = new TransactionRepository(db);
-    repo.getUncategorized().then((rows) => {
-      setUncategorizedCount(rows.length);
-      setUncategorizedAmount(rows.reduce((sum, r) => sum + r.amount, 0));
+    repo.getUncategorizedSummary().then(({ count, total }) => {
+      setUncategorizedCount(count);
+      setUncategorizedAmount(total);
     });
   }, [db, dataVersion]);
 

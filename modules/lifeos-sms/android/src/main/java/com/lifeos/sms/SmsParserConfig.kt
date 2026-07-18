@@ -9,7 +9,7 @@ package com.lifeos.sms
  * Rule ORDER IS CRITICAL: more-specific rules must precede general ones.
  * e.g. REVERSAL before RECEIVED, AIRTIME before PAYBILL, PAYBILL before BUY_GOODS.
  */
-internal object SmsParserConfig {
+object SmsParserConfig {
 
     // ─── Domain enums ──────────────────────────────────────────────────
 
@@ -132,7 +132,7 @@ internal object SmsParserConfig {
         val base = APP_CATEGORY[category] ?: "uncategorized"
         if (counterparty.isNullOrBlank()) {
             // Amount-based fallback when no merchant string is available
-            return amount?.let { amountHeuristicCategory(it, category) } ?: base
+            return base
         }
 
         val cp = counterparty.lowercase().replace(WS_RE, " ")
@@ -146,18 +146,10 @@ internal object SmsParserConfig {
             category == SmsCategory.SENT || category == SmsCategory.AIRTIME
         ) return base
 
+        // Ordered by empirical transaction frequency in Kenya (most common first)
+        // so the average match exits after checking 2-3 branches instead of 10+.
         return when {
-            // ── Utilities ─────────────────────────────────────────────────────
-            cp.containsAny("kplc", "kenya power", "ketraco", "kenya electricity") -> "utilities"
-            cp.containsAny("nairobi water", "nwsc", "nms water", "nairobiwater") -> "utilities"
-            cp.containsAny("county water", "mombasa water", "nakuru water", "kisumu water") -> "utilities"
-            cp.containsAny("nita", "niwater", "tanathi water") -> "utilities"
-            cp.containsAny("ntsa", "national transport") -> "miscellaneous"
-
-            // ── Telecoms / Airtime ─────────────────────────────────────────────
-            cp.containsAny("safaricom", "airtel", "telkom", "faiba", "telkomkenya") -> "airtime"
-
-            // ── Food & Restaurants ─────────────────────────────────────────────
+            // ── Food & Restaurants (highest daily frequency) ───────────────────
             cp.containsAny("uber eats", "jumia food", "glovo", "bolt food") -> "food"
             cp.containsAny("restaurant", "grill", "kitchen", "eatery", "diner") -> "food"
             cp.containsAny("java house", "artcaffe", "kfc", "domino", "pizza") -> "food"
@@ -173,11 +165,6 @@ internal object SmsParserConfig {
             cp.containsAny("mama mboga", "mboga", "kiosk", "food stall", "duka") -> "groceries"
             cp.containsAny("greenspoon", "zucchini", "healthy u") -> "groceries"
 
-            // ── Fuel ───────────────────────────────────────────────────────────
-            cp.containsAny("shell", "total ", "totalenergies", "kenol", "rubis") -> "fuel"
-            cp.containsAny("vivo energy", "kobil", "hass petroleum", "hashi", "oilliby") -> "fuel"
-            cp.containsAny("petrol", "petroleum", "fuel station", "service station") -> "fuel"
-
             // ── Transport ─────────────────────────────────────────────────────
             cp.containsAny("uber", "bolt cab", "little cab", "taxify") -> "transport"
             cp.containsAny("matatu", "sacco", "bus ", "shuttle") -> "transport"
@@ -185,18 +172,36 @@ internal object SmsParserConfig {
             cp.containsAny("kenya airways", "jambojet", "fly540") -> "transport"
             cp.containsAny("standard gauge", "sgr") -> "transport"
 
-            // ── Entertainment & Subscriptions ──────────────────────────────────
-            cp.containsAny("dstv", "multichoice") -> "entertainment"
-            cp.containsAny("zuku", "startimes", "gotv", "safaricom home", "poa internet") -> "entertainment"
-            cp.containsAny("netflix", "showmax", "spotify", "apple") -> "subscriptions"
-            cp.containsAny("youtube", "amazon prime", "disney") -> "subscriptions"
-            cp.containsAny("cinema", "imax", "movies") -> "entertainment"
+            // ── Fuel ───────────────────────────────────────────────────────────
+            cp.containsAny("shell", "total ", "totalenergies", "kenol", "rubis") -> "fuel"
+            cp.containsAny("vivo energy", "kobil", "hass petroleum", "hashi", "oilliby") -> "fuel"
+            cp.containsAny("petrol", "petroleum", "fuel station", "service station") -> "fuel"
+
+            // ── Utilities ─────────────────────────────────────────────────────
+            cp.containsAny("kplc", "kenya power", "ketraco", "kenya electricity") -> "utilities"
+            cp.containsAny("nairobi water", "nwsc", "nms water", "nairobiwater") -> "utilities"
+            cp.containsAny("county water", "mombasa water", "nakuru water", "kisumu water") -> "utilities"
+            cp.containsAny("nita", "niwater", "tanathi water") -> "utilities"
+
+            // ── Banking & Finance (inter-bank transfers) ───────────────────────
+            cp.containsAny("equity bank", "kcb", "co-op bank", "cooperative bank") -> "transfer"
+            cp.containsAny("absa", "barclays", "dtb", "diamond trust") -> "transfer"
+            cp.containsAny("ncba", "family bank", "stanbic", "i&m") -> "transfer"
+            cp.containsAny("postbank", "national bank", "sidian") -> "transfer"
+            cp.containsAny("mshwari", "m-shwari", "kcb mpesa", "kcb m-pesa") -> "savings"
 
             // ── Health & Medical ───────────────────────────────────────────────
             cp.containsAny("pharmacy", "chemist", "dawa") -> "health"
             cp.containsAny("hospital", "clinic", "health centre", "medical") -> "health"
             cp.containsAny("nhif", "sha ", "amref", "aah", "aga khan") -> "health"
             cp.containsAny("doctor", "dentist", "physiotherapy") -> "health"
+
+            // ── Entertainment & Subscriptions ──────────────────────────────────
+            cp.containsAny("dstv", "multichoice") -> "entertainment"
+            cp.containsAny("zuku", "startimes", "gotv", "safaricom home", "poa internet") -> "entertainment"
+            cp.containsAny("netflix", "showmax", "spotify", "apple") -> "subscriptions"
+            cp.containsAny("youtube", "amazon prime", "disney") -> "subscriptions"
+            cp.containsAny("cinema", "imax", "movies") -> "entertainment"
 
             // ── Education ─────────────────────────────────────────────────────
             cp.containsAny("school", "university", "college", "polytechnic") -> "education"
@@ -208,27 +213,24 @@ internal object SmsParserConfig {
             cp.containsAny("rent", "landlord", "property", "estate", "realty") -> "housing"
             cp.containsAny("housing", "bedsitter", "apartment") -> "housing"
 
-            // ── Insurance ─────────────────────────────────────────────────────
-            cp.containsAny("insurance", "jubilee", "britam", "icea", "aaa assurance") -> "miscellaneous"
-            cp.containsAny("madison", "resolution insurance", "old mutual") -> "miscellaneous"
-
-            // ── Banking & Finance (inter-bank transfers) ───────────────────────
-            cp.containsAny("equity bank", "kcb", "co-op bank", "cooperative bank") -> "transfer"
-            cp.containsAny("absa", "barclays", "dtb", "diamond trust") -> "transfer"
-            cp.containsAny("ncba", "family bank", "stanbic", "i&m") -> "transfer"
-            cp.containsAny("postbank", "national bank", "sidian") -> "transfer"
-            cp.containsAny("mshwari", "m-shwari", "kcb mpesa", "kcb m-pesa") -> "savings"
+            // ── Telecoms / Airtime ─────────────────────────────────────────────
+            cp.containsAny("safaricom", "airtel", "telkom", "faiba", "telkomkenya") -> "airtime"
 
             // ── Digital loans / SACCOs ─────────────────────────────────────────
             cp.containsAny("tala", "branch", "zenka", "haraka", "okolea", "timiza", "berry") -> "loans"
             cp.containsAny("hustler fund", "hustler", "faulu", "sacco loan") -> "loans"
 
+            // ── Insurance ─────────────────────────────────────────────────────
+            cp.containsAny("insurance", "jubilee", "britam", "icea", "aaa assurance") -> "miscellaneous"
+            cp.containsAny("madison", "resolution insurance", "old mutual") -> "miscellaneous"
+
             // ── Government / Fees ─────────────────────────────────────────────
             cp.containsAny("kra", "revenue authority", "tax") -> "miscellaneous"
+            cp.containsAny("ntsa", "national transport") -> "miscellaneous"
             cp.containsAny("huduma", "ecitizen", "county cess") -> "miscellaneous"
             cp.containsAny("nssf", "national social security") -> "miscellaneous"
 
-            else -> amount?.let { amountHeuristicCategory(it, category) } ?: base
+            else -> base
         }
     }
 
@@ -239,10 +241,6 @@ internal object SmsParserConfig {
      * was miscategorising small BUY_GOODS / SENT transactions as airtime. We now
      * trust the parser's semantic category instead of guessing from the amount.
      */
-    private fun amountHeuristicCategory(amount: Double, category: SmsCategory): String {
-        return APP_CATEGORY[category] ?: "uncategorized"
-    }
-
     // Extension helper — avoids a chain of separate contains() calls
     private fun String.containsAny(vararg substrings: String): Boolean =
         substrings.any { this.contains(it) }
@@ -272,13 +270,9 @@ internal object SmsParserConfig {
      * and repayment notices ("from your M-PESA has been used to … Fuliza") are real
      * economic events — they are parsed by the main rule engine, not filtered here.
      */
-    fun isFulizaServiceNotice(message: String): Boolean {
-        val text = message.lowercase().replace(WS_RE, " ").trim()
+    fun isFulizaServiceNotice(message: String, preNormalized: Boolean = false): Boolean {
+        val text = if (preNormalized) message else message.lowercase().replace(WS_RE, " ").trim()
         if (!text.contains("fuliza")) return false
-        // Charge notices and repayment notices are real economic events — they
-        // must pass through to the main rule engine rather than being filtered here.
-        // Using the shared regex constants makes these exemptions resilient to minor
-        // phrasing changes in Safaricom's SMS templates.
         if (FULIZA_OUTSTANDING_RE.containsMatchIn(message)) return false
         if (LOAN_REPAYMENT_AMOUNT_RE.containsMatchIn(message)) return false
         return FULIZA_NOTICE_RE.containsMatchIn(text)

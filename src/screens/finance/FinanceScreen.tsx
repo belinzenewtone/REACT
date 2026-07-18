@@ -25,8 +25,6 @@ import {
   endOfDay,
   startOfWeek,
   endOfWeek,
-  startOfMonth,
-  endOfMonth,
 } from 'date-fns';
 import { useTransactionStore, useDashboardStore, useBudgetStore, usePlannerStore, useAppStore } from '../../store';
 import { TransactionRepository } from '../../database/repositories/TransactionRepository';
@@ -65,37 +63,102 @@ function FinanceScreenContent() {
   const navigation = useNavigation<any>();
   const repo = React.useMemo(() => new TransactionRepository(db), [db]);
 
-  const {
-    transactions,
-    isLoading,
-    hasMore,
-    filters,
-    setFilters,
-    loadTransactions,
-  } = useTransactionStore();
+  const transactions = useTransactionStore((s) => s.transactions);
+  const isLoading = useTransactionStore((s) => s.isLoading);
+  const hasMore = useTransactionStore((s) => s.hasMore);
+  const filters = useTransactionStore((s) => s.filters);
+  const setFilters = useTransactionStore((s) => s.setFilters);
+  const loadTransactions = useTransactionStore((s) => s.loadTransactions);
 
-  const { todaySpend, weekSpend, loadDashboard } = useDashboardStore();
-  const { budgets, isLoading: budgetsLoading, loadBudgets } = useBudgetStore();
-  const { loans, loadAll: loadPlanner } = usePlannerStore();
+  const income = useDashboardStore((s) => s.income);
+  const expense = useDashboardStore((s) => s.expense);
+  const todaySpend = useDashboardStore((s) => s.todaySpend);
+  const weekSpend = useDashboardStore((s) => s.weekSpend);
+  const loadDashboard = useDashboardStore((s) => s.loadDashboard);
+  const budgets = useBudgetStore((s) => s.budgets);
+  const budgetsLoading = useBudgetStore((s) => s.isLoading);
+  const loadBudgets = useBudgetStore((s) => s.loadBudgets);
+  const loans = usePlannerStore((s) => s.loans);
+  const reloadLoans = usePlannerStore((s) => s.reloadLoans);
   const fulizaLimit = useAppStore((state) => state.settings.fulizaLimit);
 
-  const dataVersion = useDataVersion((s) => s.version);
+  const dataVersion = useDataVersion((s) => s.transactionVersion);
   const loadedVersion = useRef(-1);
   const [feesTotal, setFeesTotal] = useState(0);
   const [uncategorizedCount, setUncategorizedCount] = useState(0);
   const [uncategorizedAmount, setUncategorizedAmount] = useState(0);
   const [csvSheetVisible, setCsvSheetVisible] = useState(false);
   const [smsSheetVisible, setSmsSheetVisible] = useState(false);
-  const [smsImporting, setSmsImporting] = useState(false);
-  const [smsImportBanner, setSmsImportBanner] = useState<string | null>(null);
   const [smsPermissionsGranted, setSmsPermissionsGranted] = useState(true);
   const [requestingSmsPerms, setRequestingSmsPerms] = useState(false);
-  const [smsDetecting, setSmsDetecting] = useState(false);
-  const [detectedInstitutions, setDetectedInstitutions] = useState<DetectedInstitution[] | undefined>();
-  const [showDetectionResult, setShowDetectionResult] = useState(false);
-  const [pendingImportFilter, setPendingImportFilter] = useState<InstitutionFilter>('all');
-  const [pendingImportFromMs, setPendingImportFromMs] = useState(0);
-  const [pendingImportToMs, setPendingImportToMs] = useState(0);
+
+  type SmsImportState =
+    | { phase: 'idle'; banner: string | null }
+    | { phase: 'detecting'; banner: string | null; fromMs: number; toMs: number; filter: InstitutionFilter }
+    | { phase: 'confirming'; banner: string | null; fromMs: number; toMs: number; filter: InstitutionFilter; institutions: DetectedInstitution[] }
+    | { phase: 'importing'; banner: string }
+    | { phase: 'done'; banner: string | null };
+
+  type SmsImportAction =
+    | { type: 'START_DETECT'; fromMs: number; toMs: number; filter: InstitutionFilter }
+    | { type: 'DETECT_DONE'; institutions: DetectedInstitution[] }
+    | { type: 'DETECT_EMPTY'; banner: string }
+    | { type: 'DETECT_FAIL'; banner: string }
+    | { type: 'CONFIRM' }
+    | { type: 'CANCEL_DETECT' }
+    | { type: 'START_IMPORT'; banner: string }
+    | { type: 'IMPORT_DONE'; banner: string }
+    | { type: 'IMPORT_FAIL'; banner: string }
+    | { type: 'CLEAR_BANNER' }
+    | { type: 'SET_BANNER'; banner: string };
+
+  const smsImportReducer = useCallback((state: SmsImportState, action: SmsImportAction): SmsImportState => {
+    switch (action.type) {
+      case 'START_DETECT':
+        return { phase: 'detecting', banner: state.banner, fromMs: action.fromMs, toMs: action.toMs, filter: action.filter };
+      case 'DETECT_DONE':
+        if (state.phase !== 'detecting') return state;
+        return { phase: 'confirming', banner: state.banner, fromMs: state.fromMs, toMs: state.toMs, filter: state.filter, institutions: action.institutions };
+      case 'DETECT_EMPTY':
+        return { phase: 'idle', banner: action.banner };
+      case 'DETECT_FAIL':
+        return { phase: 'idle', banner: action.banner };
+      case 'CONFIRM':
+        if (state.phase !== 'confirming') return state;
+        return { phase: 'idle', banner: null };
+      case 'CANCEL_DETECT':
+        return { phase: 'idle', banner: state.banner };
+      case 'START_IMPORT':
+        return { phase: 'importing', banner: action.banner };
+      case 'IMPORT_DONE':
+        return { phase: 'done', banner: action.banner };
+      case 'IMPORT_FAIL':
+        return { phase: 'done', banner: action.banner };
+      case 'CLEAR_BANNER':
+        return { ...state, banner: null };
+      case 'SET_BANNER':
+        return { ...state, banner: action.banner };
+      default:
+        return state;
+    }
+  }, []);
+
+  const [smsState, smsDispatch] = React.useReducer(smsImportReducer, { phase: 'idle', banner: null });
+
+  const bannerTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  const showBannerThen = useCallback((banner: string, ms = 3000) => {
+    clearTimeout(bannerTimerRef.current);
+    smsDispatch({ type: 'SET_BANNER', banner });
+    bannerTimerRef.current = setTimeout(() => smsDispatch({ type: 'CLEAR_BANNER' }), ms);
+  }, []);
+
+  useEffect(() => () => clearTimeout(bannerTimerRef.current), []);
+
+  const smsImporting = smsState.phase === 'importing';
+  const smsImportBanner = smsState.banner;
+  const smsDetecting = smsState.phase === 'detecting';
+  const detectedInstitutions = smsState.phase === 'confirming' ? smsState.institutions : undefined;
+  const showDetectionResult = smsState.phase === 'confirming';
 
   useEffect(() => {
     loadTransactions(repo, true);
@@ -109,15 +172,12 @@ function FinanceScreenContent() {
   }, [repo, filters.search]);
 
   useEffect(() => {
-    loadDashboard(db);
-    loadBudgets(db);
-    loadPlanner(db);
     repo.getFeesTotalForMonth().then(setFeesTotal);
-    repo.getUncategorized().then((rows) => {
-      setUncategorizedCount(rows.length);
-      setUncategorizedAmount(rows.reduce((sum, r) => sum + r.amount, 0));
+    repo.getUncategorizedSummary().then(({ count, total }) => {
+      setUncategorizedCount(count);
+      setUncategorizedAmount(total);
     });
-  }, [db, loadDashboard, loadBudgets, loadPlanner, repo]);
+  }, [repo]);
 
   const refreshSmsPermissionState = useCallback(async () => {
     try {
@@ -134,19 +194,16 @@ function FinanceScreenContent() {
       const { granted } = await requestSmsPermissions();
       await refreshSmsPermissionState();
       if (granted) {
-        setSmsImportBanner('SMS access granted · ready to import');
-        setTimeout(() => setSmsImportBanner(null), 3000);
+        showBannerThen('SMS access granted · ready to import', 3000);
       } else {
-        setSmsImportBanner('SMS permission denied · enable it in device Settings');
-        setTimeout(() => setSmsImportBanner(null), 3000);
+        showBannerThen('SMS permission denied · enable it in device Settings', 3000);
       }
     } catch {
-      setSmsImportBanner('Could not request SMS permissions');
-      setTimeout(() => setSmsImportBanner(null), 3000);
+      showBannerThen('Could not request SMS permissions', 3000);
     } finally {
       setRequestingSmsPerms(false);
     }
-  }, [refreshSmsPermissionState]);
+  }, [refreshSmsPermissionState, showBannerThen]);
 
   useEffect(() => {
     refreshSmsPermissionState();
@@ -167,9 +224,9 @@ function FinanceScreenContent() {
         loadTransactions(repo, true);
         loadDashboard(db);
         loadBudgets(db);
-        loadPlanner(db);
+        reloadLoans(db);
       }
-    }, [repo, db, loadTransactions, loadDashboard, loadBudgets, loadPlanner, dataVersion, refreshSmsPermissionState])
+    }, [repo, db, loadTransactions, loadDashboard, loadBudgets, reloadLoans, dataVersion, refreshSmsPermissionState])
   );
 
   const handleLoadMore = useCallback(() => {
@@ -179,41 +236,40 @@ function FinanceScreenContent() {
   }, [isLoading, hasMore, loadTransactions, repo]);
 
   const runImport = useCallback(async (fromMs: number, toMs: number, filter: InstitutionFilter) => {
-    setSmsImporting(true);
     const label = filter === 'mpesa_only' ? 'M-Pesa' : filter === 'banks_only' ? 'bank' : 'financial';
-    setSmsImportBanner(`Scanning ${label} messages…`);
+    smsDispatch({ type: 'START_IMPORT', banner: `Scanning ${label} messages…` });
     try {
       const result = await importHistoricalSms(fromMs, toMs, filter);
-      useDataVersion.getState().bump();
+      useDataVersion.getState().bumpTransactions();
       await loadTransactions(repo, true);
       await loadDashboard(db);
       await loadBudgets(db);
-      await loadPlanner(db);
+      await reloadLoans(db);
       await checkAllBudgetThresholds(db);
       const imported = result?.imported ?? 0;
       const dupes = result?.duplicates ?? 0;
       const failed = result?.failed ?? 0;
       const total = result?.total ?? 0;
-      setSmsImportBanner(
+      const banner =
         total === 0
           ? `No ${label} messages found in this window`
           : imported === 0 && dupes > 0 && failed === 0
           ? `Everything up to date · ${dupes} already imported`
-          : `Import complete · ${imported} new · ${dupes} dupes · ${failed} failed`
-      );
-      setTimeout(() => setSmsImportBanner(null), 5000);
+          : `Import complete · ${imported} new · ${dupes} dupes · ${failed} failed`;
+      smsDispatch({ type: 'IMPORT_DONE', banner });
+      clearTimeout(bannerTimerRef.current);
+      bannerTimerRef.current = setTimeout(() => smsDispatch({ type: 'CLEAR_BANNER' }), 5000);
     } catch (e: any) {
       const msg: string = e?.message ?? 'unknown error';
-      setSmsImportBanner(
+      const banner =
         msg.includes('sms_permission_denied')
           ? 'SMS permission denied · grant SMS access and try again'
           : msg.includes('module_unavailable')
           ? 'SMS import needs a development build (not Expo Go) · rebuild with expo run:android'
-          : `Import failed: ${msg}`
-      );
-      setTimeout(() => setSmsImportBanner(null), 6000);
-    } finally {
-      setSmsImporting(false);
+          : `Import failed: ${msg}`;
+      smsDispatch({ type: 'IMPORT_FAIL', banner });
+      clearTimeout(bannerTimerRef.current);
+      bannerTimerRef.current = setTimeout(() => smsDispatch({ type: 'CLEAR_BANNER' }), 6000);
     }
   }, [repo, loadTransactions, loadDashboard, loadBudgets, loadPlanner, db]);
 
@@ -227,89 +283,39 @@ function FinanceScreenContent() {
     const now = Date.now();
     const fromMs = now - periodToMs(period);
     const filter: InstitutionFilter = mode === 'banks_only' ? 'banks_only' : 'all';
-    setPendingImportFilter(filter);
-    setPendingImportFromMs(fromMs);
-    setPendingImportToMs(now);
-    setSmsDetecting(true);
+    smsDispatch({ type: 'START_DETECT', fromMs, toMs: now, filter });
     try {
       const detected = await detectInstitutions(fromMs, now, filter);
       if (detected.length === 0) {
-        setSmsDetecting(false);
+        smsDispatch({ type: 'DETECT_EMPTY', banner: 'No bank messages found in this window' });
         setSmsSheetVisible(false);
-        setSmsImportBanner('No bank messages found in this window');
-        setTimeout(() => setSmsImportBanner(null), 5000);
+        clearTimeout(bannerTimerRef.current);
+        bannerTimerRef.current = setTimeout(() => smsDispatch({ type: 'CLEAR_BANNER' }), 5000);
         return;
       }
-      setDetectedInstitutions(detected);
-      setShowDetectionResult(true);
+      smsDispatch({ type: 'DETECT_DONE', institutions: detected });
     } catch (e: any) {
-      setSmsImportBanner(`Detection failed: ${e?.message ?? 'unknown error'}`);
-      setTimeout(() => setSmsImportBanner(null), 5000);
+      smsDispatch({ type: 'DETECT_FAIL', banner: `Detection failed: ${e?.message ?? 'unknown error'}` });
       setSmsSheetVisible(false);
-    } finally {
-      setSmsDetecting(false);
+      clearTimeout(bannerTimerRef.current);
+      bannerTimerRef.current = setTimeout(() => smsDispatch({ type: 'CLEAR_BANNER' }), 5000);
     }
   }, []);
 
   const handleConfirmBankImport = useCallback(() => {
-    setShowDetectionResult(false);
-    setDetectedInstitutions(undefined);
+    if (smsState.phase !== 'confirming') return;
+    const { fromMs, toMs, filter } = smsState;
+    smsDispatch({ type: 'CONFIRM' });
     setSmsSheetVisible(false);
-    runImport(pendingImportFromMs, pendingImportToMs, pendingImportFilter);
-  }, [runImport, pendingImportFromMs, pendingImportToMs, pendingImportFilter]);
+    runImport(fromMs, toMs, filter);
+  }, [runImport, smsState]);
 
   const handleCancelDetection = useCallback(() => {
-    setShowDetectionResult(false);
-    setDetectedInstitutions(undefined);
+    smsDispatch({ type: 'CANCEL_DETECT' });
   }, []);
 
   const activeBudgets = useMemo(() => budgets.filter((b) => b.isActive), [budgets]);
 
-  const monthTotals = useMemo(() => {
-    const now = new Date();
-    const monthStart = toLocalIso(startOfMonth(now));
-    const monthEnd = toLocalIso(endOfMonth(now));
-    let income = 0;
-    let expense = 0;
-    for (const t of transactions) {
-      if (t.date >= monthStart && t.date <= monthEnd && t.status === 'completed') {
-        if (isInflow(t.transaction_type)) income += t.amount;
-        else if (isOutflow(t.transaction_type)) expense += t.amount;
-      }
-    }
-    return { income, expense };
-  }, [transactions]);
-
-  const periodTotals = useMemo(() => {
-    const now = new Date();
-    let start: string;
-    let end: string;
-    switch (filters.period) {
-      case 'today':
-        start = toLocalIso(startOfDay(now));
-        end = toLocalIso(endOfDay(now));
-        break;
-      case 'week':
-        start = toLocalIso(startOfWeek(now, { weekStartsOn: 1 }));
-        end = toLocalIso(endOfWeek(now, { weekStartsOn: 1 }));
-        break;
-      case 'month':
-        start = toLocalIso(startOfMonth(now));
-        end = toLocalIso(endOfMonth(now));
-        break;
-      default:
-        return { income: monthTotals.income, expense: monthTotals.expense };
-    }
-    let income = 0;
-    let expense = 0;
-    for (const t of transactions) {
-      if (t.date >= start && t.date <= end && t.status === 'completed') {
-        if (isInflow(t.transaction_type)) income += t.amount;
-        else if (isOutflow(t.transaction_type)) expense += t.amount;
-      }
-    }
-    return { income, expense };
-  }, [transactions, filters.period, monthTotals]);
 
   const topAlertBudget = useMemo(() => {
     if (activeBudgets.length === 0) return null;
@@ -330,16 +336,24 @@ function FinanceScreenContent() {
     [fulizaOpenLoans]
   );
 
-  const data: TransactionListItemData[] = transactions.map((t) => ({
-    id: t.id,
-    merchant: t.merchant,
-    category: t.category,
-    amount: t.amount,
-    date: t.date,
-    type: t.transaction_type,
-    status: t.status,
-    description: t.description,
-  }));
+  const data = useMemo<TransactionListItemData[]>(
+    () => transactions.map((t) => ({
+      id: t.id,
+      merchant: t.merchant,
+      category: t.category,
+      amount: t.amount,
+      date: t.date,
+      type: t.transaction_type,
+      status: t.status,
+      description: t.description,
+    })),
+    [transactions]
+  );
+
+  const handleTransactionPress = useCallback(
+    (id: string) => navigation.navigate('TransactionDetail', { transactionId: id }),
+    [navigation]
+  );
 
   const grouped = useMemo<DateGroup[]>(() => {
     const map = new Map<string, TransactionListItemData[]>();
@@ -392,7 +406,7 @@ function FinanceScreenContent() {
                 <React.Fragment key={item.id}>
                   <TransactionListItem
                     item={item}
-                    onPress={(id) => navigation.navigate('TransactionDetail', { transactionId: id })}
+                    onPress={handleTransactionPress}
                   />
                   {index < group.data.length - 1 && (
                     <View style={[styles.divider, { backgroundColor: theme.colors.outlineVariant }]} />
@@ -475,7 +489,7 @@ function FinanceScreenContent() {
               letterSpacing: -1,
               marginTop: spacing.sm,
             }}>
-              {formatCurrency(monthTotals.expense, { decimals: 0 })}
+              {formatCurrency(expense, { decimals: 0 })}
             </Text>
             <View style={styles.heroMetrics}>
               <View style={styles.heroMetric}>
@@ -493,7 +507,7 @@ function FinanceScreenContent() {
               <View style={styles.heroMetric}>
                 <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>Income</Text>
                 <Text variant="titleMedium" style={{ color: theme.colors.primary }}>
-                  {formatCurrency(monthTotals.income, { decimals: 0 })}
+                  {formatCurrency(income, { decimals: 0 })}
                 </Text>
               </View>
             </View>
@@ -642,7 +656,7 @@ export function FinanceScreen() {
   return <FinanceScreenContent />;
 }
 
-function InsightCard({
+const InsightCard = React.memo(function InsightCard({
   label,
   action,
   amount,
@@ -676,7 +690,7 @@ function InsightCard({
       </Card.Content>
     </Card>
   );
-}
+});
 
 const styles = StyleSheet.create({
   container: {

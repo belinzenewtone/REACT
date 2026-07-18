@@ -144,8 +144,22 @@ export const useAppStore = create<AppState>()(
         return persistedState as AppState;
       },
       onRehydrateStorage: () => (state) => {
-        // Require the PIN immediately on cold start (before first render of app content)
-        // if screen lock is on, so there's no flash of unlocked content.
+        // Prune stale budget alert entries — keep only current and previous month.
+        if (state?.firedBudgetAlerts) {
+          const now = new Date();
+          const ym = (d: Date) =>
+            `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+          const prev = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+          const keep = new Set([ym(now), ym(prev)]);
+          const pruned: Record<string, string> = {};
+          for (const [k, v] of Object.entries(state.firedBudgetAlerts)) {
+            const parts = k.split('|');
+            const month = parts[2];
+            if (month && keep.has(month)) pruned[k] = v;
+          }
+          state.firedBudgetAlerts = pruned;
+        }
+
         const shouldLock = !!(
           state?.hasCompletedOnboarding &&
           state?.isAuthenticated &&

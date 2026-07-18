@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View,
   StyleSheet,
@@ -108,6 +108,17 @@ export function AssistantScreen() {
     );
   };
 
+  const handleActionPress = useCallback((action: string) => {
+    sendMessage(db, action);
+  }, [sendMessage, db]);
+
+  const renderChatItem = useCallback(({ item }: { item: ChatMessageData }) => (
+    <ChatMessage
+      message={item}
+      onActionPress={handleActionPress}
+    />
+  ), [handleActionPress]);
+
   const hasMessages = messages.length > 0;
   const showSuggestions = messages.length <= 1;
 
@@ -165,12 +176,8 @@ export function AssistantScreen() {
               ref={listRef}
               data={messages}
               keyExtractor={(item) => item.id}
-              renderItem={({ item }) => (
-                <ChatMessage
-                  message={item}
-                  onActionPress={(action) => sendMessage(db, action)}
-                />
-              )}
+              estimatedItemSize={80}
+              renderItem={renderChatItem}
               contentContainerStyle={styles.listContent}
               onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: true })}
               ListFooterComponent={isLoading ? <TypingIndicator /> : null}

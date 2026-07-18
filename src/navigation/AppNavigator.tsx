@@ -232,7 +232,7 @@ export function AppNavigator() {
       // event can be missed if JS was paused. Bump the data version on every
       // return to foreground so all subscribed screens (Finance, Import
       // Health, Dashboard…) re-read from disk immediately. Cheap: reads only.
-      useDataVersion.getState().bump();
+      useDataVersion.getState().bumpTransactions();
       const now = Date.now();
       if (now - lastForegroundSync.current < 60_000) return;
       lastForegroundSync.current = now;
@@ -250,7 +250,7 @@ export function AppNavigator() {
     const subscription = addNewTransactionListener((tx) => {
       // Native worker just wrote to SQLite from its own connection.
       // Bump so every subscribed store re-reads from disk.
-      useDataVersion.getState().bump();
+      useDataVersion.getState().bumpTransactions();
 
       // Heads-up notification for the auto-imported transaction, gated by
       // the user's notification preferences. Skip Fuliza fee/charge notices —

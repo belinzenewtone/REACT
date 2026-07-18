@@ -23,8 +23,10 @@ import {
  * read the fresh values next time they render.
  */
 export function useGlobalDataSync(db: SQLiteDatabase | null) {
-  const dataVersion = useDataVersion((s) => s.version);
-  const lastVersion = useRef(-1);
+  const transactionVersion = useDataVersion((s) => s.transactionVersion);
+  const plannerVersion = useDataVersion((s) => s.plannerVersion);
+  const lastTxVersion = useRef(-1);
+  const lastPlannerVersion = useRef(-1);
 
   const loadDashboard = useDashboardStore((s) => s.loadDashboard);
   const loadAnalytics = useAnalyticsStore((s) => s.loadAnalytics);
@@ -33,23 +35,30 @@ export function useGlobalDataSync(db: SQLiteDatabase | null) {
 
   useEffect(() => {
     if (!db) return;
-    if (dataVersion === lastVersion.current) return;
-    lastVersion.current = dataVersion;
+    if (transactionVersion === lastTxVersion.current) return;
+    lastTxVersion.current = transactionVersion;
 
-    // Eagerly refresh aggregate stores. Failures are isolated so one broken
-    // store doesn't block the others.
     Promise.allSettled([
       loadDashboard(db),
       loadAnalytics(db),
       loadBudgets(db),
-      loadPlanner(db),
     ]).then((results) => {
       results.forEach((result, index) => {
         if (result.status === 'rejected') {
-          const storeNames = ['dashboard', 'analytics', 'budgets', 'planner'];
+          const storeNames = ['dashboard', 'analytics', 'budgets'];
           console.warn(`[useGlobalDataSync] ${storeNames[index]} refresh failed:`, result.reason);
         }
       });
     });
-  }, [db, dataVersion, loadDashboard, loadAnalytics, loadBudgets, loadPlanner]);
+  }, [db, transactionVersion, loadDashboard, loadAnalytics, loadBudgets]);
+
+  useEffect(() => {
+    if (!db) return;
+    if (plannerVersion === lastPlannerVersion.current) return;
+    lastPlannerVersion.current = plannerVersion;
+
+    loadPlanner(db).catch((e) => {
+      console.warn('[useGlobalDataSync] planner refresh failed:', e);
+    });
+  }, [db, plannerVersion, loadPlanner]);
 }

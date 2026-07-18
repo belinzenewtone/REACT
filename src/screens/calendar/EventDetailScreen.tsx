@@ -48,7 +48,7 @@ export function EventDetailScreen() {
           const repo = new EventRepository(db);
           await repo.softDelete(eventId);
           await cancelEventReminders(eventId);
-          useDataVersion.getState().bump();
+          useDataVersion.getState().bumpPlanner();
           await loadCalendar(db);
           haptic('warning');
           navigation.goBack();

@@ -50,6 +50,10 @@ CREATE INDEX IF NOT EXISTS idx_transactions_deleted_at ON transactions(deleted_a
 CREATE UNIQUE INDEX IF NOT EXISTS idx_tx_inst_extref ON transactions(institution_id, external_ref) WHERE external_ref IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_tx_inst_date ON transactions(institution_id, date);
 CREATE INDEX IF NOT EXISTS idx_tx_inst_cat ON transactions(institution_id, category);
+CREATE INDEX IF NOT EXISTS idx_tx_cat_date ON transactions(category, date DESC);
+CREATE INDEX IF NOT EXISTS idx_tx_type_date ON transactions(transaction_type, date DESC);
+CREATE INDEX IF NOT EXISTS idx_tx_status_date ON transactions(status, date DESC);
+CREATE INDEX IF NOT EXISTS idx_tx_amount_merchant_date ON transactions(amount, merchant, date);
 
 CREATE TABLE IF NOT EXISTS tasks (
   id TEXT PRIMARY KEY NOT NULL,
@@ -74,6 +78,7 @@ CREATE TABLE IF NOT EXISTS tasks (
 CREATE INDEX IF NOT EXISTS idx_tasks_deadline ON tasks(deadline);
 CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
 CREATE INDEX IF NOT EXISTS idx_tasks_deleted_at ON tasks(deleted_at);
+CREATE INDEX IF NOT EXISTS idx_tasks_status_deadline ON tasks(status, deadline ASC);
 
 CREATE TABLE IF NOT EXISTS events (
   id TEXT PRIMARY KEY NOT NULL,

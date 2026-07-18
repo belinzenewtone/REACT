@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, useRef } from 'react';
+import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import {
   View,
   StyleSheet,
@@ -600,20 +600,30 @@ export function SearchScreen() {
   );
 }
 
-function Highlight({ text, query, style, numberOfLines }: { text: string; query: string; style?: any; numberOfLines?: number }) {
+const Highlight = React.memo(function Highlight({ text, query, style, numberOfLines }: { text: string; query: string; style?: any; numberOfLines?: number }) {
   const theme = useTheme();
-  if (!query.trim()) return <Text variant="bodyMedium" style={style} numberOfLines={numberOfLines}>{text}</Text>;
-  const parts = text.split(new RegExp(`(${query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi'));
+  const trimmedQuery = query.trim();
+
+  const parts = useMemo(() => {
+    if (!trimmedQuery) return null;
+    const escaped = trimmedQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const re = new RegExp(`(${escaped})`, 'gi');
+    return text.split(re);
+  }, [text, trimmedQuery]);
+
+  if (!parts) return <Text variant="bodyMedium" style={style} numberOfLines={numberOfLines}>{text}</Text>;
+
+  const lowerQuery = trimmedQuery.toLowerCase();
   return (
     <Text variant="bodyMedium" style={style} numberOfLines={numberOfLines}>
       {parts.map((part, i) =>
-        part.toLowerCase() === query.toLowerCase() ? (
+        part.toLowerCase() === lowerQuery ? (
           <Text key={i} variant="bodyMedium" style={{ backgroundColor: `${theme.colors.primary}40`, color: theme.colors.onSurface }}>{part}</Text>
         ) : part
       )}
     </Text>
   );
-}
+});
 
 const WARNING_COLOR = '#F5CB5C';
 

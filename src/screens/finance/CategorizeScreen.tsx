@@ -90,7 +90,7 @@ export function CategorizeScreen() {
       await checkBudgetThresholds(db, category);
       // Notify every other subscribed surface (Finance dashboard, Budgets,
       // Analytics) that transaction categories changed.
-      useDataVersion.getState().bump();
+      useDataVersion.getState().bumpTransactions();
       setMessage({ tone: 'success', text: `Saved for ${merchant}` });
     } catch (error) {
       setMessage({ tone: 'error', text: 'Failed to save category' });
@@ -136,7 +136,7 @@ export function CategorizeScreen() {
   );
 }
 
-function MerchantGroupCard({
+const MerchantGroupCard = React.memo(function MerchantGroupCard({
   group,
   onCategorySelected,
 }: {
@@ -194,6 +194,7 @@ function MerchantGroupCard({
               <FlashList
                 data={CATEGORIZE_CATEGORIES}
                 keyExtractor={(item) => item}
+                estimatedItemSize={48}
                 renderItem={({ item }) => (
                   <Button
                     mode="text"
@@ -215,7 +216,7 @@ function MerchantGroupCard({
       </Card.Content>
     </GlassCard>
   );
-}
+});
 
 function capitalize(value: string): string {
   return value
