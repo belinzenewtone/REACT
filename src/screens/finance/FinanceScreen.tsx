@@ -243,7 +243,7 @@ function FinanceScreenContent() {
       // Native import writes via Android's SQLite; expo-sqlite uses its own
       // bundled SQLite. Checkpoint from the JS connection so it picks up the
       // native WAL frames before we query.
-      await db.execAsync('PRAGMA wal_checkpoint(PASSIVE)');
+      await db.execAsync('PRAGMA wal_checkpoint(FULL)');
       useDataVersion.getState().bumpTransactions();
       await loadTransactions(repo, true);
       await loadDashboard(db);

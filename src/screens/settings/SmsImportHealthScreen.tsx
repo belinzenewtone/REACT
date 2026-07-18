@@ -204,6 +204,10 @@ export function SmsImportHealthScreen() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
+      // Flush any native WAL frames before reading — FULL waits for all active
+      // readers (including the native DbWriter singleton) to release their
+      // snapshots, ensuring COUNT(*) and integrity_check see the latest data.
+      await db.execAsync('PRAGMA wal_checkpoint(FULL)').catch(() => {});
       const [s, entries, recentRejections, receiverStatus, exempt, queueStatus] = await Promise.all([
         getStats(),
         getAuditLog(100),
@@ -270,7 +274,7 @@ export function SmsImportHealthScreen() {
     try {
       const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
       const result = await importHistoricalSms(sevenDaysAgo, Date.now());
-      await db.execAsync('PRAGMA wal_checkpoint(PASSIVE)');
+      await db.execAsync('PRAGMA wal_checkpoint(FULL)');
       useDataVersion.getState().bumpTransactions();
       await load();
       Alert.alert(
@@ -288,7 +292,7 @@ export function SmsImportHealthScreen() {
     setRetrying(true);
     try {
       const result = await retryQuarantined();
-      await db.execAsync('PRAGMA wal_checkpoint(PASSIVE)');
+      await db.execAsync('PRAGMA wal_checkpoint(FULL)');
       useDataVersion.getState().bumpTransactions();
       await load();
       Alert.alert(
