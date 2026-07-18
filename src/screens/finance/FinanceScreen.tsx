@@ -241,9 +241,11 @@ function FinanceScreenContent() {
     try {
       const result = await importHistoricalSms(fromMs, toMs, filter);
       // Native import writes via Android's SQLite; expo-sqlite uses its own
-      // bundled SQLite. Checkpoint from the JS connection so it picks up the
-      // native WAL frames before we query.
+      // bundled SQLite. Checkpoint moves WAL frames to the main DB file, then
+      // shrink_memory evicts expo-sqlite's in-memory page cache so the next
+      // read fetches fresh pages from disk rather than the pre-import cache.
       await db.execAsync('PRAGMA wal_checkpoint(FULL)');
+      await db.execAsync('PRAGMA shrink_memory');
       useDataVersion.getState().bumpTransactions();
       await loadTransactions(repo, true);
       await loadDashboard(db);
