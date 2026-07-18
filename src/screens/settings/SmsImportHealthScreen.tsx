@@ -270,6 +270,7 @@ export function SmsImportHealthScreen() {
     try {
       const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
       const result = await importHistoricalSms(sevenDaysAgo, Date.now());
+      await db.execAsync('PRAGMA wal_checkpoint(PASSIVE)');
       useDataVersion.getState().bumpTransactions();
       await load();
       Alert.alert(
@@ -287,6 +288,7 @@ export function SmsImportHealthScreen() {
     setRetrying(true);
     try {
       const result = await retryQuarantined();
+      await db.execAsync('PRAGMA wal_checkpoint(PASSIVE)');
       useDataVersion.getState().bumpTransactions();
       await load();
       Alert.alert(

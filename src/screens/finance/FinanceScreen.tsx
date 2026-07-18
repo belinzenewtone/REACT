@@ -240,6 +240,10 @@ function FinanceScreenContent() {
     smsDispatch({ type: 'START_IMPORT', banner: `Scanning ${label} messages…` });
     try {
       const result = await importHistoricalSms(fromMs, toMs, filter);
+      // Native import writes via Android's SQLite; expo-sqlite uses its own
+      // bundled SQLite. Checkpoint from the JS connection so it picks up the
+      // native WAL frames before we query.
+      await db.execAsync('PRAGMA wal_checkpoint(PASSIVE)');
       useDataVersion.getState().bumpTransactions();
       await loadTransactions(repo, true);
       await loadDashboard(db);

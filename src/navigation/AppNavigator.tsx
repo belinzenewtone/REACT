@@ -229,9 +229,10 @@ export function AppNavigator() {
       if (state !== 'active') return;
       // The background SmsProcessWorker writes to SQLite from its own native
       // connection while the app is backgrounded/killed — the onNewTransaction
-      // event can be missed if JS was paused. Bump the data version on every
-      // return to foreground so all subscribed screens (Finance, Import
-      // Health, Dashboard…) re-read from disk immediately. Cheap: reads only.
+      // event can be missed if JS was paused. Checkpoint the WAL from the JS
+      // connection so expo-sqlite sees native writes, then bump so all
+      // subscribed screens re-read from disk immediately.
+      db.execAsync('PRAGMA wal_checkpoint(PASSIVE)').catch(() => {});
       useDataVersion.getState().bumpTransactions();
       const now = Date.now();
       if (now - lastForegroundSync.current < 60_000) return;
@@ -249,7 +250,8 @@ export function AppNavigator() {
     if (!dbReady || !hasHydrated) return;
     const subscription = addNewTransactionListener((tx) => {
       // Native worker just wrote to SQLite from its own connection.
-      // Bump so every subscribed store re-reads from disk.
+      // Checkpoint WAL so expo-sqlite sees the write, then bump.
+      db.execAsync('PRAGMA wal_checkpoint(PASSIVE)').catch(() => {});
       useDataVersion.getState().bumpTransactions();
 
       // Heads-up notification for the auto-imported transaction, gated by
