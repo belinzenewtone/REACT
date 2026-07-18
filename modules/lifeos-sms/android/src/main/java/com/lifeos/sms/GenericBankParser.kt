@@ -30,17 +30,22 @@ internal object GenericBankParser : FinancialSmsParser {
 
     // Primary: currency-prefixed, with optional CR/DR suffix (Equity, NCBA, Stanbic style)
     private val AMOUNT_CURRENCY_RE = Regex(
-        """(?i)(?:k\.?shs?\.?|kes)\s*([0-9,]+(?:\.[0-9]{1,2})?)(?:\s*(?:cr|dr))?"""
+        """(?i)(?:k\.?shs?\.?|kes\.?)\s*([0-9,]+(?:\.[0-9]{1,2})?)(?:\s*(?:cr|dr))?"""
     )
 
     // CR/DR prefix style: "CR KES 5,000" or "DR: KES 1,000"
     private val AMOUNT_CRDR_PREFIX_RE = Regex(
-        """(?i)\b(?:cr|dr)[:\s]+(?:k\.?shs?\.?|kes)\s*([0-9,]+(?:\.[0-9]{1,2})?)"""
+        """(?i)\b(?:cr|dr)[:\s]+(?:k\.?shs?\.?|kes\.?)\s*([0-9,]+(?:\.[0-9]{1,2})?)"""
     )
 
     // Labelled without currency: "Amount: 5,000.00" / "Principal: 10,000"
     private val AMOUNT_LABEL_RE = Regex(
         """(?i)(?:amount|principal|value|sum)[:\s]+([0-9,]+(?:\.[0-9]{1,2})?)(?!\s*[A-Za-z])"""
+    )
+
+    // Reverse format: "50 KES" / "22000.00 KES" (Equity style — amount before currency)
+    private val AMOUNT_REVERSE_RE = Regex(
+        """(?i)([0-9,]+(?:\.[0-9]{1,2})?)\s+(?:k\.?shs?\.?|kes)\b"""
     )
 
     // Bare figure followed by direction verb (last resort)
@@ -51,13 +56,13 @@ internal object GenericBankParser : FinancialSmsParser {
     // ── Direction: CR/DR notation ────────────────────────────────────────
     // Many banks suffix amounts with CR (credit) or DR (debit) or use them standalone.
     private val CR_SUFFIX_RE = Regex(
-        """(?i)(?:k\.?shs?\.?|kes)\s*[0-9,]+(?:\.[0-9]{1,2})?\s+cr\b"""
+        """(?i)(?:k\.?shs?\.?|kes\.?)\s*[0-9,]+(?:\.[0-9]{1,2})?\s+cr\b"""
     )
     private val DR_SUFFIX_RE = Regex(
-        """(?i)(?:k\.?shs?\.?|kes)\s*[0-9,]+(?:\.[0-9]{1,2})?\s+dr\b"""
+        """(?i)(?:k\.?shs?\.?|kes\.?)\s*[0-9,]+(?:\.[0-9]{1,2})?\s+dr\b"""
     )
-    private val CR_PREFIX_RE = Regex("""(?i)\bcr[:\s]+(?:k\.?shs?\.?|kes)""")
-    private val DR_PREFIX_RE = Regex("""(?i)\bdr[:\s]+(?:k\.?shs?\.?|kes)""")
+    private val CR_PREFIX_RE = Regex("""(?i)\bcr[:\s]+(?:k\.?shs?\.?|kes\.?)""")
+    private val DR_PREFIX_RE = Regex("""(?i)\bdr[:\s]+(?:k\.?shs?\.?|kes\.?)""")
 
     // ── Direction: word signals ──────────────────────────────────────────
     private val CREDIT_RE = Regex(
@@ -110,17 +115,17 @@ internal object GenericBankParser : FinancialSmsParser {
         """(?i)(?:(?:new|closing|running|available|current|book|ledger)\s+)?""" +
         """(?:(?:a\/?c|account|acc\.?)\s+)?""" +
         """bal(?:ance)?\s*(?:is|:|\s)\s*""" +
-        """(?:k\.?shs?\.?|kes)?\s*([0-9,]+(?:\.[0-9]{1,2})?)"""
+        """(?:k\.?shs?\.?|kes\.?)?\s*([0-9,]+(?:\.[0-9]{1,2})?)"""
     )
 
     // "Balance after transaction: KES 12,000" — explicit "after" phrasing
     private val BALANCE_AFTER_RE = Regex(
-        """(?i)bal(?:ance)?\s+after\s+(?:transaction\s+)?[:\s]*(?:k\.?shs?\.?|kes)?\s*([0-9,]+(?:\.[0-9]{1,2})?)"""
+        """(?i)bal(?:ance)?\s+after\s+(?:transaction\s+)?[:\s]*(?:k\.?shs?\.?|kes\.?)?\s*([0-9,]+(?:\.[0-9]{1,2})?)"""
     )
 
     // ── Fee extraction ───────────────────────────────────────────────────
     private val FEE_RE = Regex(
-        """(?i)(?:charges?|fees?|commission|levy|excise)[:\s]+(?:k\.?shs?\.?|kes)?\s*([0-9,]+(?:\.[0-9]{1,2})?)"""
+        """(?i)(?:charges?|fees?|commission|levy|excise)[:\s]+(?:k\.?shs?\.?|kes\.?)?\s*([0-9,]+(?:\.[0-9]{1,2})?)"""
     )
 
     // ── Counterparty extraction ──────────────────────────────────────────
@@ -134,6 +139,12 @@ internal object GenericBankParser : FinancialSmsParser {
     // "Account: 123XXXXX" — masked account number used as counterparty when no name
     private val ACCOUNT_NUM_RE = Regex(
         """(?i)(?:a\/?c|account|acct)\.?\s*(?:no\.?\s*)?([0-9X*]{4,20})"""
+    )
+
+    // M-PESA reference code embedded in bank SMS (for cross-sender dedup)
+    // Matches: "M-Pesa Ref TGV68IHDQE", "LOOP ref NHLEQ22R7SEB", "M-PESA Ref UCUDLB7GY3"
+    private val MPESA_CROSSREF_RE = Regex(
+        """(?i)(?:m-?pesa|loop)\s+ref\s+([A-Z0-9]{9,12})"""
     )
 
     // "Paybill: 123456 Account: ABC123" — paybill merchant + account ref
@@ -179,6 +190,7 @@ internal object GenericBankParser : FinancialSmsParser {
         )
 
         val refRaw  = REF_RE.find(body)?.groupValues?.get(1)?.trim()
+        val crossRefMpesaCode = MPESA_CROSSREF_RE.find(body)?.groupValues?.get(1)?.trim()
         val balance = BALANCE_AFTER_RE.find(body)?.groupValues?.get(1)?.replace(",", "")?.toDoubleOrNull()
             ?: BALANCE_RE.find(body)?.groupValues?.get(1)?.replace(",", "")?.toDoubleOrNull()
         val fee     = FEE_RE.find(body)?.groupValues?.get(1)?.replace(",", "")?.toDoubleOrNull()
@@ -255,6 +267,7 @@ internal object GenericBankParser : FinancialSmsParser {
                 externalRef  = externalRef,
                 currency     = "KES",
                 rawSender    = sender,
+                crossRefMpesaCode = crossRefMpesaCode,
             )
         )
     }
@@ -272,12 +285,17 @@ internal object GenericBankParser : FinancialSmsParser {
             ?.groupValues?.get(1)?.replace(",", "")?.toDoubleOrNull()
             ?.let { return it }
 
-        // 3. Labelled amount without currency
+        // 3. Reverse format: "50 KES" (amount before currency label)
+        AMOUNT_REVERSE_RE.find(body)
+            ?.groupValues?.get(1)?.replace(",", "")?.toDoubleOrNull()
+            ?.let { if (it > 0) return it }
+
+        // 4. Labelled amount without currency
         AMOUNT_LABEL_RE.find(body)
             ?.groupValues?.get(1)?.replace(",", "")?.toDoubleOrNull()
             ?.let { if (it > 0) return it }
 
-        // 4. Bare figure next to a direction verb (last resort)
+        // 5. Bare figure next to a direction verb (last resort)
         AMOUNT_BARE_RE.find(body)
             ?.groupValues?.get(1)?.replace(",", "")?.toDoubleOrNull()
             ?.let { return it }

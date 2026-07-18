@@ -789,4 +789,113 @@ class SmsParserTest {
         )
         assertEquals(SmsParserConfig.SmsCategory.SENT, tx.category)
     }
+
+    // ── Phase 1 regression tests ──────────────────────────────────────────────
+
+    @Test
+    fun `Fuliza Interest charged variant extracts fee amount`() {
+        val tx = parseSuccess(
+            "TGI4HPX4PK Confirmed. Fuliza M-PESA amount is Ksh 100.00. Interest charged Ksh 1.00. Total Fuliza M-PESA outstanding amount is Ksh 724.62 due on 14/08/25."
+        )
+        assertEquals(SmsParserConfig.SmsCategory.FULIZA_CHARGE, tx.category)
+        assertEquals(1.0, tx.amount, 0.01)
+        assertNotNull(tx.fulizaOutstandingKes)
+        assertEquals(724.62, tx.fulizaOutstandingKes!!, 0.01)
+    }
+
+    @Test
+    fun `Give Ksh deposit is classified as DEPOSIT`() {
+        val tx = parseSuccess(
+            "TDN9WBCDSD Confirmed. On 23/4/25 at 5:40 PM Give Ksh1,000.00 cash to Fkam Limited Queenix Gate Venture Adams Arcade New M-PESA balance is Ksh1,000.00. You can now access M-PESA via *334#"
+        )
+        assertEquals(SmsParserConfig.SmsCategory.DEPOSIT, tx.category)
+        assertEquals(1000.0, tx.amount, 0.01)
+        assertTrue(tx.counterparty?.contains("Fkam") == true)
+    }
+
+    @Test
+    fun `New reversal format is classified as REVERSED`() {
+        val tx = parseSuccess(
+            "TI27ZWJC3B  confirmed. Reversal of transaction TI26ZVL0L8 has been successfully reversed  on 2/9/25  at 8:31 AM and Ksh100.00 is debited from your M-PESA account. New M-PESA account balance is Ksh1,758.00."
+        )
+        assertEquals(SmsParserConfig.SmsCategory.REVERSED, tx.category)
+        assertEquals(100.0, tx.amount, 0.01)
+    }
+
+    @Test
+    fun `Balance inquiry is rejected`() {
+        val result = SmsParser.parse(
+            "UB6DL632FM Confirmed. Your account balance was: M-PESA Account : Ksh0.00 Business Account : Ksh0.00 on 6/2/26 at 5:19 PM. Transaction cost, Ksh0.00."
+        )
+        assertIs<SmsParser.SmsParseResult.Error>(result)
+        assertEquals("balance_inquiry", result.error.reason)
+    }
+
+    @Test
+    fun `Cancelled transaction is rejected`() {
+        val result = SmsParser.parse(
+            "You have cancelled the transaction of KSH50.00. Kindly note that if you cancel 5 times, you will be barred from using M-PESA HAKIKISHA. Your M-PESA balance is KSH0.00."
+        )
+        assertIs<SmsParser.SmsParseResult.Error>(result)
+        assertEquals("cancelled", result.error.reason)
+    }
+
+    @Test
+    fun `Fuliza partial repayment has correct type and description`() {
+        val tx = parseSuccess(
+            "UFGDL8CVOX  Confirmed. Ksh 100.00 from your M-PESA has been used to partially pay your outstanding Fuliza M-PESA. Your available Fuliza M-PESA limit is Ksh 419.56. Your M-PESA balance is 0.00."
+        )
+        assertEquals(SmsParserConfig.SmsCategory.LOAN, tx.category)
+        assertEquals("partial", tx.fulizaRepaymentType)
+        assertEquals("Fuliza partial repayment", tx.description)
+    }
+
+    @Test
+    fun `Fuliza full repayment has correct type and description`() {
+        val tx = parseSuccess(
+            "UFPDL9G7O1  Confirmed. Ksh 723.62 from your M-PESA has been used to fully pay your outstanding Fuliza M-PESA. Available Fuliza M-PESA limit is Ksh 900.00. Your M-PESA balance is 3076.38."
+        )
+        assertEquals(SmsParserConfig.SmsCategory.LOAN, tx.category)
+        assertEquals("full", tx.fulizaRepaymentType)
+        assertEquals("Fuliza fully repaid", tx.description)
+    }
+
+    @Test
+    fun `Ksh Ksh double prefix still parses as received`() {
+        val tx = parseSuccess(
+            "SLR41L5AO8 Confirmed.You have received Ksh Ksh4,870.00 from ZIIDI on 27/12/24 3:41 PM New M-PESA balance is Ksh Ksh4,870.00."
+        )
+        assertEquals(SmsParserConfig.SmsCategory.RECEIVED, tx.category)
+        assertEquals(4870.0, tx.amount, 0.01)
+    }
+
+    @Test
+    fun `Regular transaction with Fuliza promo footer is not filtered`() {
+        val tx = parseSuccess(
+            "SCI1G5CAWL Confirmed. Ksh175.00 sent to PAUL OWAYO 0712345678 on 18/3/24 at 7:56 PM. New M-PESA balance is Ksh0.00. Transaction cost, Ksh7.00. Pay for Goods, Withdraw & Send money Worry FREE! Join FULIZA, Dial *234*0#"
+        )
+        assertEquals(SmsParserConfig.SmsCategory.SENT, tx.category)
+        assertEquals(175.0, tx.amount, 0.01)
+    }
+
+    @Test
+    fun `Service notice filter catches bank maintenance SMS`() {
+        assertTrue(SmsParserConfig.isServiceNotice(
+            "Dear Client, our Online Banking / SC Mobile app will be temporarily unavailable today as part of scheduled system enhancements."
+        ))
+    }
+
+    @Test
+    fun `Service notice filter catches OTP messages`() {
+        assertTrue(SmsParserConfig.isServiceNotice(
+            "Dear Client, your OTP for viewing your debit card on SC Mobile is lAwN-755547."
+        ))
+    }
+
+    @Test
+    fun `Service notice filter does NOT catch real bank transactions`() {
+        assertFalse(SmsParserConfig.isServiceNotice(
+            "Dear Client, KES 1110.00 has been credited to your account ending with 2600 from MPESA."
+        ))
+    }
 }

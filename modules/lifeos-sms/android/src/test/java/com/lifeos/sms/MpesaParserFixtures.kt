@@ -1031,6 +1031,91 @@ val realWorldFixtures: List<ParserFixture> = listOf(
         body = "JJJ3C4D5E6 Confirmed. Fuliza M-PESA daily charges notification. Access fee charged Ksh 0.50.",
         shouldIgnore = true,
     ),
+
+    // --- FULIZA DRAW — "Interest charged" variant (2025+ format) ----------------
+    ParserFixture(
+        body = "TGI4HPX4PK Confirmed. Fuliza M-PESA amount is Ksh 100.00. Interest charged Ksh 1.00. Total Fuliza M-PESA outstanding amount is Ksh 724.62 due on 14/08/25. To check daily charges, Dial *334#OK Select Fuliza M-PESA to Query Charges.",
+        expectedKind = "fuliza_charge",
+        expectedAmount = 1.0,
+        expectedCounterpartyContains = "Fuliza",
+    ),
+    ParserFixture(
+        body = "UFPDL9EP4N Confirmed. Fuliza M-PESA amount is Ksh 30.00. Access Fee charged Ksh 0.30. Total Fuliza M-PESA outstanding amount is Ksh723.62 due on 22/07/26. To check daily charges, Dial *334#OK Select Query Charges",
+        expectedKind = "fuliza_charge",
+        expectedAmount = 0.30,
+        expectedCounterpartyContains = "Fuliza",
+    ),
+
+    // --- FULIZA REPAYMENT — partial vs full -----------------------------------
+    ParserFixture(
+        body = "UFGDL8CVOX  Confirmed. Ksh 100.00 from your M-PESA has been used to partially pay your outstanding Fuliza M-PESA. Your available Fuliza M-PESA limit is Ksh 419.56. Your M-PESA balance is 0.00.",
+        expectedKind = "loan",
+        expectedAmount = 100.0,
+        expectedCounterpartyContains = "Fuliza",
+    ),
+    ParserFixture(
+        body = "UFPDL9G7O1  Confirmed. Ksh 723.62 from your M-PESA has been used to fully pay your outstanding Fuliza M-PESA. Available Fuliza M-PESA limit is Ksh 900.00. Your M-PESA balance is 3076.38.",
+        expectedKind = "loan",
+        expectedAmount = 723.62,
+        expectedCounterpartyContains = "Fuliza",
+    ),
+
+    // --- "Give Ksh" cash deposit (new M-PESA format) --------------------------
+    ParserFixture(
+        body = "TDN9WBCDSD Confirmed. On 23/4/25 at 5:40 PM Give Ksh1,000.00 cash to Fkam Limited Queenix Gate Venture Adams Arcade New M-PESA balance is Ksh1,000.00. You can now access M-PESA via *334#",
+        expectedKind = "deposit",
+        expectedAmount = 1000.0,
+        expectedBalance = 1000.0,
+        expectedCounterpartyContains = "Fkam Limited",
+    ),
+    ParserFixture(
+        body = "SHM5WLHPY1 Confirmed. On 22/8/24 at 3:24 PM Give Ksh3,550.00 cash to ABYUM CONTRACTORS & GEN SUPPLIES LTD Small minimart umoja 3 NRB umoja 3 New M-PESA balance is Ksh3,550.00. You can now access M-PESA via *334#",
+        expectedKind = "deposit",
+        expectedAmount = 3550.0,
+        expectedBalance = 3550.0,
+    ),
+
+    // --- New reversal format ("Reversal of transaction X has been successfully reversed") ---
+    ParserFixture(
+        body = "TI27ZWJC3B  confirmed. Reversal of transaction TI26ZVL0L8 has been successfully reversed  on 2/9/25  at 8:31 AM and Ksh100.00 is debited from your M-PESA account. New M-PESA account balance is Ksh1,758.00.",
+        expectedKind = "reversal",
+        expectedAmount = 100.0,
+        expectedBalance = 1758.0,
+    ),
+    ParserFixture(
+        body = "SH15IQQ2T9 confirmed. Reversal of transaction SGV1INNQOH has been successfully reversed  on 1/8/24  at 2:23 AM and Ksh6,319.00 is credited to your M-PESA account. New M-PESA account balance is Ksh6,319.00.",
+        expectedKind = "reversal",
+        expectedAmount = 6319.0,
+        expectedBalance = 6319.0,
+    ),
+
+    // --- "Ksh Ksh" double prefix — ZIIDI received (should still parse) --------
+    ParserFixture(
+        body = "SLR41L5AO8 Confirmed.You have received Ksh Ksh4,870.00 from ZIIDI on 27/12/24 3:41 PM New M-PESA balance is Ksh Ksh4,870.00. Separate personal and business funds through Pochi la Biashara on *334#.",
+        expectedKind = "received",
+        expectedAmount = 4870.0,
+        expectedCounterpartyContains = "ZIIDI",
+    ),
+
+    // --- Regular M-PESA with Fuliza promo footer (NOT a Fuliza tx) ------------
+    ParserFixture(
+        body = "SCI1G5CAWL Confirmed. Ksh175.00 sent to PAUL OWAYO 0712345678 on 18/3/24 at 7:56 PM. New M-PESA balance is Ksh0.00. Transaction cost, Ksh7.00. Amount you can transact within the day is 495,765.00. Pay for Goods, Withdraw & Send money Worry FREE! Join FULIZA, Dial *234*0#",
+        expectedKind = "sent",
+        expectedAmount = 175.0,
+        expectedCounterpartyContains = "PAUL",
+    ),
+
+    // --- Balance inquiry (should be rejected, not a transaction) ---------------
+    ParserFixture(
+        body = "UB6DL632FM Confirmed. Your account balance was: M-PESA Account : Ksh0.00 Business Account : Ksh0.00 on 6/2/26 at 5:19 PM. Transaction cost, Ksh0.00. Start Investing today with Ziidi MMF & earn daily. Dial *334#",
+        expectedError = "balance_inquiry",
+    ),
+
+    // --- Cancelled transaction (should be rejected) ----------------------------
+    ParserFixture(
+        body = "You have cancelled the transaction of KSH50.00. Kindly note that if you cancel 5 times, you will be barred from using M-PESA HAKIKISHA. Your M-PESA balance is KSH0.00.",
+        expectedError = "cancelled",
+    ),
 )
 
 

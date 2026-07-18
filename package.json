@@ -1,6 +1,6 @@
 {
   "name": "rfinal",
-  "version": "1.0.86",
+  "version": "1.0.88",
   "main": "index.ts",
   "dependencies": {
     "@expo/vector-icons": "^15.1.1",
@@ -42,6 +42,7 @@
     "zustand": "^5.0.14"
   },
   "devDependencies": {
+    "@anthropic-ai/sdk": "^0.55.1",
     "@types/better-sqlite3": "^7.6.13",
     "@types/jest": "^29.5.14",
     "@types/papaparse": "^5.5.2",
@@ -66,7 +67,10 @@
     "gates": "node scripts/gates.js",
     "check": "npx tsc --noEmit && node scripts/gates.js && jest --ci",
     "build:android:apk": "node scripts/build.js apk",
-    "build:android:aab": "node scripts/build.js aab"
+    "build:android:aab": "node scripts/build.js aab",
+    "sms:dump": "node scripts/dump-device-sms.js device-sms-dump.json",
+    "sms:analyze": "node scripts/analyze-sms-patterns.js --json device-sms-dump.json",
+    "sms:analyze:db": "node scripts/analyze-sms-patterns.js"
   },
   "jest": {
     "preset": "jest-expo",

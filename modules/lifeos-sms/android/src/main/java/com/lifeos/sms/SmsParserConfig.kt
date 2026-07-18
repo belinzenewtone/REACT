@@ -65,9 +65,9 @@ object SmsParserConfig {
         RegexOption.IGNORE_CASE,
     )
 
-    /** Fuliza access fee in charge-notice SMS. */
+    /** Fuliza access fee / interest in charge-notice SMS. */
     val FULIZA_ACCESS_FEE_RE = Regex(
-        """(?:access\s+fee|maintenance\s+fee)\s*(?:charged\s*)?(?:(?:Ksh|KES)\s?)?([\d,]+(?:\.\d{1,2})?)""",
+        """(?:access\s+fee|maintenance\s+fee|interest)\s*(?:charged\s*)?(?:(?:Ksh|KES)\s?)?([\d,]+(?:\.\d{1,2})?)""",
         RegexOption.IGNORE_CASE,
     )
 
@@ -278,6 +278,28 @@ object SmsParserConfig {
         return FULIZA_NOTICE_RE.containsMatchIn(text)
     }
 
+    // ─── Generic service-notice filter (non-Fuliza) ─────────────────────
+    // Catches OTPs, maintenance, security alerts, and marketing from any institution.
+
+    private val SERVICE_NOTICE_RE = Regex(
+        """(?:one[\s-]?time\s+password|your\s+otp\s+is|verification\s+code|security\s+code|""" +
+        """never\s+share\s+this\s+code|""" +
+        """will\s+never\s+(?:call|ask)\s+you|do\s+not\s+share|""" +
+        """scheduled\s+(?:system\s+)?(?:maintenance|enhancements?|upgrade)|""" +
+        """(?:temporarily|currently)\s+unavailable|services?\s+(?:have\s+been|has\s+been)\s+restored|""" +
+        """branches?\s+will\s+(?:be\s+closed|remain\s+closed)|""" +
+        """we\s+are\s+(?:building|working\s+to\s+resolve)|""" +
+        """dear\s+customer,?\s+(?:in\s+celebration|in\s+observation|please\s+do\s+not\s+share)|""" +
+        """increased\s+our\s+daily\s+(?:atm|withdrawal)\s+limit|""" +
+        """make\s+the\s+most\s+out\s+of|""" +
+        """we\s+are\s+delighted\s+to\s+inform|""" +
+        """your\s+security\s+is\s+our\s+priority)""",
+        RegexOption.IGNORE_CASE,
+    )
+
+    fun isServiceNotice(message: String): Boolean =
+        SERVICE_NOTICE_RE.containsMatchIn(message)
+
     // ─── Detection rule ────────────────────────────────────────────────
 
     data class DetectionRule(
@@ -308,6 +330,7 @@ object SmsParserConfig {
                 Regex("""(?:Ksh|KES)\s?[\d,.]+\s+sent to.+has been reversed""", RegexOption.IGNORE_CASE),
                 Regex("""(?:Ksh|KES)\s?[\d,.]+\s+received from.+has been reversed""", RegexOption.IGNORE_CASE),
                 Regex("""(?:your\s+m-pesa\s+transaction\s+)?(?:received|you have received)\s+(?:Ksh|KES)\s?[\d,.]+.+has been reversed""", RegexOption.IGNORE_CASE),
+                Regex("""Reversal of transaction\s+[A-Z0-9]+\s+has been successfully reversed""", RegexOption.IGNORE_CASE),
             ),
             fallbackPatterns = listOf(
                 Regex("""has been reversed""", RegexOption.IGNORE_CASE),
@@ -357,16 +380,19 @@ object SmsParserConfig {
                 Regex("""deposited\s+(?:Ksh|KES)\s?[\d,.]+""", RegexOption.IGNORE_CASE),
                 Regex("""agent\s+float\s+(?:of\s+)?(?:Ksh|KES)\s?[\d,.]+.*\s+deposited""", RegexOption.IGNORE_CASE),
                 Regex("""agent\s+float\s+deposited""", RegexOption.IGNORE_CASE),
+                Regex("""Give\s+(?:Ksh|KES)\s?[\d,.]+\s+cash to\s+""", RegexOption.IGNORE_CASE),
             ),
             fallbackPatterns = listOf(
                 Regex("""deposited\s+(?:Ksh|KES)""", RegexOption.IGNORE_CASE),
                 Regex("""\bdeposited\b""", RegexOption.IGNORE_CASE),
                 Regex("""agent\s+float""", RegexOption.IGNORE_CASE),
+                Regex("""Give\s+(?:Ksh|KES)\s?[\d,.]+\s+cash""", RegexOption.IGNORE_CASE),
             ),
             counterpartyPatterns = listOf(
                 Regex("""deposited by(?:\s+agent)?\s+\d+\s*-?\s*(.+?)(?:\s+on\s|\s+New\s|\.|$)""", RegexOption.IGNORE_CASE),
                 Regex("""deposited by(?:\s+agent)\s+([A-Za-z][^.]+?)(?:\s+on\s|\s+New\s|\.|$)""", RegexOption.IGNORE_CASE),
                 Regex("""agent\s+float\s+(?:of\s+)?(?:Ksh|KES)\s?[\d,.]+\s+deposited\s+(?:by\s+)?(?:agent\s+)?\d+\s*-?\s*(.+?)(?:\s+on\s|\s+New\s|\.|$)""", RegexOption.IGNORE_CASE),
+                Regex("""Give\s+(?:Ksh|KES)\s?[\d,.]+\s+cash to\s+(.+?)(?:\s+New\s|\s+You\s|$)""", RegexOption.IGNORE_CASE),
             ),
         ),
 
@@ -484,6 +510,7 @@ object SmsParserConfig {
             patterns = listOf(
                 Regex("""Total Fuliza M-PESA outstanding amount is\s*(?:Ksh|KES)\s?[\d,]+""", RegexOption.IGNORE_CASE),
                 Regex("""Fuliza M-PESA amount is\s*(?:Ksh|KES)\s?[\d,.]+.*Access Fee charged""", RegexOption.IGNORE_CASE),
+                Regex("""Fuliza M-PESA amount is\s*(?:Ksh|KES)\s?[\d,.]+.*Interest charged""", RegexOption.IGNORE_CASE),
             ),
             fallbackPatterns = listOf(
                 Regex("""Total Fuliza.*outstanding amount""", RegexOption.IGNORE_CASE),

@@ -71,10 +71,14 @@ object SmsParser {
          * outstanding = userFulizaLimit - fulizaAvailableLimitKes
          */
         val fulizaAvailableLimitKes: Double? = null,
+        /** "partial" or "full" for Fuliza repayments; null for non-Fuliza categories. */
+        val fulizaRepaymentType: String? = null,
         val institutionId: String = "mpesa",
         val externalRef: String = mpesaCode,
         val currency: String = "KES",
         val rawSender: String = "",
+        /** M-PESA ref code embedded in a bank SMS — used for cross-sender dedup. */
+        val crossRefMpesaCode: String? = null,
     ) {
         val isIncome: Boolean
             get() = !isReceivedReversal && (
@@ -296,7 +300,44 @@ object SmsParser {
         val phase: Int,
     )
 
+    // Keyword → rule-id hint map. When a keyword is found in the lowercased body,
+    // we test that rule's primary patterns FIRST (before the linear scan). For the
+    // ~80% of SMS where the hint hits, this cuts regex tests from ~32 to ~3-5.
+    // The full linear scan still runs as a fallback if the hinted rule doesn't match.
+    private val KEYWORD_HINTS: Array<Pair<String, String>> = arrayOf(
+        "outstanding amount" to "fuliza_charge",
+        "interest charged" to "fuliza_charge",
+        "access fee charged" to "fuliza_charge",
+        "has been used to" to "fuliza_repayment",
+        "outstanding fuliza" to "fuliza_repayment",
+        "has been reversed" to "reversal",
+        "give ksh" to "deposit",
+        "give kes" to "deposit",
+        "deposited" to "deposit",
+        "for airtime" to "airtime",
+        "of airtime" to "airtime",
+        "paid to" to "buy_goods",
+        "withdrawn from" to "withdrawal",
+        "cash withdrawal" to "withdrawal",
+        "received from" to "received",
+        "you have received" to "received",
+    )
+
+    private val RULE_BY_ID: Map<String, SmsParserConfig.DetectionRule> =
+        SmsParserConfig.DETECTION_RULES.associateBy { it.id }
+
     private fun detectRule(body: String, bodyLower: String): MatchResult? {
+        // Fast path: keyword hint → try hinted rule's primary patterns first
+        for ((keyword, ruleId) in KEYWORD_HINTS) {
+            if (bodyLower.contains(keyword)) {
+                val rule = RULE_BY_ID[ruleId] ?: continue
+                if (rule.patterns.any { it.containsMatchIn(body) }) {
+                    return MatchResult(rule, SmsParserConfig.Confidence.HIGH, phase = 1)
+                }
+                break
+            }
+        }
+
         // Phase 1 — primary structural patterns → HIGH
         for (rule in SmsParserConfig.DETECTION_RULES) {
             if (rule.patterns.any { it.containsMatchIn(body) }) {
@@ -548,6 +589,7 @@ object SmsParser {
         category: SmsParserConfig.SmsCategory,
         counterparty: String?,
         amount: Double,
+        fulizaRepaymentType: String? = null,
     ): String = when (category) {
         SmsParserConfig.SmsCategory.RECEIVED  ->
             if (counterparty != null) "Received from $counterparty" else "M-Pesa received"
@@ -555,7 +597,8 @@ object SmsParser {
         SmsParserConfig.SmsCategory.AIRTIME   ->
             if (counterparty != null && counterparty != "Airtime Purchase") "Airtime for $counterparty"
             else "Airtime purchase"
-        SmsParserConfig.SmsCategory.LOAN           -> "Fuliza repayment"
+        SmsParserConfig.SmsCategory.LOAN           ->
+            if (fulizaRepaymentType == "full") "Fuliza fully repaid" else "Fuliza partial repayment"
         SmsParserConfig.SmsCategory.FULIZA_CHARGE  -> "Fuliza charge notice"
         SmsParserConfig.SmsCategory.PAYBILL   ->
             if (counterparty != null) "Paid to $counterparty (Paybill)" else "Paybill payment"
@@ -613,6 +656,20 @@ object SmsParser {
             if (isAmbiguousReceipt(bodyLower)) {
                 return SmsParseResult.Error(
                     SmsParseError("ambiguous_receipt", sms).also { RejectionLog.record(it) }
+                )
+            }
+
+            // Stage 0d: Balance inquiry filter
+            if (bodyLower.contains("your account balance was")) {
+                return SmsParseResult.Error(
+                    SmsParseError("balance_inquiry", sms).also { RejectionLog.record(it) }
+                )
+            }
+
+            // Stage 0e: Cancelled transaction filter
+            if (bodyLower.contains("you have cancelled the transaction")) {
+                return SmsParseResult.Error(
+                    SmsParseError("cancelled", sms).also { RejectionLog.record(it) }
                 )
             }
 
@@ -688,6 +745,14 @@ object SmsParser {
                         ?.groupValues?.get(1)?.replace(",", "")?.toDoubleOrNull()
                 else -> null
             }
+            val fulizaRepayType: String? = when (match.rule.category) {
+                SmsParserConfig.SmsCategory.LOAN -> when {
+                    bodyLower.contains("partially pay") -> "partial"
+                    bodyLower.contains("fully pay") -> "full"
+                    else -> null
+                }
+                else -> null
+            }
 
             // Stage 5c: Date + semantic hash (needed for scoring and output)
             val date = parseDate(body, receivedAtMs)
@@ -710,7 +775,7 @@ object SmsParser {
                 SmsParserConfig.RECEIVED_REVERSED_RE.containsMatchIn(body)
 
             // Stage 6: Description
-            val description = buildDescription(match.rule.category, counterparty, finalAmount)
+            val description = buildDescription(match.rule.category, counterparty, finalAmount, fulizaRepayType)
 
             SmsParseResult.Success(
                 ParsedTransaction(
@@ -732,6 +797,7 @@ object SmsParser {
                     sourceHash              = sourceHash,
                     fulizaOutstandingKes    = fulizaOutstanding,
                     fulizaAvailableLimitKes = fulizaAvailLimit,
+                    fulizaRepaymentType    = fulizaRepayType,
                 )
             )
         } catch (e: Exception) {

@@ -20,7 +20,13 @@ object ParserPipeline {
             }
 
             // 2. Semantic fallback for all other banks (KCB, Equity, Co-op, NCBA…)
+            //    Skip non-transactional SMS (OTPs, maintenance, promos) before parsing.
             if (GenericBankParser.canParse(detection)) {
+                if (SmsParserConfig.isServiceNotice(body)) {
+                    return SmsParser.SmsParseResult.Error(
+                        SmsParser.SmsParseError("service_notice", body)
+                    )
+                }
                 return GenericBankParser.parseWithDetection(body, sender, receivedAtMs, detection)
             }
         }

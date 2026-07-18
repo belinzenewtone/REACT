@@ -38,6 +38,15 @@ internal object SmsDedupeEngine {
         tx: SmsParser.ParsedTransaction,
         db: DbWriter,
     ): Result {
+        // Tier 0: Cross-sender dedup — bank SMS that embeds an M-PESA ref code
+        // (e.g. NCBA/Loop "LOOP ref NHLEQ22R7SEB") matching an already-imported
+        // M-PESA transaction. Prevents double-counting the same payment.
+        if (!tx.crossRefMpesaCode.isNullOrBlank()) {
+            if (tx.crossRefMpesaCode in ctx.seenCodes || db.existsByMpesaCode(tx.crossRefMpesaCode)) {
+                return Result.DUPLICATE_CODE
+            }
+        }
+
         // Tier 1: transaction code — institution-scoped
         if (tx.institutionId == "mpesa") {
             if (tx.mpesaCode.isNotBlank() && (tx.mpesaCode in ctx.seenCodes || db.existsByMpesaCode(tx.mpesaCode))) {
