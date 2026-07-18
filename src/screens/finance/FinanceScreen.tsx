@@ -271,7 +271,7 @@ function FinanceScreenContent() {
       clearTimeout(bannerTimerRef.current);
       bannerTimerRef.current = setTimeout(() => smsDispatch({ type: 'CLEAR_BANNER' }), 6000);
     }
-  }, [repo, loadTransactions, loadDashboard, loadBudgets, loadPlanner, db]);
+  }, [repo, loadTransactions, loadDashboard, loadBudgets, reloadLoans, db]);
 
   const handleMpesaImport = useCallback((period: SmsScanPeriod) => {
     setSmsSheetVisible(false);
