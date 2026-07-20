@@ -1,13 +1,7 @@
-import React, { useState } from 'react';
-import { View, StyleSheet, Modal, ScrollView } from 'react-native';
+import React, { useState, useRef } from 'react';
+import { View, StyleSheet, ScrollView, Animated } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import {
-  Card,
-  Text,
-  Button,
-  TouchableRipple,
-  useTheme,
-} from 'react-native-paper';
+import { Text, TouchableRipple, useTheme } from 'react-native-paper';
 import { spacing, borderRadius } from '../../theme';
 
 interface DropdownOption {
@@ -25,30 +19,64 @@ interface DropdownProps {
   placeholder?: string;
 }
 
-/** Boxed field that opens a bottom-sheet list — replaces pill/segment rows that would otherwise wrap across multiple lines. */
+const ITEM_HEIGHT = 52;
+
+/** Boxed field that expands an inline panel directly below the trigger — no bottom-sheet modal. */
 export function Dropdown({ label, value, options, onChange, placeholder = 'Select…' }: DropdownProps) {
   const theme = useTheme();
   const [open, setOpen] = useState(false);
-  const selected = options.find((option) => option.value === value);
+  const heightAnim = useRef(new Animated.Value(0)).current;
+  const opacityAnim = useRef(new Animated.Value(0)).current;
+  const rotateAnim = useRef(new Animated.Value(0)).current;
+
+  const selected = options.find((o) => o.value === value);
+  const sheetHeight = Math.min(options.length * ITEM_HEIGHT, 280);
+
+  const openPanel = () => {
+    setOpen(true);
+    Animated.parallel([
+      Animated.spring(heightAnim, { toValue: sheetHeight, useNativeDriver: false, bounciness: 4, speed: 14 }),
+      Animated.timing(opacityAnim, { toValue: 1, duration: 160, useNativeDriver: false }),
+      Animated.timing(rotateAnim, { toValue: 1, duration: 200, useNativeDriver: true }),
+    ]).start();
+  };
+
+  const closePanel = () => {
+    Animated.parallel([
+      Animated.timing(heightAnim, { toValue: 0, duration: 180, useNativeDriver: false }),
+      Animated.timing(opacityAnim, { toValue: 0, duration: 150, useNativeDriver: false }),
+      Animated.timing(rotateAnim, { toValue: 0, duration: 180, useNativeDriver: true }),
+    ]).start(() => setOpen(false));
+  };
+
+  const handleSelect = (v: string) => {
+    onChange(v);
+    closePanel();
+  };
+
+  const chevronRotation = rotateAnim.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '180deg'] });
 
   return (
     <View style={styles.wrap}>
       <Text variant="bodyMedium" style={{ color: theme.colors.onSurfaceVariant, marginBottom: spacing.sm }}>
         {label}
       </Text>
+
       <TouchableRipple
-        onPress={() => setOpen(true)}
-        style={[styles.field, { borderColor: theme.colors.outlineVariant }]}
+        onPress={open ? closePanel : openPanel}
+        style={[
+          styles.field,
+          {
+            borderColor: open ? theme.colors.primary : theme.colors.outlineVariant,
+            borderBottomLeftRadius: open ? 0 : borderRadius.lg,
+            borderBottomRightRadius: open ? 0 : borderRadius.lg,
+          },
+        ]}
       >
         <View style={styles.fieldContent}>
           <View style={styles.fieldValue}>
             {selected?.icon ? (
-              <Ionicons
-                name={selected.icon}
-                size={18}
-                color={selected.color ?? theme.colors.primary}
-                style={styles.fieldIcon}
-              />
+              <Ionicons name={selected.icon} size={18} color={selected.color ?? theme.colors.primary} style={styles.fieldIcon} />
             ) : null}
             <Text
               variant="bodyMedium"
@@ -59,65 +87,50 @@ export function Dropdown({ label, value, options, onChange, placeholder = 'Selec
               {selected?.label ?? placeholder}
             </Text>
           </View>
-          <Ionicons name="chevron-down" size={18} color={theme.colors.onSurfaceVariant} />
+          <Animated.View style={{ transform: [{ rotate: chevronRotation }] }}>
+            <Ionicons name="chevron-down" size={18} color={open ? theme.colors.primary : theme.colors.onSurfaceVariant} />
+          </Animated.View>
         </View>
       </TouchableRipple>
 
-      <Modal visible={open} transparent animationType="slide" onRequestClose={() => setOpen(false)}>
-        <View style={[styles.overlay, { backgroundColor: 'rgba(0,0,0,0.6)' }]}>
-          <Card style={[styles.sheet, { backgroundColor: theme.colors.surfaceVariant }]} mode="elevated">
-            <Card.Content>
-              <View style={styles.sheetHeader}>
-                <Text variant="titleLarge" style={{ color: theme.colors.onSurface }}>{label}</Text>
-                <Button
-                  mode="text"
-                  compact
-                  onPress={() => setOpen(false)}
-                  textColor={theme.colors.onSurfaceVariant}
+      <View style={styles.panelClip}>
+        <Animated.View
+          style={[
+            styles.panel,
+            {
+              backgroundColor: theme.colors.surfaceVariant,
+              borderColor: theme.colors.primary,
+              maxHeight: heightAnim,
+              opacity: opacityAnim,
+            },
+          ]}
+        >
+          <ScrollView bounces={false} showsVerticalScrollIndicator={false}>
+            {options.map((item) => {
+              const isSelected = item.value === value;
+              return (
+                <TouchableRipple
+                  key={item.value}
+                  onPress={() => handleSelect(item.value)}
+                  style={[styles.option, { borderBottomColor: theme.colors.outlineVariant }]}
                 >
-                  Close
-                </Button>
-              </View>
-              <ScrollView style={styles.optionsScroll}>
-                {options.map((item) => {
-                  const isSelected = item.value === value;
-                  return (
-                    <TouchableRipple
-                      key={item.value}
-                      onPress={() => {
-                        onChange(item.value);
-                        setOpen(false);
-                      }}
-                      style={[styles.option, { borderBottomColor: theme.colors.outlineVariant }]}
-                    >
-                      <View style={styles.optionContent}>
-                        <View style={styles.optionLeft}>
-                          {item.icon ? (
-                            <Ionicons
-                              name={item.icon}
-                              size={18}
-                              color={item.color ?? theme.colors.primary}
-                              style={styles.fieldIcon}
-                            />
-                          ) : null}
-                          <Text
-                            variant="bodyMedium"
-                            style={{ color: theme.colors.onSurface }}
-                            numberOfLines={1}
-                          >
-                            {item.label}
-                          </Text>
-                        </View>
-                        {isSelected ? <Ionicons name="checkmark" size={20} color={theme.colors.primary} /> : null}
-                      </View>
-                    </TouchableRipple>
-                  );
-                })}
-              </ScrollView>
-            </Card.Content>
-          </Card>
-        </View>
-      </Modal>
+                  <View style={styles.optionContent}>
+                    <View style={styles.optionLeft}>
+                      {item.icon ? (
+                        <Ionicons name={item.icon} size={18} color={item.color ?? theme.colors.primary} style={styles.fieldIcon} />
+                      ) : null}
+                      <Text variant="bodyMedium" style={{ color: theme.colors.onSurface }} numberOfLines={1}>
+                        {item.label}
+                      </Text>
+                    </View>
+                    {isSelected ? <Ionicons name="checkmark" size={20} color={theme.colors.primary} /> : null}
+                  </View>
+                </TouchableRipple>
+              );
+            })}
+          </ScrollView>
+        </Animated.View>
+      </View>
     </View>
   );
 }
@@ -149,24 +162,15 @@ const styles = StyleSheet.create({
   fieldIcon: {
     marginRight: spacing.sm,
   },
-  overlay: {
-    flex: 1,
-    justifyContent: 'flex-end',
+  panelClip: {
+    overflow: 'hidden',
   },
-  sheet: {
-    borderTopLeftRadius: borderRadius['2xl'],
-    borderTopRightRadius: borderRadius['2xl'],
-    padding: spacing.lg,
-    maxHeight: '70%',
-  },
-  optionsScroll: {
-    maxHeight: 360,
-  },
-  sheetHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: spacing.lg,
+  panel: {
+    borderWidth: 1,
+    borderTopWidth: 0,
+    borderBottomLeftRadius: borderRadius.lg,
+    borderBottomRightRadius: borderRadius.lg,
+    overflow: 'hidden',
   },
   option: {
     borderBottomWidth: 1,
@@ -176,6 +180,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingVertical: spacing.base,
+    paddingHorizontal: spacing.base,
   },
   optionLeft: {
     flexDirection: 'row',
